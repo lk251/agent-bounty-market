@@ -1,0 +1,17 @@
+{
+  "schema": "motoko-verifier-contract-v1",
+  "verifier_id": "motoko_issue_1_tui_latency",
+  "issue": "lk251/motoko#1",
+  "baseline_commit": "f4ebe1073d6fe7b9a1e2036e2a6e923ea0a68116",
+  "short_p95_limit_ms": 30.0,
+  "long_p95_limit_ms": 40.0,
+  "max_long_minus_short_p95_ms": 10.0,
+  "samples": 100,
+  "requires": [
+    "exact ASCII input integrity",
+    "exact Unicode input integrity",
+    "short transcript input-to-visible-composer p95 <= 30 ms",
+    "long transcript input-to-visible-composer p95 <= 40 ms",
+    "no ordinary typing transcript scan proportional to transcript length"
+  ]
+}

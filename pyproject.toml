@@ -1,0 +1,9 @@
+[project]
+name = "agent-bounty-market"
+version = "0.1.0"
+description = "Stdlib-only trusted transaction core for agent-native GitHub bounties"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.pytest.ini_options]
+addopts = "-q"
