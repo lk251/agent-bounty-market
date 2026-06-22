@@ -45,14 +45,27 @@ a temporary worktree for the candidate commit, uses temporary HOME/state/config
 paths, scrubs the environment through the runner, exercises the real Motoko TUI
 through PTYs, and emits compact JSON.
 
+Candidate Python is never imported into the trusted verifier interpreter. The
+trusted parent owns fixtures, randomized nonce values, thresholds, statistics,
+digests, and verdict logic. Candidate code runs only as child processes through
+an execution backend, and candidate stdout is treated as observation data rather
+than authoritative verdict JSON.
+
 The v2 contract checks idle short and long transcript typing, rejects transcript-
 dependent ordinary input scans, and runs a real background-study typing scenario
 in a separate Motoko child process while `study: evidence-store` is active.
 
 The verification receipt binds bounty ID, project/issue, submission ID, solver
 ID, candidate repo path, base SHA, candidate SHA, verifier name/version/digest,
-metrics, stdout/stderr digests, result digest, and timestamps. Payout release
-must reference the accepted receipt and exact verifier digest.
+backend name/digest, policy digest, metrics, stdout/stderr digests, result
+digest, and timestamps. Payout release must reference the accepted receipt and
+exact verifier, backend, and policy digests.
+
+Verification runs are crash recoverable. A completed idempotency key replays the
+same receipt. A `running` row without a receipt is treated as incomplete work
+and retried instead of being returned as a completed replay. Verifier errors and
+timeouts are recorded without producing payout-eligible receipts, and the bounty
+leaves `verifying` so it can be retried.
 
 ## Payment Boundary
 

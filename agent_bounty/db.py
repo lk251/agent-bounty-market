@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -24,7 +24,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             value TEXT NOT NULL
         );
 
-        INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '2');
+        INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '3');
 
         CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
@@ -126,6 +126,12 @@ def init_db(conn: sqlite3.Connection) -> None:
             stdout_sha256 TEXT,
             stderr_sha256 TEXT,
             result_json TEXT,
+            backend TEXT,
+            backend_digest TEXT,
+            policy_digest TEXT,
+            lease_expires_at TEXT,
+            heartbeat_at TEXT,
+            attempt INTEGER NOT NULL DEFAULT 1,
             idempotency_key TEXT NOT NULL UNIQUE
         );
 
@@ -142,6 +148,9 @@ def init_db(conn: sqlite3.Connection) -> None:
             base_commit TEXT NOT NULL,
             candidate_commit TEXT NOT NULL,
             verifier_digest TEXT NOT NULL,
+            backend TEXT,
+            backend_digest TEXT,
+            policy_digest TEXT,
             accepted INTEGER NOT NULL CHECK(accepted IN (0, 1)),
             metrics_json TEXT NOT NULL,
             stdout_sha256 TEXT NOT NULL,
@@ -203,6 +212,15 @@ def init_db(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "verification_receipts", "solver_id", "TEXT")
     _ensure_column(conn, "verification_receipts", "candidate_repo_path", "TEXT")
     _ensure_column(conn, "verification_receipts", "verifier_id", "TEXT")
+    _ensure_column(conn, "verification_receipts", "backend", "TEXT")
+    _ensure_column(conn, "verification_receipts", "backend_digest", "TEXT")
+    _ensure_column(conn, "verification_receipts", "policy_digest", "TEXT")
+    _ensure_column(conn, "verification_runs", "backend", "TEXT")
+    _ensure_column(conn, "verification_runs", "backend_digest", "TEXT")
+    _ensure_column(conn, "verification_runs", "policy_digest", "TEXT")
+    _ensure_column(conn, "verification_runs", "lease_expires_at", "TEXT")
+    _ensure_column(conn, "verification_runs", "heartbeat_at", "TEXT")
+    _ensure_column(conn, "verification_runs", "attempt", "INTEGER NOT NULL DEFAULT 1")
     _ensure_column(conn, "payouts", "accepted_receipt_id", "TEXT")
     _ensure_column(conn, "payouts", "verifier_digest", "TEXT")
     conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))

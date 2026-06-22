@@ -310,7 +310,7 @@ class AgentBountyMarket:
     def run_verification(self, *, submission_id: str, idempotency_key: str) -> dict[str, Any]:
         existing = self.conn.execute(
             """
-            SELECT r.id AS run_id, r.submission_id, rc.id AS receipt_id, rc.receipt_json
+            SELECT r.*, rc.id AS receipt_id, rc.receipt_json
             FROM verification_runs r
             LEFT JOIN verification_receipts rc ON rc.run_id = r.id
             WHERE r.idempotency_key = ?
@@ -320,34 +320,116 @@ class AgentBountyMarket:
         if existing:
             if existing["submission_id"] != submission_id:
                 raise MarketError("verification idempotency key was replayed for a different submission")
-            return {
-                "run_id": existing["run_id"],
-                "receipt_id": existing["receipt_id"],
-                "receipt": self._decode(existing["receipt_json"], {}),
-                "replayed": True,
-            }
+            if existing["receipt_id"]:
+                return {
+                    "run_id": existing["id"],
+                    "receipt_id": existing["receipt_id"],
+                    "receipt": self._decode(existing["receipt_json"], {}),
+                    "status": existing["status"],
+                    "replayed": True,
+                }
         submission = self.conn.execute("SELECT * FROM submissions WHERE id = ?", (submission_id,)).fetchone()
         if not submission:
             raise MarketError(f"unknown submission {submission_id}")
         bounty = self._bounty(submission["bounty_id"])
-        if bounty["state"] != BountyState.SUBMITTED.value:
+        retrying_run = existing if existing and not existing["receipt_id"] else None
+        allowed_start_states = {BountyState.SUBMITTED.value}
+        if retrying_run:
+            allowed_start_states.add(BountyState.VERIFYING.value)
+        if bounty["state"] not in allowed_start_states:
             raise MarketError(f"cannot verify submission from state {bounty['state']}")
-        run_id = new_id("vrun")
+        run_id = retrying_run["id"] if retrying_run else new_id("vrun")
+        started_at = utc_now()
         with self.conn:
-            self._transition_bounty(submission["bounty_id"], BountyState.VERIFYING, reason="verification_started", idempotency_key=f"state:{idempotency_key}:verifying")
-            self.conn.execute(
-                """
-                INSERT INTO verification_runs(id, bounty_id, submission_id, status, verifier_id, started_at, idempotency_key)
-                VALUES (?, ?, ?, 'running', ?, ?, ?)
-                """,
-                (run_id, submission["bounty_id"], submission_id, bounty["verifier_id"], utc_now(), idempotency_key),
+            if bounty["state"] == BountyState.SUBMITTED.value:
+                self._transition_bounty(
+                    submission["bounty_id"],
+                    BountyState.VERIFYING,
+                    reason="verification_started",
+                    idempotency_key=f"state:{idempotency_key}:verifying",
+                )
+            if retrying_run:
+                self.conn.execute(
+                    """
+                    UPDATE verification_runs
+                    SET status = 'running', started_at = ?, finished_at = NULL,
+                        stdout_sha256 = NULL, stderr_sha256 = NULL, result_json = NULL,
+                        heartbeat_at = ?, attempt = attempt + 1
+                    WHERE id = ?
+                    """,
+                    (started_at, started_at, run_id),
+                )
+            else:
+                self.conn.execute(
+                    """
+                    INSERT INTO verification_runs(
+                        id, bounty_id, submission_id, status, verifier_id, started_at, heartbeat_at, idempotency_key
+                    )
+                    VALUES (?, ?, ?, 'running', ?, ?, ?, ?)
+                    """,
+                    (run_id, submission["bounty_id"], submission_id, bounty["verifier_id"], started_at, started_at, idempotency_key),
+                )
+        try:
+            result = self.verifier.run(
+                bounty_id=submission["bounty_id"],
+                motoko_repo=Path(submission["candidate_repo_path"]),
+                base_commit=bounty["base_commit"],
+                candidate_commit=submission["candidate_commit"],
             )
-        result = self.verifier.run(
-            bounty_id=submission["bounty_id"],
-            motoko_repo=Path(submission["candidate_repo_path"]),
-            base_commit=bounty["base_commit"],
-            candidate_commit=submission["candidate_commit"],
-        )
+        except Exception as exc:
+            from .verification import ProtectedVerificationResult
+            from .util import sha256_bytes
+
+            finished_at = utc_now()
+            result = ProtectedVerificationResult(
+                accepted=False,
+                metrics={},
+                verifier_digest="sha256:verifier-runner-error",
+                backend="runner",
+                backend_digest="sha256:runner-error",
+                policy_digest="sha256:runner-error",
+                stdout_sha256=sha256_bytes(b""),
+                stderr_sha256=sha256_bytes(str(exc).encode("utf-8")),
+                started_at=started_at,
+                finished_at=finished_at,
+                result={
+                    "schema": "protected-verifier-result-v1",
+                    "accepted": False,
+                    "error": f"{type(exc).__name__}: {exc}",
+                },
+                returncode=125,
+            )
+        status = self._verification_status(result)
+        if status in {"error", "timed_out"}:
+            with self.conn:
+                self.conn.execute(
+                    """
+                    UPDATE verification_runs
+                    SET status = ?, finished_at = ?, stdout_sha256 = ?, stderr_sha256 = ?,
+                        result_json = ?, backend = ?, backend_digest = ?, policy_digest = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        status,
+                        result.finished_at,
+                        result.stdout_sha256,
+                        result.stderr_sha256,
+                        stable_json(result.result),
+                        result.backend,
+                        result.backend_digest,
+                        result.policy_digest,
+                        run_id,
+                    ),
+                )
+                current = self._bounty(submission["bounty_id"])
+                if current["state"] == BountyState.VERIFYING.value:
+                    self._transition_bounty(
+                        submission["bounty_id"],
+                        BountyState.SUBMITTED,
+                        reason=f"verification_{status}",
+                        idempotency_key=f"state:{idempotency_key}:{status}:submitted",
+                    )
+            return {"run_id": run_id, "receipt_id": None, "receipt": None, "status": status, "replayed": False}
         receipt = receipt_payload(
             bounty_id=submission["bounty_id"],
             project_id=bounty["project_id"],
@@ -369,7 +451,7 @@ class AgentBountyMarket:
                 WHERE id = ?
                 """,
                 (
-                    "accepted" if result.accepted else "rejected",
+                    status,
                     result.finished_at,
                     result.stdout_sha256,
                     result.stderr_sha256,
@@ -382,9 +464,9 @@ class AgentBountyMarket:
                 INSERT INTO verification_receipts(
                     id, run_id, bounty_id, project_id, issue_ref, submission_id, solver_id,
                     candidate_repo_path, verifier_id, base_commit, candidate_commit, verifier_digest,
-                    accepted, metrics_json, stdout_sha256, stderr_sha256, started_at, finished_at,
-                    receipt_json, idempotency_key, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    backend, backend_digest, policy_digest, accepted, metrics_json, stdout_sha256,
+                    stderr_sha256, started_at, finished_at, receipt_json, idempotency_key, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     receipt_id,
@@ -399,6 +481,9 @@ class AgentBountyMarket:
                     bounty["base_commit"],
                     submission["candidate_commit"],
                     result.verifier_digest,
+                    result.backend,
+                    result.backend_digest,
+                    result.policy_digest,
                     1 if result.accepted else 0,
                     stable_json(result.metrics),
                     result.stdout_sha256,
@@ -427,7 +512,7 @@ class AgentBountyMarket:
                 self.conn.execute("UPDATE bounties SET accepted_receipt_id = ? WHERE id = ?", (receipt_id, submission["bounty_id"]))
             else:
                 self._transition_bounty(submission["bounty_id"], BountyState.REJECTED, reason="verification_rejected", idempotency_key=f"state:{idempotency_key}:rejected")
-        return {"run_id": run_id, "receipt_id": receipt_id, "receipt": receipt, "replayed": False}
+        return {"run_id": run_id, "receipt_id": receipt_id, "receipt": receipt, "status": status, "replayed": False}
 
     def cancel_bounty(self, *, bounty_id: str, idempotency_key: str, reason: str = "cancelled") -> dict[str, Any]:
         bounty = self._bounty(bounty_id)
@@ -674,7 +759,26 @@ class AgentBountyMarket:
             raise MarketError("accepted receipt issue does not match bounty")
         if receipt["verifier_id"] != bounty["verifier_id"]:
             raise MarketError("accepted receipt verifier does not match bounty")
+        if not receipt["backend_digest"] or not receipt["policy_digest"]:
+            raise MarketError("accepted receipt is missing backend or policy digest")
+        payload = self._decode(receipt["receipt_json"], {})
+        if payload.get("backend_digest") != receipt["backend_digest"]:
+            raise MarketError("accepted receipt backend digest does not match payload")
+        if payload.get("policy_digest") != receipt["policy_digest"]:
+            raise MarketError("accepted receipt policy digest does not match payload")
         return receipt
+
+    @staticmethod
+    def _verification_status(result: Any) -> str:
+        if result.accepted:
+            return "accepted"
+        error = result.result.get("error") if isinstance(result.result, dict) else None
+        failure_reasons = result.result.get("failure_reasons") if isinstance(result.result, dict) else None
+        if result.returncode == 124 or (isinstance(error, str) and "timed out" in error.lower()):
+            return "timed_out"
+        if error and not failure_reasons:
+            return "error"
+        return "rejected"
 
     def _transition_bounty(self, bounty_id: str, target: BountyState, *, reason: str, idempotency_key: str) -> None:
         bounty = self._bounty(bounty_id)

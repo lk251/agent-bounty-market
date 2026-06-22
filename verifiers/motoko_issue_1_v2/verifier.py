@@ -5,13 +5,13 @@ import argparse
 import collections
 import contextlib
 import fcntl
-import importlib.machinery
-import importlib.util
+import hashlib
 import json
 import os
 import pathlib
 import pty
 import re
+import secrets
 import select
 import struct
 import subprocess
@@ -25,6 +25,12 @@ from typing import Any
 
 CONTRACT = json.loads((pathlib.Path(__file__).with_name("contract.json")).read_text())
 ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+MAX_PTY_CAPTURE_BYTES = 1_000_000
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+from agent_bounty.execution import LocalIsolatedProcessBackend, OpenShellBackend, kill_process_group, scrubbed_env  # noqa: E402
+from agent_bounty.util import sha256_bytes, stable_json, utc_now  # noqa: E402
 
 
 class VerificationFailure(RuntimeError):
@@ -75,18 +81,12 @@ def remove_worktree(repo: pathlib.Path, worktree: pathlib.Path) -> None:
         run_git(repo, "worktree", "remove", "--force", str(worktree), check=False)
 
 
-def load_candidate_motoko(worktree: pathlib.Path):
-    source = worktree / "motoko"
-    if not source.exists():
-        raise VerificationFailure("candidate checkout has no motoko executable")
-    sys.path.insert(0, str(worktree))
-    loader = importlib.machinery.SourceFileLoader("candidate_motoko", str(source))
-    spec = importlib.util.spec_from_loader("candidate_motoko", loader)
-    if spec is None:
-        raise VerificationFailure("cannot construct candidate module spec")
-    module = importlib.util.module_from_spec(spec)
-    loader.exec_module(module)
-    return module
+def verifier_tree_digest() -> str:
+    pieces = []
+    for name in ("contract.json", "README.md", "verifier.py"):
+        path = pathlib.Path(__file__).with_name(name)
+        pieces.append(f"{name}:{sha256_bytes(path.read_bytes())}")
+    return sha256_bytes("\n".join(pieces).encode("utf-8"))
 
 
 def set_winsz(fd: int, rows: int, cols: int) -> None:
@@ -104,6 +104,8 @@ def read_available(fd: int) -> str:
             chunks.append(os.read(fd, 65536))
         except OSError:
             break
+        if sum(len(chunk) for chunk in chunks) >= MAX_PTY_CAPTURE_BYTES:
+            break
     return b"".join(chunks).decode("utf-8", errors="replace")
 
 
@@ -117,6 +119,8 @@ def read_until_visible(fd: int, target: str, *, timeout: float = 2.0) -> str:
         try:
             chunks.append(os.read(fd, 65536))
         except OSError:
+            break
+        if sum(len(chunk) for chunk in chunks) >= MAX_PTY_CAPTURE_BYTES:
             break
         text = b"".join(chunks).decode("utf-8", errors="replace")
         if target in strip_ansi(text):
@@ -134,6 +138,8 @@ def read_pty_until(fd: int, predicate, *, timeout: float) -> tuple[str, bool]:
         try:
             chunks.append(os.read(fd, 65536))
         except OSError:
+            break
+        if sum(len(chunk) for chunk in chunks) >= MAX_PTY_CAPTURE_BYTES:
             break
         text = b"".join(chunks).decode("utf-8", errors="replace")
         if predicate(strip_ansi(text)):
@@ -154,6 +160,8 @@ def wait_for_prefixes(fd: int, *, prefixes: list[str], injected_at: list[float],
             chunks.append(os.read(fd, 65536))
         except OSError:
             break
+        if sum(len(chunk) for chunk in chunks) >= MAX_PTY_CAPTURE_BYTES:
+            break
         visible = strip_ansi(b"".join(chunks).decode("utf-8", errors="replace"))
         for idx, prefix in enumerate(prefixes):
             if idx not in seen and prefix in visible:
@@ -170,11 +178,11 @@ def percentile_ms(values: list[float], percentile: float) -> float:
     return round(ordered[max(0, min(len(ordered) - 1, idx))] * 1000.0, 3)
 
 
-def make_measurement_text() -> str:
+def make_measurement_text(nonce: str) -> str:
     samples = int(CONTRACT["samples"])
-    base = "ascii latency Café mañana résumé 東京界 Привет alpha beta "
+    base = f"nonce {nonce} ascii latency Café mañana résumé 東京界 Привет alpha beta "
     text = (base * ((samples // len(base)) + 2))[:samples]
-    if len(text) != samples or not any(ord(char) > 127 for char in text):
+    if len(text) != samples or nonce[:8] not in text or not any(ord(char) > 127 for char in text):
         raise VerificationFailure("measurement fixture is invalid")
     return text
 
@@ -241,150 +249,169 @@ def background_metrics(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def run_latency_probe(m, *, name: str, text: str, transcript_pairs: int) -> dict[str, Any]:
-    old_env = {key: os.environ.get(key) for key in ("HOME", "MOTOKO_STATE_HOME", "MOTOKO_CONFIG_HOME", "MOTOKO_BACKGROUND_STUDY")}
-    old_model_badge = m.model_badge
-    old_assistant_color = m.assistant_color
-    counters = collections.Counter()
+def latency_driver_source() -> str:
+    return r'''
+from __future__ import annotations
+import collections
+import importlib.machinery
+import importlib.util
+import pathlib
+import sys
+
+
+class CountingMessageList(list):
+    def __init__(self, rows=()):
+        super().__init__(rows)
+        self.iterations = 0
+
+    def __iter__(self):
+        self.iterations += len(self)
+        return super().__iter__()
+
+
+def load_candidate(worktree: pathlib.Path):
+    source = worktree / "motoko"
+    if not source.exists():
+        raise RuntimeError("candidate checkout has no motoko executable")
+    sys.path.insert(0, str(worktree))
+    loader = importlib.machinery.SourceFileLoader("candidate_motoko_child", str(source))
+    spec = importlib.util.spec_from_loader("candidate_motoko_child", loader)
+    if spec is None:
+        raise RuntimeError("cannot construct candidate module spec")
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def main() -> int:
+    worktree = pathlib.Path(sys.argv[1])
+    title = sys.argv[2]
+    transcript_pairs = int(sys.argv[3])
+    m = load_candidate(worktree)
+    conv = m.new_conversation(title)
+    ui = m.MotokoTui(conv)
+    ui.stdin_fd = 0
+    ui.stdout_fd = 1
+    ui.start_study_loop = lambda: None
+    ui.start_maintenance = lambda *args, **kwargs: None
+    ui.resume_maintenance_on_start = False
+    ui.pending_prompts = collections.deque()
+    ui.report_running = 0
+    ui.foreground_running = 0
+    ui.maintaining = False
+    ui.study_running = False
+    ui.cwd_indexing = False
+    ui.index_progress = None
+    ui.status = "ready"
+    ui.input_buffer = ""
+    ui.cursor = 0
+    ui.dropdown_index = 0
+    rows = []
+    for idx in range(transcript_pairs):
+        rows.append({"role": "user", "content": f"transcript user row {idx}"})
+        rows.append({"role": "assistant", "content": f"transcript answer row {idx}"})
+    ui.messages = CountingMessageList(rows or [{"role": "system", "content": "empty transcript probe"}])
+    ui.rendered_message_ids = set()
+    ui.bottom_rows_rendered = 0
+    ui.bottom_cursor_row_offset = 0
+    ui.bottom_frame_key = None
+    ui.answer_stream_width = 0
+    ui.answer_stream_emitted_lines = 0
+    ui.generating = False
+    ui.answer_phase = ""
+    ui.answer_entry = None
+    ui.run()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
+
+
+def run_latency_probe(worktree: pathlib.Path, *, name: str, text: str, transcript_pairs: int) -> dict[str, Any]:
     errors: list[str] = []
     master_fd = slave_fd = None
-    ui = None
-    thread = None
+    proc: subprocess.Popen | None = None
     try:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = pathlib.Path(tmp)
-            os.environ["HOME"] = str(tmp_path / "home")
-            os.environ["MOTOKO_STATE_HOME"] = str(tmp_path / "state")
-            os.environ["MOTOKO_CONFIG_HOME"] = str(tmp_path / "config")
-            os.environ["MOTOKO_BACKGROUND_STUDY"] = "0"
-            os.environ.pop("MOTOKO_ENDPOINT", None)
-            os.environ.pop("MOTOKO_MODEL", None)
-
-            def counted_model_badge():
-                counters["model_badge_calls"] += 1
-                return old_model_badge()
-
-            def counted_assistant_color():
-                counters["assistant_color_calls"] += 1
-                return old_assistant_color()
-
-            m.model_badge = counted_model_badge
-            m.assistant_color = counted_assistant_color
-            master_fd, slave_fd = pty.openpty()
-            ui = make_latency_tui(m, slave_fd, title=f"Protected Latency {name}", transcript_pairs=transcript_pairs)
-            original_write = ui.write
-            original_render = ui.render
-            original_draw = ui.draw_bottom_area
-
-            def counted_write(payload: str) -> None:
-                counters["writes"] += 1
-                counters["write_bytes"] += len(payload.encode("utf-8", errors="replace"))
-                original_write(payload)
-
-            def counted_render(*args, **kwargs):
-                counters["renders"] += 1
-                return original_render(*args, **kwargs)
-
-            def counted_draw(*args, **kwargs):
-                counters["bottom_draw_calls"] += 1
-                return original_draw(*args, **kwargs)
-
-            ui.write = counted_write
-            ui.render = counted_render
-            ui.draw_bottom_area = counted_draw
-            result: dict[str, Any] = {}
-
-            def driver() -> None:
-                initial = read_until_visible(master_fd, f"Protected Latency {name}", timeout=2.0)
-                initial += read_available(master_fd)
-                if f"Protected Latency {name}" not in strip_ansi(initial):
-                    errors.append("initial render did not become visible")
-                counters.clear()
-                if isinstance(ui.messages, CountingMessageList):
-                    ui.messages.iterations = 0
-                injected_at: list[float] = []
-                prefixes: list[str] = []
-                for idx, char in enumerate(text):
-                    injected_at.append(time.monotonic())
-                    os.write(master_fd, char.encode("utf-8"))
-                    prefixes.append(text[: idx + 1])
-                observed_latencies, observed_output = wait_for_prefixes(master_fd, prefixes=prefixes, injected_at=injected_at)
-                observed_output += read_available(master_fd)
-                final_input = getattr(ui, "input_buffer", "")
-                if final_input != text:
-                    errors.append(f"input mismatch: expected {text!r}, got {final_input!r}")
-                if len(observed_latencies) != len(text):
-                    errors.append(f"latency samples missing: {len(observed_latencies)}/{len(text)}")
-                transcript_iterations = ui.messages.iterations if isinstance(ui.messages, CountingMessageList) else 0
-                char_count = max(1, len(text))
-                result.update(
-                    {
-                        "name": name,
-                        "final_input": final_input,
-                        "expected_input": text,
-                        "p50_ms": percentile_ms(observed_latencies, 50),
-                        "p95_ms": percentile_ms(observed_latencies, 95),
-                        "max_ms": round((max(observed_latencies) if observed_latencies else 0.0) * 1000.0, 3),
-                        "samples": len(observed_latencies),
-                        "writes": counters["writes"],
-                        "write_bytes": counters["write_bytes"],
-                        "renders": counters["renders"],
-                        "bottom_draw_calls": counters["bottom_draw_calls"],
-                        "model_badge_calls": counters["model_badge_calls"],
-                        "assistant_color_calls": counters["assistant_color_calls"],
-                        "writes_per_char": round(counters["writes"] / char_count, 3),
-                        "bytes_per_char": round(counters["write_bytes"] / char_count, 3),
-                        "renders_per_char": round(counters["renders"] / char_count, 3),
-                        "transcript_iterations": transcript_iterations,
-                        "output_contains_final": text in strip_ansi(observed_output),
-                        "errors": errors,
-                    }
-                )
-                ui.running = False
-                with contextlib.suppress(OSError):
-                    os.write(master_fd, b"\x00")
-
-            thread = threading.Thread(target=driver, daemon=True)
-            thread.start()
-            try:
-                ui.run()
-            except Exception as exc:
-                errors.append(f"{type(exc).__name__}: {exc}")
-                ui.running = False
-            thread.join(timeout=2.0)
-            if not result:
-                result = {
-                    "name": name,
-                    "final_input": getattr(ui, "input_buffer", ""),
-                    "expected_input": text,
-                    "p50_ms": 0.0,
-                    "p95_ms": 0.0,
-                    "max_ms": 0.0,
-                    "samples": 0,
-                    "transcript_iterations": 0,
-                    "output_contains_final": False,
-                    "errors": errors + ["driver did not finish"],
+            driver_path = tmp_path / "latency_driver.py"
+            driver_path.write_text(latency_driver_source(), encoding="utf-8")
+            state_dir = tmp_path / "state"
+            config_dir = tmp_path / "config"
+            env = scrubbed_env(
+                {
+                    "HOME": str(tmp_path / "home"),
+                    "MOTOKO_STATE_HOME": str(state_dir),
+                    "MOTOKO_CONFIG_HOME": str(config_dir),
+                    "MOTOKO_BACKGROUND_STUDY": "0",
+                    "MOTOKO_BACKGROUND_PROFILE": "0",
+                    "MOTOKO_TUI_INPUT_BATCH_LIMIT": "64",
+                    "MOTOKO_TUI": "1",
+                    "TERM": "xterm-256color",
+                    "PYTHONUNBUFFERED": "1",
                 }
-            return result
+            )
+            master_fd, slave_fd = pty.openpty()
+            set_winsz(slave_fd, 18, 140)
+            proc = subprocess.Popen(
+                [sys.executable, str(driver_path), str(worktree), f"Protected Latency {name}", str(transcript_pairs)],
+                cwd=str(tmp_path),
+                env=env,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                close_fds=True,
+                start_new_session=True,
+            )
+            os.close(slave_fd)
+            slave_fd = None
+            initial = read_until_visible(master_fd, f"Protected Latency {name}", timeout=4.0)
+            if f"Protected Latency {name}" not in strip_ansi(initial):
+                errors.append("initial render did not become visible")
+            injected_at: list[float] = []
+            prefixes: list[str] = []
+            for idx, char in enumerate(text):
+                injected_at.append(time.monotonic())
+                os.write(master_fd, char.encode("utf-8"))
+                prefixes.append(text[: idx + 1])
+            observed_latencies, observed_output = wait_for_prefixes(master_fd, prefixes=prefixes, injected_at=injected_at)
+            observed_output += read_available(master_fd)
+            visible_output = strip_ansi(initial + observed_output)
+            final_input = text if text in visible_output else ""
+            if final_input != text:
+                errors.append("final composer contents were not observed")
+            if len(observed_latencies) != len(text):
+                errors.append(f"latency samples missing: {len(observed_latencies)}/{len(text)}")
+            with contextlib.suppress(OSError):
+                os.write(master_fd, b"\x03")
+            if proc.poll() is None:
+                kill_process_group(proc)
+            with contextlib.suppress(Exception):
+                proc.wait(timeout=2.0)
+            return {
+                "name": name,
+                "final_input": final_input,
+                "expected_input": text,
+                "p50_ms": percentile_ms(observed_latencies, 50),
+                "p95_ms": percentile_ms(observed_latencies, 95),
+                "max_ms": round((max(observed_latencies) if observed_latencies else 0.0) * 1000.0, 3),
+                "samples": len(observed_latencies),
+                "transcript_iterations": 0,
+                "output_contains_final": text in visible_output,
+                "errors": errors,
+            }
     finally:
-        m.model_badge = old_model_badge
-        m.assistant_color = old_assistant_color
-        if ui is not None:
-            ui.running = False
+        if proc is not None and proc.poll() is None:
+            kill_process_group(proc)
         if master_fd is not None:
             with contextlib.suppress(OSError):
-                os.write(master_fd, b"\x00")
-        if thread is not None:
-            thread.join(timeout=2.0)
+                os.write(master_fd, b"\x03")
         for fd in (master_fd, slave_fd):
             if fd is not None:
                 with contextlib.suppress(OSError):
                     os.close(fd)
-        for key, value in old_env.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
 
 
 def write_json(path: pathlib.Path, data: dict) -> None:
@@ -393,10 +420,23 @@ def write_json(path: pathlib.Path, data: dict) -> None:
     path.chmod(0o600)
 
 
+def sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def source_fingerprint(path: pathlib.Path) -> dict[str, str]:
+    return {"sha256": sha256_hex(path.read_bytes())}
+
+
+def index_path(state_dir: pathlib.Path, index_id: str) -> pathlib.Path:
+    return state_dir / "indexes" / f"{index_id}.json"
+
+
 def build_background_study_fixture(
-    m,
     tmp_root: pathlib.Path,
+    state_dir: pathlib.Path,
     *,
+    nonce: str,
     file_count: int = 20,
     chunks_per_file: int = 2,
     headings_per_chunk: int = 10,
@@ -421,7 +461,7 @@ def build_background_study_fixture(
                         "** log",
                         (
                             "This deterministic fixture exists only to keep the real background "
-                            "evidence-store code busy while the PTY verifier types into Motoko."
+                            f"evidence-store code busy while the PTY verifier types into Motoko. Nonce {nonce}."
                         ),
                     ]
                 )
@@ -432,7 +472,7 @@ def build_background_study_fixture(
                     "chunk": chunk_idx + 1,
                     "summary": f"Synthetic background evidence chunk {file_idx}-{chunk_idx}.",
                     "content": content,
-                    "content_sha256": m.sha256_hex(content.encode("utf-8")),
+                    "content_sha256": sha256_hex(content.encode("utf-8")),
                     "content_bytes": len(content.encode("utf-8")),
                 }
             )
@@ -440,7 +480,7 @@ def build_background_study_fixture(
         files.append(
             {
                 "path": str(source),
-                "source_fingerprint": m.source_fingerprint(source),
+                "source_fingerprint": source_fingerprint(source),
                 "summary": "Synthetic background-study latency fixture.",
                 "chunks": chunks,
             }
@@ -450,10 +490,11 @@ def build_background_study_fixture(
         "name": "background-study-latency",
         "root": str(docs),
         "glob": "*.org",
-        "created": m.now(),
+        "created": utc_now(),
+        "verifier_nonce": nonce,
         "files": files,
     }
-    write_json(m.index_path(index_id), index)
+    write_json(index_path(state_dir, index_id), index)
     return index
 
 
@@ -549,11 +590,7 @@ def wait_for_background_artifact(state_dir: pathlib.Path, fd: int, *, timeout: f
     return evidence_artifact_integrity(state_dir), b"".join(chunks).decode("utf-8", errors="replace")
 
 
-def run_background_study_latency_probe(m, worktree: pathlib.Path, *, text: str, width: int = 140) -> dict[str, Any]:
-    old_env = {
-        "MOTOKO_STATE_HOME": os.environ.get("MOTOKO_STATE_HOME"),
-        "MOTOKO_CONFIG_HOME": os.environ.get("MOTOKO_CONFIG_HOME"),
-    }
+def run_background_study_latency_probe(worktree: pathlib.Path, *, text: str, nonce: str, width: int = 140) -> dict[str, Any]:
     master_fd = slave_fd = None
     proc: subprocess.Popen | None = None
     errors: list[str] = []
@@ -562,12 +599,10 @@ def run_background_study_latency_probe(m, worktree: pathlib.Path, *, text: str, 
             tmp = pathlib.Path(tmp_name)
             state_dir = tmp / "state"
             config_dir = tmp / "config"
-            os.environ["MOTOKO_STATE_HOME"] = str(state_dir)
-            os.environ["MOTOKO_CONFIG_HOME"] = str(config_dir)
-            build_background_study_fixture(m, tmp)
-            env = os.environ.copy()
-            env.update(
+            build_background_study_fixture(tmp, state_dir, nonce=nonce)
+            env = scrubbed_env(
                 {
+                    "HOME": str(tmp / "home"),
                     "MOTOKO_STATE_HOME": str(state_dir),
                     "MOTOKO_CONFIG_HOME": str(config_dir),
                     "MOTOKO_TUI": "1",
@@ -596,6 +631,7 @@ def run_background_study_latency_probe(m, worktree: pathlib.Path, *, text: str, 
                 stdout=slave_fd,
                 stderr=slave_fd,
                 close_fds=True,
+                start_new_session=True,
             )
             os.close(slave_fd)
             slave_fd = None
@@ -632,8 +668,8 @@ def run_background_study_latency_probe(m, worktree: pathlib.Path, *, text: str, 
             try:
                 proc.wait(timeout=3.0)
             except subprocess.TimeoutExpired:
-                proc.terminate()
-                with contextlib.suppress(subprocess.TimeoutExpired):
+                kill_process_group(proc)
+                with contextlib.suppress(Exception):
                     proc.wait(timeout=2.0)
             latencies = observed["latencies"]
             return {
@@ -651,42 +687,52 @@ def run_background_study_latency_probe(m, worktree: pathlib.Path, *, text: str, 
             }
     finally:
         if proc is not None and proc.poll() is None:
-            proc.terminate()
-            with contextlib.suppress(Exception):
-                proc.wait(timeout=2.0)
+            kill_process_group(proc)
         for fd in (master_fd, slave_fd):
             if fd is not None:
                 with contextlib.suppress(OSError):
                     os.close(fd)
-        for key, value in old_env.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
 
 
-def verify_candidate(repo: pathlib.Path, base_commit: str, candidate_commit: str, bounty_id: str) -> dict[str, Any]:
+def backend_for(name: str):
+    if name == "local-isolated-process":
+        return LocalIsolatedProcessBackend()
+    if name == "openshell":
+        return OpenShellBackend()
+    raise VerificationFailure(f"unknown execution backend {name!r}")
+
+
+def verify_candidate(repo: pathlib.Path, base_commit: str, candidate_commit: str, bounty_id: str, *, backend_name: str) -> dict[str, Any]:
     resolved_base = resolve_commit(repo, base_commit)
     resolved_candidate = resolve_commit(repo, candidate_commit)
     expected_base = CONTRACT.get("baseline_commit")
     if expected_base and not resolved_base.startswith(str(expected_base)):
         raise VerificationFailure("base commit does not match verifier contract")
     assert_base_ancestor(repo, resolved_base, resolved_candidate)
-    text = make_measurement_text()
-    background_text = "background study input Café mañana résumé 東京界 Привет "[:72]
+    backend = backend_for(backend_name)
+    if isinstance(backend, OpenShellBackend):
+        blocker = backend.blocker()
+        if blocker:
+            raise VerificationFailure(f"OpenShell unavailable: {blocker}")
+    nonce = secrets.token_hex(8)
+    text = make_measurement_text(nonce)
+    background_text = f"bg {nonce} Café mañana résumé 東京界 Привет "
+    before_digest = verifier_tree_digest()
     with tempfile.TemporaryDirectory(prefix="motoko-issue-1-v2-verifier-") as tmp:
         tmp_path = pathlib.Path(tmp)
         worktree = create_worktree(repo, resolved_candidate, tmp_path)
         try:
-            motoko = load_candidate_motoko(worktree)
-            run_latency_probe(motoko, name="warmup", text=text[:32], transcript_pairs=2)
-            short = run_latency_probe(motoko, name="short", text=text, transcript_pairs=3)
-            long = run_latency_probe(motoko, name="long", text=text, transcript_pairs=900)
-            background = run_background_study_latency_probe(motoko, worktree, text=background_text)
+            run_latency_probe(worktree, name="warmup", text=text[:32], transcript_pairs=2)
+            short = run_latency_probe(worktree, name="short", text=text, transcript_pairs=3)
+            long = run_latency_probe(worktree, name="long", text=text, transcript_pairs=900)
+            background = run_background_study_latency_probe(worktree, text=background_text, nonce=nonce)
         finally:
             remove_worktree(repo, worktree)
+    after_digest = verifier_tree_digest()
 
     failure_reasons: list[str] = []
+    if before_digest != after_digest:
+        failure_reasons.append("platform verifier files changed during candidate execution")
     for label, row in (("short_transcript", short), ("long_transcript", long)):
         if row.get("errors"):
             failure_reasons.append(f"{label}: verifier scenario reported errors")
@@ -703,6 +749,8 @@ def verify_candidate(repo: pathlib.Path, base_commit: str, candidate_commit: str
         failure_reasons.append("short_transcript unicode integrity failed")
     if not all(fragment in long.get("final_input", "") for fragment in unicode_fragments):
         failure_reasons.append("long_transcript unicode integrity failed")
+    if nonce[:8] not in short.get("final_input", "") or nonce[:8] not in long.get("final_input", ""):
+        failure_reasons.append("randomized nonce was not preserved in idle probes")
     short_metrics = scenario_metrics(short)
     long_metrics = scenario_metrics(long)
     if short_metrics["p95_ms"] > float(CONTRACT["short_p95_limit_ms"]):
@@ -742,6 +790,12 @@ def verify_candidate(repo: pathlib.Path, base_commit: str, candidate_commit: str
         "bounty_id": bounty_id,
         "base_commit": resolved_base,
         "candidate_commit": resolved_candidate,
+        "backend": backend.name,
+        "backend_digest": backend.backend_digest,
+        "policy_digest": backend.policy_digest,
+        "verifier_self_digest_before": before_digest,
+        "verifier_self_digest_after": after_digest,
+        "challenge_nonce_sha256": sha256_bytes(nonce.encode("utf-8")),
         "accepted": accepted,
         "metrics": {
             "short_transcript": short_metrics,
@@ -772,6 +826,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--candidate-repo", required=True)
     parser.add_argument("--base-commit", required=True)
     parser.add_argument("--candidate-commit", required=True)
+    parser.add_argument("--backend", default="local-isolated-process")
     args = parser.parse_args(argv)
     try:
         result = verify_candidate(
@@ -779,6 +834,7 @@ def main(argv: list[str] | None = None) -> int:
             args.base_commit,
             args.candidate_commit,
             args.bounty_id,
+            backend_name=args.backend,
         )
     except Exception as exc:
         result = rejected(f"{type(exc).__name__}: {exc}", bounty_id=args.bounty_id, base_commit=args.base_commit, candidate_commit=args.candidate_commit)

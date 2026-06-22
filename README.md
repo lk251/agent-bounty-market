@@ -25,7 +25,7 @@ python -m agent_bounty demo-motoko-suite \
 The suite rejects the bug baseline, rejects the idle-only candidate, accepts the
 final background-study fix, pays once, replays the final transaction, and prints
 compact JSON with project funds, candidate SHA, verifier version/digest,
-receipt, payout ID, and reconciliation status.
+backend/policy digests, receipt, payout ID, and reconciliation status.
 
 Run one accepted transaction:
 
@@ -51,6 +51,15 @@ python3 -m unittest discover -s tests
 The tests cover valid settlement, invalid transitions, insufficient funds,
 duplicate funding/reserve, exclusive claims, wrong-solver submission, stale SHA
 rejection, baseline/intermediate/final Motoko verdicts, candidate-owned verifier
-irrelevance, timeout/malformed verifier output, receipt binding, payout retry,
-paid payout replay, non-negative balances, reconciliation, and restart
-idempotency.
+irrelevance, timeout/malformed verifier output, receipt binding, verifier
+recovery after incomplete `running` rows, payout retry, paid payout replay,
+non-negative balances, reconciliation, and restart idempotency.
+
+Check the optional OpenShell backend:
+
+```bash
+python -m agent_bounty openshell-status
+```
+
+If `openshell` is not installed, this reports an exact blocker and still prints
+the verifier backend and policy digests used for audit records.

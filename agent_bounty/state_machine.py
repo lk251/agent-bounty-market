@@ -10,7 +10,7 @@ ALLOWED_TRANSITIONS: dict[BountyState, set[BountyState]] = {
     BountyState.OPEN: {BountyState.CLAIMED, BountyState.EXPIRED, BountyState.CANCELLED},
     BountyState.CLAIMED: {BountyState.SUBMITTED, BountyState.EXPIRED, BountyState.CANCELLED},
     BountyState.SUBMITTED: {BountyState.VERIFYING, BountyState.CANCELLED},
-    BountyState.VERIFYING: {BountyState.ACCEPTED, BountyState.REJECTED},
+    BountyState.VERIFYING: {BountyState.ACCEPTED, BountyState.REJECTED, BountyState.SUBMITTED},
     BountyState.ACCEPTED: {BountyState.PAYOUT_PENDING},
     BountyState.REJECTED: {BountyState.OPEN, BountyState.CANCELLED, BountyState.REFUNDED},
     BountyState.PAYOUT_PENDING: {BountyState.PAID, BountyState.PAYOUT_FAILED},

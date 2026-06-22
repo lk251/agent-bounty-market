@@ -12,7 +12,17 @@ The suite proves:
 - bug baseline `f4ebe107...` -> rejected, no payout;
 - idle-only candidate `fdf54095...` -> rejected by verifier v2, no payout;
 - final candidate `4c03e0f...` -> accepted, payout pending, then paid;
-- replay of the final transaction -> same payout ID and no duplicate ledger rows.
+- replay of the final transaction -> same receipt and payout ID, with no
+  duplicate ledger rows.
+
+The compact JSON distinguishes candidate-owned code (`candidate_sha`), trusted
+policy (`verifier_version`, `verifier_digest`), isolated execution (`backend`,
+`backend_digest`, `policy_digest`), measured evidence (`metrics`), and payout
+eligibility (`receipt.accepted`, `bounty.accepted_receipt_id`, `payout`).
+
+If a verifier process crashes after a run row is created but before a receipt is
+written, rerunning the same idempotency key resumes that incomplete run instead
+of reporting a replay with a null receipt.
 
 Run only the accepted transaction:
 

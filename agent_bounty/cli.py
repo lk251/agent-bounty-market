@@ -10,6 +10,7 @@ from .core import AgentBountyMarket
 from .db import connect
 from .payments import FakePaymentGateway
 from .util import utc_now
+from .execution import openshell_status
 from .verification import ProtectedVerifierRunner
 
 
@@ -95,7 +96,8 @@ def run_motoko_flow(
         idempotency_key=f"verify:{DEFAULT_BOUNTY_ID}:{candidate_commit}",
     )
     payout: dict[str, Any] | None = None
-    if verification["receipt"].get("accepted") is True:
+    receipt = verification.get("receipt") or {}
+    if receipt.get("accepted") is True:
         payout = market.release_payout(
             bounty_id=DEFAULT_BOUNTY_ID,
             idempotency_key=f"payout:{DEFAULT_BOUNTY_ID}:{candidate_commit}",
@@ -263,6 +265,12 @@ def cmd_ledger_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_openshell_status(_args: argparse.Namespace) -> int:
+    status = openshell_status()
+    print_json(status)
+    return 0 if status["available"] else 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="agent-bounty", description="Trusted local transaction core for agent bounties")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -296,6 +304,9 @@ def build_parser() -> argparse.ArgumentParser:
     ledger = sub.add_parser("ledger-show", help="show append-only ledger rows")
     ledger.add_argument("--db", required=True)
     ledger.set_defaults(func=cmd_ledger_show)
+
+    openshell = sub.add_parser("openshell-status", help="inspect OpenShell verifier backend availability")
+    openshell.set_defaults(func=cmd_openshell_status)
 
     return parser
 

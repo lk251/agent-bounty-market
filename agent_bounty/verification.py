@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .execution import ExecutionBackend, LocalIsolatedProcessBackend
 from .util import file_digest, sha256_bytes, stable_json, utc_now
 
 
@@ -19,6 +19,9 @@ class ProtectedVerificationResult:
     accepted: bool
     metrics: dict[str, Any]
     verifier_digest: str
+    backend: str
+    backend_digest: str
+    policy_digest: str
     stdout_sha256: str
     stderr_sha256: str
     started_at: str
@@ -40,28 +43,19 @@ def verifier_digest(verifier_dir: Path | None = None) -> str:
     return sha256_bytes("\n".join(pieces).encode("utf-8"))
 
 
-def scrubbed_env() -> dict[str, str]:
-    keep: dict[str, str] = {}
-    for key in ("PATH", "LANG", "LC_ALL", "TERM", "TZ"):
-        value = os_environ_get(key)
-        if value:
-            keep[key] = value
-    keep.setdefault("LANG", "C.UTF-8")
-    keep.setdefault("LC_ALL", "C.UTF-8")
-    return keep
-
-
-def os_environ_get(key: str) -> str | None:
-    import os
-
-    return os.environ.get(key)
-
-
 class ProtectedVerifierRunner:
-    def __init__(self, *, verifier_dir: Path | None = None, timeout_seconds: float = 20.0, max_output_bytes: int = 2_000_000):
+    def __init__(
+        self,
+        *,
+        verifier_dir: Path | None = None,
+        timeout_seconds: float = 20.0,
+        max_output_bytes: int = 2_000_000,
+        backend: ExecutionBackend | None = None,
+    ):
         self.verifier_dir = verifier_dir or default_verifier_dir()
         self.timeout_seconds = timeout_seconds
         self.max_output_bytes = max_output_bytes
+        self.backend = backend or LocalIsolatedProcessBackend()
 
     def run(
         self,
@@ -71,7 +65,6 @@ class ProtectedVerifierRunner:
         base_commit: str,
         candidate_commit: str,
     ) -> ProtectedVerificationResult:
-        started_at = utc_now()
         script = self.verifier_dir / "verifier.py"
         digest = verifier_digest(self.verifier_dir)
         cmd = [
@@ -85,55 +78,21 @@ class ProtectedVerifierRunner:
             base_commit,
             "--candidate-commit",
             candidate_commit,
+            "--backend",
+            self.backend.name,
         ]
-        try:
-            completed = subprocess.run(
-                cmd,
-                cwd=str(self.verifier_dir),
-                env=scrubbed_env(),
-                capture_output=True,
-                timeout=self.timeout_seconds,
-                check=False,
-            )
-            stdout = completed.stdout[: self.max_output_bytes]
-            stderr = completed.stderr[: self.max_output_bytes]
-            stdout_hash = sha256_bytes(stdout)
-            stderr_hash = sha256_bytes(stderr)
-            try:
-                text = stdout.decode("utf-8")
-                result = json.loads(text)
-            except Exception as exc:
-                result = {
-                    "schema": "protected-verifier-result-v1",
-                    "accepted": False,
-                    "error": f"malformed verifier JSON: {type(exc).__name__}",
-                }
-            if not isinstance(result, dict):
-                result = {
-                    "schema": "protected-verifier-result-v1",
-                    "accepted": False,
-                    "error": "malformed verifier JSON: root was not an object",
-                }
-            accepted = completed.returncode == 0 and result.get("accepted") is True
-            metrics = result.get("metrics")
-            if not isinstance(metrics, dict):
-                metrics = {}
-            finished_at = utc_now()
-            return ProtectedVerificationResult(
-                accepted=accepted,
-                metrics=metrics,
-                verifier_digest=digest,
-                stdout_sha256=stdout_hash,
-                stderr_sha256=stderr_hash,
-                started_at=started_at,
-                finished_at=finished_at,
-                result=result,
-                returncode=completed.returncode,
-            )
-        except subprocess.TimeoutExpired as exc:
-            stdout = (exc.stdout or b"")[: self.max_output_bytes]
-            stderr = (exc.stderr or b"")[: self.max_output_bytes]
-            finished_at = utc_now()
+        completed = self.backend.run(
+            cmd,
+            cwd=self.verifier_dir,
+            env={},
+            timeout_seconds=self.timeout_seconds,
+            max_output_bytes=self.max_output_bytes,
+        )
+        stdout = completed.stdout[: self.max_output_bytes]
+        stderr = completed.stderr[: self.max_output_bytes]
+        stdout_hash = sha256_bytes(stdout)
+        stderr_hash = sha256_bytes(stderr)
+        if completed.timed_out:
             result = {
                 "schema": "protected-verifier-result-v1",
                 "accepted": False,
@@ -143,13 +102,52 @@ class ProtectedVerifierRunner:
                 accepted=False,
                 metrics={},
                 verifier_digest=digest,
+                backend=completed.backend,
+                backend_digest=completed.backend_digest,
+                policy_digest=completed.policy_digest,
                 stdout_sha256=sha256_bytes(stdout),
                 stderr_sha256=sha256_bytes(stderr),
-                started_at=started_at,
-                finished_at=finished_at,
+                started_at=completed.started_at,
+                finished_at=completed.finished_at,
                 result=result,
                 returncode=124,
             )
+        try:
+            text = stdout.decode("utf-8")
+            result = json.loads(text)
+        except Exception as exc:
+            result = {
+                "schema": "protected-verifier-result-v1",
+                "accepted": False,
+                "error": f"malformed verifier JSON: {type(exc).__name__}",
+            }
+        if not isinstance(result, dict):
+            result = {
+                "schema": "protected-verifier-result-v1",
+                "accepted": False,
+                "error": "malformed verifier JSON: root was not an object",
+            }
+        accepted = completed.returncode == 0 and result.get("accepted") is True
+        metrics = result.get("metrics")
+        if not isinstance(metrics, dict):
+            metrics = {}
+        backend = str(result.get("backend") or completed.backend)
+        backend_digest = str(result.get("backend_digest") or completed.backend_digest)
+        policy_digest = str(result.get("policy_digest") or completed.policy_digest)
+        return ProtectedVerificationResult(
+            accepted=accepted,
+            metrics=metrics,
+            verifier_digest=digest,
+            backend=backend,
+            backend_digest=backend_digest,
+            policy_digest=policy_digest,
+            stdout_sha256=stdout_hash,
+            stderr_sha256=stderr_hash,
+            started_at=completed.started_at,
+            finished_at=completed.finished_at,
+            result=result,
+            returncode=completed.returncode,
+        )
 
 
 def receipt_payload(
@@ -183,6 +181,9 @@ def receipt_payload(
         "base_commit": base_commit,
         "candidate_commit": candidate_commit,
         "verifier_digest": result.verifier_digest,
+        "backend": result.backend,
+        "backend_digest": result.backend_digest,
+        "policy_digest": result.policy_digest,
         "accepted": result.accepted,
         "metrics": result.metrics,
         "failure_reasons": failure_reasons,
