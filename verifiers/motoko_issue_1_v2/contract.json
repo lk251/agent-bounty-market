@@ -1,0 +1,29 @@
+{
+  "schema": "motoko-verifier-contract-v2",
+  "verifier_id": "motoko_issue_1_tui_latency_v2",
+  "verifier_version": "2.0.0",
+  "issue": "lk251/motoko#1",
+  "baseline_commit": "f4ebe1073d6fe7b9a1e2036e2a6e923ea0a68116",
+  "short_p95_limit_ms": 30.0,
+  "long_p95_limit_ms": 40.0,
+  "background_p95_limit_ms": 50.0,
+  "background_max_limit_ms": 250.0,
+  "background_stall_limit_ms": 1600.0,
+  "max_long_minus_short_p95_ms": 10.0,
+  "samples": 100,
+  "requires": [
+    "platform-owned verifier policy independent of candidate-owned tests",
+    "base commit must be an ancestor of the candidate commit",
+    "exact ASCII input integrity",
+    "exact Unicode input integrity including accented Latin and non-Latin characters",
+    "short transcript input-to-visible-composer p95 <= 30 ms",
+    "long transcript input-to-visible-composer p95 <= 40 ms",
+    "no ordinary typing transcript scan proportional to transcript length",
+    "real background-study typing in a separate Motoko child process",
+    "background study must observe study: evidence-store",
+    "background study p95 <= 50 ms",
+    "background study max character latency <= 250 ms",
+    "background typed text visible before phase completion",
+    "synthetic evidence-store artifact completes and passes integrity checks"
+  ]
+}

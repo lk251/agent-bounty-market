@@ -97,11 +97,18 @@ class AgentBountyMarket:
     ) -> dict[str, Any]:
         require_positive_amount(amount)
         currency = require_currency(currency)
+        treasury = self.conn.execute("SELECT currency FROM treasuries WHERE project_id = ?", (project_id,)).fetchone()
+        if not treasury:
+            raise MarketError(f"unknown project treasury {project_id}")
+        if treasury["currency"] != currency:
+            raise MarketError(f"funding currency {currency} does not match treasury currency {treasury['currency']}")
         existing = self.conn.execute(
-            "SELECT id, gateway_event_id FROM funding_events WHERE idempotency_key = ?",
+            "SELECT id, project_id, amount, currency, gateway_event_id FROM funding_events WHERE idempotency_key = ?",
             (idempotency_key,),
         ).fetchone()
         if existing:
+            if existing["project_id"] != project_id or int(existing["amount"]) != amount or existing["currency"] != currency:
+                raise MarketError("funding idempotency key was replayed with different arguments")
             return {"funding_event_id": existing["id"], "gateway_event_id": existing["gateway_event_id"], "replayed": True}
         credit = self.gateway.credit_project_treasury(
             project_id=project_id,
@@ -147,6 +154,11 @@ class AgentBountyMarket:
         existing = self.conn.execute("SELECT id FROM bounties WHERE id = ?", (bounty_id,)).fetchone()
         if existing:
             return bounty_id
+        treasury = self.conn.execute("SELECT currency FROM treasuries WHERE project_id = ?", (project_id,)).fetchone()
+        if not treasury:
+            raise MarketError(f"unknown project treasury {project_id}")
+        if treasury["currency"] != currency:
+            raise MarketError(f"bounty currency {currency} does not match treasury currency {treasury['currency']}")
         now = utc_now()
         with self.conn:
             self.conn.execute(
@@ -180,6 +192,12 @@ class AgentBountyMarket:
 
     def reserve_bounty(self, *, bounty_id: str, idempotency_key: str) -> dict[str, Any]:
         bounty = self._bounty(bounty_id)
+        existing_reserve = self.conn.execute(
+            "SELECT id, state FROM bounties WHERE reserve_idempotency_key = ?",
+            (idempotency_key,),
+        ).fetchone()
+        if existing_reserve and existing_reserve["id"] != bounty_id:
+            raise MarketError("reserve idempotency key belongs to a different bounty")
         if bounty["reserve_idempotency_key"] == idempotency_key and bounty["state"] in {
             BountyState.FUNDED.value,
             BountyState.OPEN.value,
@@ -226,8 +244,10 @@ class AgentBountyMarket:
         return solver_id
 
     def claim_bounty(self, *, bounty_id: str, solver_id: str, lease_expires_at: str, idempotency_key: str) -> dict[str, Any]:
-        existing = self.conn.execute("SELECT id FROM claims WHERE idempotency_key = ?", (idempotency_key,)).fetchone()
+        existing = self.conn.execute("SELECT id, bounty_id, solver_id FROM claims WHERE idempotency_key = ?", (idempotency_key,)).fetchone()
         if existing:
+            if existing["bounty_id"] != bounty_id or existing["solver_id"] != solver_id:
+                raise MarketError("claim idempotency key was replayed with different arguments")
             return {"claim_id": existing["id"], "replayed": True}
         bounty = self._bounty(bounty_id)
         if bounty["state"] != BountyState.OPEN.value:
@@ -253,8 +273,18 @@ class AgentBountyMarket:
         candidate_commit: str,
         idempotency_key: str,
     ) -> dict[str, Any]:
-        existing = self.conn.execute("SELECT id FROM submissions WHERE idempotency_key = ?", (idempotency_key,)).fetchone()
+        existing = self.conn.execute(
+            "SELECT id, bounty_id, solver_id, candidate_commit, candidate_repo_path FROM submissions WHERE idempotency_key = ?",
+            (idempotency_key,),
+        ).fetchone()
         if existing:
+            if (
+                existing["bounty_id"] != bounty_id
+                or existing["solver_id"] != solver_id
+                or existing["candidate_commit"] != candidate_commit
+                or existing["candidate_repo_path"] != candidate_repo_path
+            ):
+                raise MarketError("submission idempotency key was replayed with different arguments")
             return {"submission_id": existing["id"], "replayed": True}
         bounty = self._bounty(bounty_id)
         if bounty["state"] != BountyState.CLAIMED.value:
@@ -280,7 +310,7 @@ class AgentBountyMarket:
     def run_verification(self, *, submission_id: str, idempotency_key: str) -> dict[str, Any]:
         existing = self.conn.execute(
             """
-            SELECT r.id AS run_id, rc.id AS receipt_id, rc.receipt_json
+            SELECT r.id AS run_id, r.submission_id, rc.id AS receipt_id, rc.receipt_json
             FROM verification_runs r
             LEFT JOIN verification_receipts rc ON rc.run_id = r.id
             WHERE r.idempotency_key = ?
@@ -288,6 +318,8 @@ class AgentBountyMarket:
             (idempotency_key,),
         ).fetchone()
         if existing:
+            if existing["submission_id"] != submission_id:
+                raise MarketError("verification idempotency key was replayed for a different submission")
             return {
                 "run_id": existing["run_id"],
                 "receipt_id": existing["receipt_id"],
@@ -318,6 +350,12 @@ class AgentBountyMarket:
         )
         receipt = receipt_payload(
             bounty_id=submission["bounty_id"],
+            project_id=bounty["project_id"],
+            issue_ref=bounty["issue_ref"],
+            submission_id=submission_id,
+            solver_id=submission["solver_id"],
+            candidate_repo_path=submission["candidate_repo_path"],
+            verifier_id=bounty["verifier_id"],
             base_commit=bounty["base_commit"],
             candidate_commit=submission["candidate_commit"],
             result=result,
@@ -342,15 +380,22 @@ class AgentBountyMarket:
             self.conn.execute(
                 """
                 INSERT INTO verification_receipts(
-                    id, run_id, bounty_id, base_commit, candidate_commit, verifier_digest,
+                    id, run_id, bounty_id, project_id, issue_ref, submission_id, solver_id,
+                    candidate_repo_path, verifier_id, base_commit, candidate_commit, verifier_digest,
                     accepted, metrics_json, stdout_sha256, stderr_sha256, started_at, finished_at,
                     receipt_json, idempotency_key, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     receipt_id,
                     run_id,
                     submission["bounty_id"],
+                    bounty["project_id"],
+                    bounty["issue_ref"],
+                    submission_id,
+                    submission["solver_id"],
+                    submission["candidate_repo_path"],
+                    bounty["verifier_id"],
                     bounty["base_commit"],
                     submission["candidate_commit"],
                     result.verifier_digest,
@@ -384,6 +429,67 @@ class AgentBountyMarket:
                 self._transition_bounty(submission["bounty_id"], BountyState.REJECTED, reason="verification_rejected", idempotency_key=f"state:{idempotency_key}:rejected")
         return {"run_id": run_id, "receipt_id": receipt_id, "receipt": receipt, "replayed": False}
 
+    def cancel_bounty(self, *, bounty_id: str, idempotency_key: str, reason: str = "cancelled") -> dict[str, Any]:
+        bounty = self._bounty(bounty_id)
+        if bounty["state"] == BountyState.CANCELLED.value:
+            return {"bounty_id": bounty_id, "state": BountyState.CANCELLED.value, "replayed": True}
+        with self.conn:
+            self._transition_bounty(
+                bounty_id,
+                BountyState.CANCELLED,
+                reason=reason,
+                idempotency_key=f"state:{idempotency_key}:cancelled",
+            )
+        return {"bounty_id": bounty_id, "state": BountyState.CANCELLED.value, "replayed": False}
+
+    def expire_bounty(self, *, bounty_id: str, idempotency_key: str) -> dict[str, Any]:
+        bounty = self._bounty(bounty_id)
+        if bounty["state"] == BountyState.EXPIRED.value:
+            return {"bounty_id": bounty_id, "state": BountyState.EXPIRED.value, "replayed": True}
+        with self.conn:
+            self._transition_bounty(
+                bounty_id,
+                BountyState.EXPIRED,
+                reason="expired",
+                idempotency_key=f"state:{idempotency_key}:expired",
+            )
+        return {"bounty_id": bounty_id, "state": BountyState.EXPIRED.value, "replayed": False}
+
+    def refund_bounty(self, *, bounty_id: str, idempotency_key: str) -> dict[str, Any]:
+        bounty = self._bounty(bounty_id)
+        if bounty["state"] == BountyState.REFUNDED.value:
+            return {"bounty_id": bounty_id, "state": BountyState.REFUNDED.value, "replayed": True}
+        amount = int(bounty["reward_amount"])
+        source_account = project_reserved_account(bounty["project_id"])
+        if bounty["state"] == BountyState.PAYOUT_FAILED.value:
+            submission = self.conn.execute(
+                "SELECT * FROM submissions WHERE bounty_id = ? ORDER BY created_at DESC LIMIT 1",
+                (bounty_id,),
+            ).fetchone()
+            if not submission:
+                raise MarketError("cannot refund payout_failed bounty without a submission")
+            source_account = solver_earned_account(submission["solver_id"])
+        with self.conn:
+            if self.ledger.balance(source_account, bounty["currency"]) >= amount:
+                self.ledger.transfer(
+                    event_type="bounty_refunded",
+                    idempotency_key=f"ledger:{idempotency_key}:refund",
+                    from_account=source_account,
+                    to_account=project_refunded_account(bounty["project_id"]),
+                    amount=amount,
+                    currency=bounty["currency"],
+                    project_id=bounty["project_id"],
+                    bounty_id=bounty_id,
+                    prevent_negative_accounts={source_account},
+                )
+            self._transition_bounty(
+                bounty_id,
+                BountyState.REFUNDED,
+                reason="bounty_refunded",
+                idempotency_key=f"state:{idempotency_key}:refunded",
+            )
+        return {"bounty_id": bounty_id, "state": BountyState.REFUNDED.value, "replayed": False}
+
     def release_payout(self, *, bounty_id: str, idempotency_key: str) -> dict[str, Any]:
         existing = self.conn.execute("SELECT * FROM payouts WHERE bounty_id = ?", (bounty_id,)).fetchone()
         bounty = self._bounty(bounty_id)
@@ -397,6 +503,7 @@ class AgentBountyMarket:
             return {"payout_id": existing["id"], "gateway_payout_id": existing["gateway_payout_id"], "replayed": True}
         if bounty["state"] not in {BountyState.ACCEPTED.value, BountyState.PAYOUT_FAILED.value}:
             raise MarketError(f"cannot release payout from state {bounty['state']}")
+        receipt = self._accepted_receipt_for_payout(bounty, submission)
         payout_id = existing["id"] if existing else new_id("payout")
         now = utc_now()
         try:
@@ -404,8 +511,11 @@ class AgentBountyMarket:
                 if not existing:
                     self.conn.execute(
                         """
-                        INSERT INTO payouts(id, bounty_id, solver_id, amount, currency, status, idempotency_key, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+                        INSERT INTO payouts(
+                            id, bounty_id, solver_id, amount, currency, status,
+                            accepted_receipt_id, verifier_digest, idempotency_key, created_at, updated_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
                         """,
                         (
                             payout_id,
@@ -413,6 +523,8 @@ class AgentBountyMarket:
                             submission["solver_id"],
                             int(bounty["reward_amount"]),
                             bounty["currency"],
+                            receipt["id"],
+                            receipt["verifier_digest"],
                             idempotency_key,
                             now,
                             now,
@@ -464,8 +576,11 @@ class AgentBountyMarket:
             with self.conn:
                 self.conn.execute(
                     """
-                    INSERT INTO payouts(id, bounty_id, solver_id, amount, currency, status, idempotency_key, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, 'failed', ?, ?, ?)
+                    INSERT INTO payouts(
+                        id, bounty_id, solver_id, amount, currency, status,
+                        accepted_receipt_id, verifier_digest, idempotency_key, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, 'failed', ?, ?, ?, ?, ?)
                     ON CONFLICT(bounty_id) DO UPDATE SET status = 'failed', updated_at = excluded.updated_at
                     """,
                     (
@@ -474,6 +589,8 @@ class AgentBountyMarket:
                         submission["solver_id"],
                         int(bounty["reward_amount"]),
                         bounty["currency"],
+                        receipt["id"],
+                        receipt["verifier_digest"],
                         idempotency_key,
                         now,
                         utc_now(),
@@ -517,6 +634,8 @@ class AgentBountyMarket:
             "currency": bounty["currency"],
             "payout_id": payout["id"] if payout else None,
             "gateway_payout_id": payout["gateway_payout_id"] if payout else None,
+            "accepted_receipt_id": payout["accepted_receipt_id"] if payout else None,
+            "verifier_digest": payout["verifier_digest"] if payout else None,
             "receipt": self._decode(receipt["receipt_json"], None) if receipt else None,
         }
 
@@ -529,6 +648,33 @@ class AgentBountyMarket:
         if not row:
             raise MarketError(f"unknown bounty {bounty_id}")
         return row
+
+    def _accepted_receipt_for_payout(self, bounty: sqlite3.Row, submission: sqlite3.Row) -> sqlite3.Row:
+        receipt_id = bounty["accepted_receipt_id"]
+        if not receipt_id:
+            raise MarketError("cannot release payout without an accepted receipt")
+        receipt = self.conn.execute("SELECT * FROM verification_receipts WHERE id = ?", (receipt_id,)).fetchone()
+        if not receipt:
+            raise MarketError("accepted receipt is missing")
+        if int(receipt["accepted"]) != 1:
+            raise MarketError("accepted receipt did not accept the candidate")
+        if receipt["bounty_id"] != bounty["id"]:
+            raise MarketError("accepted receipt belongs to a different bounty")
+        if receipt["submission_id"] != submission["id"]:
+            raise MarketError("accepted receipt belongs to a different submission")
+        if receipt["solver_id"] != submission["solver_id"]:
+            raise MarketError("accepted receipt belongs to a different solver")
+        if receipt["candidate_commit"] != submission["candidate_commit"]:
+            raise MarketError("accepted receipt candidate commit does not match submission")
+        if receipt["candidate_repo_path"] != submission["candidate_repo_path"]:
+            raise MarketError("accepted receipt candidate repo does not match submission")
+        if receipt["base_commit"] != bounty["base_commit"]:
+            raise MarketError("accepted receipt base commit does not match bounty")
+        if receipt["issue_ref"] != bounty["issue_ref"]:
+            raise MarketError("accepted receipt issue does not match bounty")
+        if receipt["verifier_id"] != bounty["verifier_id"]:
+            raise MarketError("accepted receipt verifier does not match bounty")
+        return receipt
 
     def _transition_bounty(self, bounty_id: str, target: BountyState, *, reason: str, idempotency_key: str) -> None:
         bounty = self._bounty(bounty_id)

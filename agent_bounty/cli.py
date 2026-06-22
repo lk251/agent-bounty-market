@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -10,7 +9,7 @@ from typing import Any
 from .core import AgentBountyMarket
 from .db import connect
 from .payments import FakePaymentGateway
-from .util import stable_json, utc_now
+from .util import utc_now
 from .verification import ProtectedVerifierRunner
 
 
@@ -18,6 +17,9 @@ DEFAULT_PROJECT_ID = "project_motoko"
 DEFAULT_BOUNTY_ID = "bounty_motoko_issue_1"
 DEFAULT_SOLVER_ID = "solver_codex_motoko_issue_1"
 DEFAULT_CURRENCY = "USD"
+DEFAULT_BASE_COMMIT = "f4ebe1073d6fe7b9a1e2036e2a6e923ea0a68116"
+DEFAULT_INTERMEDIATE_COMMIT = "fdf54095b5cb8aca81984993bcd38176ccadad32"
+DEFAULT_FINAL_COMMIT = "4c03e0fa02a26f1cbadbe593ae687eaa9b333d2c"
 
 
 def print_json(value: Any) -> None:
@@ -64,7 +66,7 @@ def run_motoko_flow(
         currency=DEFAULT_CURRENCY,
         base_commit=base_commit,
         issue_ref="lk251/motoko#1",
-        verifier_id="motoko_issue_1_tui_latency",
+        verifier_id="motoko_issue_1_tui_latency_v2",
     )
     reserve = market.reserve_bounty(
         bounty_id=DEFAULT_BOUNTY_ID,
@@ -100,6 +102,13 @@ def run_motoko_flow(
         )
     summary = market.bounty_summary(DEFAULT_BOUNTY_ID)
     reconciliation = market.reconciliation(project_id=DEFAULT_PROJECT_ID, solver_id=DEFAULT_SOLVER_ID)
+    project_funds = {
+        "available": reconciliation["balances"].get("project_available", 0),
+        "reserved": reconciliation["balances"].get("project_reserved", 0),
+        "refunded": reconciliation["balances"].get("project_refunded", 0),
+        "spent": reconciliation["balances"].get("solver_paid", 0),
+    }
+    receipt = summary.get("receipt") or {}
     return {
         "schema": "agent-bounty-demo-v1",
         "created_at": utc_now(),
@@ -107,6 +116,13 @@ def run_motoko_flow(
         "project_id": DEFAULT_PROJECT_ID,
         "bounty_id": DEFAULT_BOUNTY_ID,
         "solver_id": DEFAULT_SOLVER_ID,
+        "project_funds": project_funds,
+        "candidate_sha": candidate_commit,
+        "base_sha": base_commit,
+        "verifier_version": receipt.get("verifier_version"),
+        "verifier_digest": receipt.get("verifier_digest"),
+        "verdict": "accepted" if receipt.get("accepted") is True else "rejected",
+        "payout_id": payout.get("payout_id") if payout else None,
         "funding": funding,
         "reserve": reserve,
         "claim": claim,
@@ -117,6 +133,78 @@ def run_motoko_flow(
         "reconciliation": reconciliation,
         "ledger_entries": len(market.ledger_rows()),
     }
+
+
+def run_motoko_suite(
+    *,
+    motoko_repo: Path,
+    base_commit: str,
+    intermediate_commit: str,
+    final_commit: str,
+    funding_cents: int,
+    reward_cents: int,
+    verifier_timeout: float = 60.0,
+) -> dict[str, Any]:
+    with tempfile.TemporaryDirectory(prefix="agent-bounty-suite-") as tmp:
+        tmp_path = Path(tmp)
+        baseline = run_motoko_flow(
+            db_path=tmp_path / "baseline.sqlite3",
+            motoko_repo=motoko_repo,
+            base_commit=base_commit,
+            candidate_commit=base_commit,
+            funding_cents=funding_cents,
+            reward_cents=reward_cents,
+            verifier_timeout=verifier_timeout,
+        )
+        intermediate = run_motoko_flow(
+            db_path=tmp_path / "intermediate.sqlite3",
+            motoko_repo=motoko_repo,
+            base_commit=base_commit,
+            candidate_commit=intermediate_commit,
+            funding_cents=funding_cents,
+            reward_cents=reward_cents,
+            verifier_timeout=verifier_timeout,
+        )
+        final_db = tmp_path / "final.sqlite3"
+        final = run_motoko_flow(
+            db_path=final_db,
+            motoko_repo=motoko_repo,
+            base_commit=base_commit,
+            candidate_commit=final_commit,
+            funding_cents=funding_cents,
+            reward_cents=reward_cents,
+            verifier_timeout=verifier_timeout,
+        )
+        replay = run_motoko_flow(
+            db_path=final_db,
+            motoko_repo=motoko_repo,
+            base_commit=base_commit,
+            candidate_commit=final_commit,
+            funding_cents=funding_cents,
+            reward_cents=reward_cents,
+            verifier_timeout=verifier_timeout,
+        )
+        return {
+            "schema": "agent-bounty-motoko-suite-v1",
+            "created_at": utc_now(),
+            "cases": {
+                "baseline": baseline,
+                "intermediate": intermediate,
+                "final": final,
+                "final_replay": replay,
+            },
+            "accepted_candidate": final_commit,
+            "baseline_rejected": baseline["verification"]["receipt"].get("accepted") is False and baseline["payout"] is None,
+            "intermediate_rejected": intermediate["verification"]["receipt"].get("accepted") is False and intermediate["payout"] is None,
+            "final_paid_once": final["payout"] is not None
+            and replay["payout"] is not None
+            and final["payout"]["gateway_payout_id"] == replay["payout"]["gateway_payout_id"]
+            and replay["payout"].get("replayed") is True,
+            "reconciliation_ok": all(
+                case["reconciliation"]["ok"]
+                for case in (baseline, intermediate, final, replay)
+            ),
+        }
 
 
 def cmd_demo_motoko(args: argparse.Namespace) -> int:
@@ -155,6 +243,20 @@ def cmd_bounty_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_demo_motoko_suite(args: argparse.Namespace) -> int:
+    result = run_motoko_suite(
+        motoko_repo=Path(args.motoko_repo),
+        base_commit=args.base_commit,
+        intermediate_commit=args.intermediate_commit,
+        final_commit=args.final_commit,
+        funding_cents=args.funding_cents,
+        reward_cents=args.reward_cents,
+        verifier_timeout=args.verifier_timeout,
+    )
+    print_json(result)
+    return 0 if result["baseline_rejected"] and result["intermediate_rejected"] and result["final_paid_once"] and result["reconciliation_ok"] else 1
+
+
 def cmd_ledger_show(args: argparse.Namespace) -> int:
     market = open_market(args.db)
     print_json({"schema": "ledger-report-v1", "rows": market.ledger_rows()})
@@ -175,6 +277,16 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument("--verifier-timeout", type=float, default=20.0)
     demo.add_argument("--fail-payout-key", help="test hook: make this fake payout idempotency key fail")
     demo.set_defaults(func=cmd_demo_motoko)
+
+    suite = sub.add_parser("demo-motoko-suite", help="run baseline/intermediate rejection plus final accepted Motoko flow")
+    suite.add_argument("--motoko-repo", required=True)
+    suite.add_argument("--base-commit", default=DEFAULT_BASE_COMMIT)
+    suite.add_argument("--intermediate-commit", default=DEFAULT_INTERMEDIATE_COMMIT)
+    suite.add_argument("--final-commit", default=DEFAULT_FINAL_COMMIT)
+    suite.add_argument("--funding-cents", type=int, default=2500)
+    suite.add_argument("--reward-cents", type=int, default=2500)
+    suite.add_argument("--verifier-timeout", type=float, default=60.0)
+    suite.set_defaults(func=cmd_demo_motoko_suite)
 
     show = sub.add_parser("bounty-show", help="show one bounty")
     show.add_argument("--db", required=True)

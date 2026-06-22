@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from agent_bounty.verification import ProtectedVerifierRunner
+from agent_bounty.core import MarketError
 
 from tests.helpers import (
     accepted_verifier,
@@ -64,6 +65,21 @@ class VerificationTests(unittest.TestCase):
             result = market.run_verification(submission_id=submission_id, idempotency_key="verify:test")
             self.assertFalse(result["receipt"]["accepted"])
             self.assertEqual(market.bounty_summary(bounty_id)["state"], "rejected")
+
+    def test_accepted_receipt_for_one_sha_cannot_authorize_another_sha(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier_dir = accepted_verifier(Path(tmp))
+            holder, market = make_market(verifier_dir)
+            self.addCleanup(holder.cleanup)
+            _project_id, bounty_id, _solver_id, submission_id = submit_ready(market)
+            result = market.run_verification(submission_id=submission_id, idempotency_key="verify:test")
+            self.assertTrue(result["receipt"]["accepted"])
+            market.conn.execute(
+                "UPDATE submissions SET candidate_commit = ? WHERE id = ?",
+                ("candidate-replay", submission_id),
+            )
+            with self.assertRaises(MarketError):
+                market.release_payout(bounty_id=bounty_id, idempotency_key="payout:test")
 
     def test_real_verifier_rejects_mismatched_base_candidate_history(self):
         with tempfile.TemporaryDirectory() as tmp:

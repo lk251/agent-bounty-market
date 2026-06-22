@@ -28,7 +28,7 @@ class ProtectedVerificationResult:
 
 
 def default_verifier_dir() -> Path:
-    return Path(__file__).resolve().parents[1] / "verifiers" / "motoko_issue_1"
+    return Path(__file__).resolve().parents[1] / "verifiers" / "motoko_issue_1_v2"
 
 
 def verifier_digest(verifier_dir: Path | None = None) -> str:
@@ -155,6 +155,12 @@ class ProtectedVerifierRunner:
 def receipt_payload(
     *,
     bounty_id: str,
+    project_id: str,
+    issue_ref: str,
+    submission_id: str,
+    solver_id: str,
+    candidate_repo_path: str,
+    verifier_id: str,
     base_commit: str,
     candidate_commit: str,
     result: ProtectedVerificationResult,
@@ -164,8 +170,16 @@ def receipt_payload(
         error = result.result.get("error")
         failure_reasons = [str(error)] if error else []
     return {
-        "schema": "verification-receipt-v1",
+        "schema": "verification-receipt-v2",
         "bounty_id": bounty_id,
+        "project_id": project_id,
+        "issue_ref": issue_ref,
+        "submission_id": submission_id,
+        "solver_id": solver_id,
+        "candidate_repo_path": candidate_repo_path,
+        "verifier_id": verifier_id,
+        "verifier_name": result.result.get("verifier_id") or verifier_id,
+        "verifier_version": result.result.get("verifier_version"),
         "base_commit": base_commit,
         "candidate_commit": candidate_commit,
         "verifier_digest": result.verifier_digest,

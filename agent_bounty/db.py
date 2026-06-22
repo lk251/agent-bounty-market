@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -24,7 +24,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             value TEXT NOT NULL
         );
 
-        INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '1');
+        INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '2');
 
         CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
@@ -133,6 +133,12 @@ def init_db(conn: sqlite3.Connection) -> None:
             id TEXT PRIMARY KEY,
             run_id TEXT NOT NULL UNIQUE REFERENCES verification_runs(id),
             bounty_id TEXT NOT NULL REFERENCES bounties(id),
+            project_id TEXT,
+            issue_ref TEXT,
+            submission_id TEXT,
+            solver_id TEXT,
+            candidate_repo_path TEXT,
+            verifier_id TEXT,
             base_commit TEXT NOT NULL,
             candidate_commit TEXT NOT NULL,
             verifier_digest TEXT NOT NULL,
@@ -155,6 +161,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             currency TEXT NOT NULL,
             status TEXT NOT NULL,
             gateway_payout_id TEXT,
+            accepted_receipt_id TEXT REFERENCES verification_receipts(id),
+            verifier_digest TEXT,
             idempotency_key TEXT NOT NULL UNIQUE,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -184,6 +192,24 @@ def init_db(conn: sqlite3.Connection) -> None:
             external_id TEXT,
             created_at TEXT NOT NULL
         );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS one_receipt_per_candidate_verifier
+            ON verification_receipts(bounty_id, candidate_commit, verifier_digest);
         """
     )
+    _ensure_column(conn, "verification_receipts", "project_id", "TEXT")
+    _ensure_column(conn, "verification_receipts", "issue_ref", "TEXT")
+    _ensure_column(conn, "verification_receipts", "submission_id", "TEXT")
+    _ensure_column(conn, "verification_receipts", "solver_id", "TEXT")
+    _ensure_column(conn, "verification_receipts", "candidate_repo_path", "TEXT")
+    _ensure_column(conn, "verification_receipts", "verifier_id", "TEXT")
+    _ensure_column(conn, "payouts", "accepted_receipt_id", "TEXT")
+    _ensure_column(conn, "payouts", "verifier_digest", "TEXT")
+    conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))
     conn.commit()
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")

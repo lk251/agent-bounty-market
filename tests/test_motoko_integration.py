@@ -9,7 +9,8 @@ from agent_bounty.verification import ProtectedVerifierRunner
 
 MOTOKO_REPO = Path("/home/mares/repos/motoko-issue-1-tui-input-latency")
 BASE_COMMIT = "f4ebe1073d6fe7b9a1e2036e2a6e923ea0a68116"
-CANDIDATE_COMMIT = "fdf54095b5cb8aca81984993bcd38176ccadad32"
+INTERMEDIATE_COMMIT = "fdf54095b5cb8aca81984993bcd38176ccadad32"
+FINAL_COMMIT = "4c03e0fa02a26f1cbadbe593ae687eaa9b333d2c"
 
 
 def has_commit(repo: Path, commit: str) -> bool:
@@ -25,18 +26,37 @@ def has_commit(repo: Path, commit: str) -> bool:
 
 
 class MotokoIntegrationTests(unittest.TestCase):
-    def test_real_motoko_issue_1_candidate_is_accepted_when_fixture_exists(self):
-        if not has_commit(MOTOKO_REPO, BASE_COMMIT) or not has_commit(MOTOKO_REPO, CANDIDATE_COMMIT):
+    def test_real_motoko_issue_1_v2_contract_distinguishes_three_candidates(self):
+        required = (BASE_COMMIT, INTERMEDIATE_COMMIT, FINAL_COMMIT)
+        if not all(has_commit(MOTOKO_REPO, commit) for commit in required):
             self.skipTest("Motoko issue #1 fixture commits are not present")
-        result = ProtectedVerifierRunner(timeout_seconds=60).run(
+        runner = ProtectedVerifierRunner(timeout_seconds=60)
+        baseline = runner.run(
             bounty_id="bounty_motoko_issue_1",
             motoko_repo=MOTOKO_REPO,
             base_commit=BASE_COMMIT,
-            candidate_commit=CANDIDATE_COMMIT,
+            candidate_commit=BASE_COMMIT,
         )
-        self.assertTrue(result.accepted, result.result)
-        self.assertLessEqual(result.metrics["short_transcript"]["p95_ms"], 30.0)
-        self.assertLessEqual(result.metrics["long_transcript"]["p95_ms"], 40.0)
+        self.assertFalse(baseline.accepted, baseline.result)
+        intermediate = runner.run(
+            bounty_id="bounty_motoko_issue_1",
+            motoko_repo=MOTOKO_REPO,
+            base_commit=BASE_COMMIT,
+            candidate_commit=INTERMEDIATE_COMMIT,
+        )
+        self.assertFalse(intermediate.accepted, intermediate.result)
+        self.assertIn("background_study", intermediate.metrics)
+        final = runner.run(
+            bounty_id="bounty_motoko_issue_1",
+            motoko_repo=MOTOKO_REPO,
+            base_commit=BASE_COMMIT,
+            candidate_commit=FINAL_COMMIT,
+        )
+        self.assertTrue(final.accepted, final.result)
+        self.assertLessEqual(final.metrics["short_transcript"]["p95_ms"], 30.0)
+        self.assertLessEqual(final.metrics["long_transcript"]["p95_ms"], 40.0)
+        self.assertLessEqual(final.metrics["background_study"]["p95_ms"], 50.0)
+        self.assertLessEqual(final.metrics["background_study"]["max_ms"], 250.0)
 
 
 if __name__ == "__main__":

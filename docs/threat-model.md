@@ -6,8 +6,14 @@
   verifier files.
 - Replayed funding, reserve, verification, and payout commands do not duplicate
   ledger entries or payouts.
+- Idempotency keys are rejected if replayed with changed arguments.
 - Insufficient project balance cannot reserve a bounty.
 - Failed, malformed, timed-out, or stale verification does not pay.
+- An accepted receipt for one candidate SHA cannot authorize payout for another
+  candidate SHA, solver, issue, repo path, base SHA, or verifier digest.
+- The idle-only Motoko issue #1 candidate is rejected by verifier v2 because the
+  platform-owned contract measures the background-study path in a separate
+  child process.
 - Fake gateway payout failure records `payout_failed` and can be retried safely.
 - Secrets are not required for tests or demo execution.
 

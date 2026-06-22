@@ -17,11 +17,13 @@ Bounties move through an explicit state machine:
 
 ```text
 draft -> awaiting_funding -> funded -> open -> claimed -> submitted
--> verifying -> accepted | rejected -> payout_pending -> paid
+-> verifying -> accepted -> payout_pending -> paid
 ```
 
-The model also includes `expired`, `cancelled`, `refunded`, and
-`payout_failed`. Invalid transitions fail closed.
+The model also includes `rejected`, `expired`, `cancelled`, `refunded`, and
+`payout_failed`. Invalid transitions fail closed. Rejection does not pay; an
+accepted bounty still is not paid until payout release moves through
+`payout_pending -> paid`.
 
 ## Money
 
@@ -31,13 +33,26 @@ bounty, solver, payout, external IDs, and timestamps. Project available and
 reserved accounts are checked before outgoing transfers, and one bounty can have
 only one payout row.
 
+Project treasury, bounty, receipt, and payout currency must match. Funding,
+reserve, verification, refund, and payout updates happen inside SQLite
+transactions. Internal accounts are constrained non-negative, and idempotency
+keys are bound to their original arguments.
+
 ## Verification
 
-The protected verifier creates a temporary worktree for the candidate commit,
-uses temporary HOME/state/config paths, scrubs the environment, exercises the
-real Motoko TUI through a PTY, and emits compact JSON. The verifier receipt binds
-the bounty, base commit, candidate commit, verifier digest, metrics, output
-digests, and timestamps.
+The protected v2 verifier lives under `verifiers/motoko_issue_1_v2/`. It creates
+a temporary worktree for the candidate commit, uses temporary HOME/state/config
+paths, scrubs the environment through the runner, exercises the real Motoko TUI
+through PTYs, and emits compact JSON.
+
+The v2 contract checks idle short and long transcript typing, rejects transcript-
+dependent ordinary input scans, and runs a real background-study typing scenario
+in a separate Motoko child process while `study: evidence-store` is active.
+
+The verification receipt binds bounty ID, project/issue, submission ID, solver
+ID, candidate repo path, base SHA, candidate SHA, verifier name/version/digest,
+metrics, stdout/stderr digests, result digest, and timestamps. Payout release
+must reference the accepted receipt and exact verifier digest.
 
 ## Payment Boundary
 
