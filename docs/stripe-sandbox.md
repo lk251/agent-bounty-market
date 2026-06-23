@@ -1,14 +1,14 @@
 # Stripe Sandbox Runbook
 
-This repo's real Stripe path is sandbox-only. It uses the official
-`stripe==15.2.0` Python package, keeps secrets in the operator environment, and
-persists only safe object IDs, digests, statuses, and metadata needed for
-reconciliation.
+This repo's real Stripe path is sandbox-only. The Nix dev shell provides the
+official `stripe==15.2.0` Python package and the Stripe CLI. Secrets stay in the
+operator environment, and the repo persists only safe object IDs, digests,
+statuses, and metadata needed for reconciliation.
 
 ## Setup
 
 ```bash
-python3 -m pip install -r requirements-stripe.txt
+nix develop
 cp .env.example .env
 ```
 

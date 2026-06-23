@@ -75,5 +75,5 @@ The real Stripe sandbox demo is deliberately split across trusted commands:
    With `--remote`, it also retrieves the Checkout Session, PaymentIntent,
    Charge, connected account, and Transfer for safe mismatch reporting.
 
-Use `requirements-stripe.txt` for the optional official Stripe SDK. The default
+Use `nix develop` for the pinned official Stripe SDK and Stripe CLI. The default
 demo and CI remain secret-free and use deterministic fake clients.

@@ -13,7 +13,7 @@ Stripe-hosted Checkout
 
 Implemented in this repo:
 
-- optional official Stripe SDK dependency pinned in `requirements-stripe.txt`;
+- Nix dev shell support for the pinned official Stripe SDK and Stripe CLI;
 - safe `stripe-status`;
 - durable `funding_requests`, `stripe_webhook_events`, and
   `stripe_operations` tables;

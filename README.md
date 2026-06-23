@@ -80,10 +80,11 @@ Stripe-hosted Checkout payment
 -> reconciliation compares Stripe object links and internal ledger rows
 ```
 
-Install the optional integration dependency outside the default test path:
+Enter the Nix dev shell. It provides Python 3.12, the pinned
+`stripe==15.2.0` package, Git, and the Stripe CLI:
 
 ```bash
-python3 -m pip install -r requirements-stripe.txt
+nix develop
 ```
 
 Check safe configuration status:

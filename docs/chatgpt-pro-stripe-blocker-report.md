@@ -9,14 +9,14 @@ Branch pushed: `origin/main`
 The implementation work for the real Stripe sandbox settlement loop is as far
 as Codex can take it without external Stripe sandbox setup.
 
-Latest pushed commits:
+Relevant pushed commits before this Nix-shell update:
 
 ```text
+d51a62b Add Stripe blocker handoff for ChatGPT Pro
 1303ad1 Require remote reconciliation for Stripe demo
 74c93d3 Add remote Stripe reconciliation checks
 3b60d3b Add gated automated Stripe payment helper
 b764bab Harden Stripe webhook recovery path
-a810e73 Complete Stripe sandbox settlement boundary
 ```
 
 The Motoko hackathon branch was also checked. `github/master` has no commits
@@ -25,8 +25,10 @@ shows hackathon-branch-only commits.
 
 ## What Is Implemented
 
-- Optional official Stripe SDK dependency pinned in `requirements-stripe.txt`
-  as `stripe==15.2.0`.
+- Nix dev shell support for Python 3.12, the pinned official Stripe SDK
+  `stripe==15.2.0`, Git, and the Stripe CLI.
+- Optional official Stripe SDK dependency remains pinned in
+  `requirements-stripe.txt` as `stripe==15.2.0` for non-Nix fallback use.
 - `stripe-status` with safe blocker output and live-key/live-object guards.
 - Durable SQLite tables for funding requests, Stripe operations, and webhook
   event recovery.
@@ -56,13 +58,13 @@ tr_... Connect Transfer
 ```
 
 Those cannot be produced without Stripe sandbox credentials, a webhook secret
-from `stripe listen`, a pre-created test connected account, and the optional
-Stripe SDK installed in the execution environment.
+from `stripe listen`, and a pre-created test connected account. The Nix dev
+shell now provides the pinned Stripe SDK and Stripe CLI.
 
 Current safe `stripe-status` output:
 
 ```json
-{"blockers":["set AGENT_BOUNTY_STRIPE_SANDBOX=1","set STRIPE_TEST_SECRET_KEY","set STRIPE_TEST_WEBHOOK_SECRET from stripe listen","set STRIPE_TEST_CONNECTED_ACCOUNT_ID to a test connected account","install optional Stripe package stripe==15.2.0"],"connected_account":null,"ok":false,"platform_account":null,"sandbox_enabled":false,"schema":"agent-bounty-stripe-status-v1","stripe_cli":null,"stripe_package_required":"stripe==15.2.0","stripe_package_version":null,"webhook_secret_configured":false}
+{"blockers":["set AGENT_BOUNTY_STRIPE_SANDBOX=1","set STRIPE_TEST_SECRET_KEY","set STRIPE_TEST_WEBHOOK_SECRET from stripe listen","set STRIPE_TEST_CONNECTED_ACCOUNT_ID to a test connected account"],"connected_account":null,"ok":false,"platform_account":null,"sandbox_enabled":false,"schema":"agent-bounty-stripe-status-v1","stripe_cli":"stripe version 1.41.2","stripe_package_required":"stripe==15.2.0","stripe_package_version":"15.2.0","webhook_secret_configured":false}
 ```
 
 ## Validation Already Passed
@@ -84,7 +86,8 @@ tests.test_payments: 29 tests OK, 1 skipped
 full test suite: 59 tests OK, 2 skipped
 nix flake check: all checks passed
 git diff --check: clean
-origin/main matches local HEAD: 1303ad1ca7cb55af58bc983f5361418be9c05d20
+origin/main matched local HEAD before this update:
+d51a62b073a7fe87ad948759732899507cc60967
 ```
 
 Note: this host does not expose plain `python3` outside the Nix dev shell, so
@@ -100,10 +103,6 @@ Suggested setup:
 ```bash
 cd /home/mares/repos/agent-bounty-market
 nix develop
-
-# Install/use the optional Stripe SDK in the chosen local test environment.
-# The pinned requirement is:
-#   stripe==15.2.0
 
 export AGENT_BOUNTY_STRIPE_SANDBOX=1
 export AGENT_BOUNTY_RUN_STRIPE_INTEGRATION=1

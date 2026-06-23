@@ -7,13 +7,22 @@
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
+      stripePythonPackage = pkgs.python312Packages.stripe.overridePythonAttrs (_old: rec {
+        version = "15.2.0";
+        src = pkgs.fetchPypi {
+          pname = "stripe";
+          inherit version;
+          hash = "sha256-95XYqP8nQz6asDCZr8D1xOmSqKb5K5+DncAEi7EvdvY=";
+        };
+      });
+      pythonWithStripe = pkgs.python312.withPackages (_ps: [ stripePythonPackage ]);
     in {
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ pkgs.python312 pkgs.git ];
+        packages = [ pythonWithStripe pkgs.git pkgs.stripe-cli ];
       };
 
       checks.${system}.unit = pkgs.runCommand "agent-bounty-market-tests" {
-        nativeBuildInputs = [ pkgs.python312 pkgs.git ];
+        nativeBuildInputs = [ pythonWithStripe pkgs.git ];
       } ''
         cp -R ${self} source
         chmod -R u+w source
