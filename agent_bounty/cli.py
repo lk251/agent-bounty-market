@@ -20,6 +20,7 @@ from .stripe_sandbox import (
     STRIPE_REAL_RUN_ENV,
     StripeSandboxConfig,
     StripeSandboxError,
+    safe_error_message,
     stripe_cli_version,
     stripe_package_version,
 )
@@ -568,6 +569,8 @@ def cmd_stripe_reconcile(args: argparse.Namespace) -> int:
         remote_blockers=remote_blockers,
     )
     print_json(result)
+    if args.remote and (result["remote_blockers"] or not result["remote_reconciled"]):
+        return 1
     return 0 if result["ledger_reconciled"] else 1
 
 
@@ -613,6 +616,7 @@ def stripe_reconcile_report(
     blockers = list(remote_blockers or [])
     if client is None and not blockers:
         blockers.append("remote Stripe retrieval not requested; pass --remote with sandbox credentials")
+    remote_reconciled = bool(client is not None and not blockers and remote["checked"] and not remote["mismatches"])
     return {
         "schema": "agent-bounty-stripe-reconcile-v1",
         "project_id": project_id,
@@ -620,6 +624,7 @@ def stripe_reconcile_report(
         "bounty_id": bounty_id,
         "ledger_reconciled": bool(reconciliation["ok"]),
         "remote_checked": client is not None,
+        "remote_reconciled": remote_reconciled,
         "remote_blockers": blockers,
         "remote": remote,
         "reconciliation": reconciliation,
@@ -644,70 +649,73 @@ def _remote_stripe_reconciliation(
         return {"checked": False, "objects": [], "mismatches": []}
     objects: list[dict[str, Any]] = []
     mismatches: list[str] = []
-    for request in funding_requests:
-        expected_amount = int(request["amount"])
-        expected_currency = str(request["currency"]).lower()
-        checkout_id = request.get("checkout_session_id")
-        payment_intent_id = request.get("payment_intent_id")
-        charge_id = request.get("charge_id")
-        if checkout_id:
-            session = client.retrieve_checkout_session(str(checkout_id))
-            objects.append({"kind": "checkout.session", "id": session.get("id"), "livemode": session.get("livemode")})
-            if session.get("livemode") is not False:
-                mismatches.append(f"Checkout Session {checkout_id} is not test-mode")
-            if int(session.get("amount_total", expected_amount)) != expected_amount:
-                mismatches.append(f"Checkout Session {checkout_id} amount mismatch")
-            if str(session.get("currency", expected_currency)).lower() != expected_currency:
-                mismatches.append(f"Checkout Session {checkout_id} currency mismatch")
-        if payment_intent_id:
-            payment_intent = client.retrieve_payment_intent(str(payment_intent_id))
-            objects.append({"kind": "payment_intent", "id": payment_intent.get("id"), "livemode": payment_intent.get("livemode")})
-            if payment_intent.get("livemode") is not False:
-                mismatches.append(f"PaymentIntent {payment_intent_id} is not test-mode")
-            if int(payment_intent.get("amount_received", payment_intent.get("amount", expected_amount))) != expected_amount:
-                mismatches.append(f"PaymentIntent {payment_intent_id} amount mismatch")
-            if str(payment_intent.get("currency", expected_currency)).lower() != expected_currency:
-                mismatches.append(f"PaymentIntent {payment_intent_id} currency mismatch")
-        if charge_id:
-            charge = client.retrieve_charge(str(charge_id))
-            objects.append({"kind": "charge", "id": charge.get("id"), "livemode": charge.get("livemode")})
-            if charge.get("livemode") is not False:
-                mismatches.append(f"Charge {charge_id} is not test-mode")
-    account_by_solver = {solver["id"]: solver.get("beneficiary_external_id") for solver in solvers}
-    for payout in payouts:
-        transfer_id = payout.get("stripe_transfer_id") or payout.get("gateway_payout_id")
-        if not transfer_id:
-            continue
-        expected_account = account_by_solver.get(payout["solver_id"])
-        if expected_account:
-            account = client.retrieve_account(str(expected_account))
-            objects.append({"kind": "connected_account", "id": account.get("id"), "livemode": account.get("livemode")})
-            if account.get("livemode") is not False:
-                mismatches.append(f"Connected account {expected_account} is not test-mode")
-            if account.get("id") != expected_account:
-                mismatches.append(f"Connected account {expected_account} id mismatch")
-        transfer = client.retrieve_transfer(str(transfer_id))
-        objects.append({"kind": "transfer", "id": transfer.get("id"), "livemode": transfer.get("livemode")})
-        if transfer.get("livemode") is not False:
-            mismatches.append(f"Transfer {transfer_id} is not test-mode")
-        if int(transfer.get("amount", payout["amount"])) != int(payout["amount"]):
-            mismatches.append(f"Transfer {transfer_id} amount mismatch")
-        if str(transfer.get("currency", payout["currency"])).lower() != str(payout["currency"]).lower():
-            mismatches.append(f"Transfer {transfer_id} currency mismatch")
-        if expected_account and transfer.get("destination") != expected_account:
-            mismatches.append(f"Transfer {transfer_id} destination mismatch")
-        if transfer.get("transfer_group") != payout.get("transfer_group"):
-            mismatches.append(f"Transfer {transfer_id} transfer group mismatch")
-        metadata = transfer.get("metadata") if isinstance(transfer.get("metadata"), dict) else {}
-        expected_metadata = {
-            "bounty_id": payout["bounty_id"],
-            "solver_id": payout["solver_id"],
-            "payout_id": payout["id"],
-            "receipt_id": payout["accepted_receipt_id"],
-        }
-        for key, expected in expected_metadata.items():
-            if expected is not None and metadata.get(key) != expected:
-                mismatches.append(f"Transfer {transfer_id} metadata mismatch for {key}")
+    try:
+        for request in funding_requests:
+            expected_amount = int(request["amount"])
+            expected_currency = str(request["currency"]).lower()
+            checkout_id = request.get("checkout_session_id")
+            payment_intent_id = request.get("payment_intent_id")
+            charge_id = request.get("charge_id")
+            if checkout_id:
+                session = client.retrieve_checkout_session(str(checkout_id))
+                objects.append({"kind": "checkout.session", "id": session.get("id"), "livemode": session.get("livemode")})
+                if session.get("livemode") is not False:
+                    mismatches.append(f"Checkout Session {checkout_id} is not test-mode")
+                if int(session.get("amount_total", expected_amount)) != expected_amount:
+                    mismatches.append(f"Checkout Session {checkout_id} amount mismatch")
+                if str(session.get("currency", expected_currency)).lower() != expected_currency:
+                    mismatches.append(f"Checkout Session {checkout_id} currency mismatch")
+            if payment_intent_id:
+                payment_intent = client.retrieve_payment_intent(str(payment_intent_id))
+                objects.append({"kind": "payment_intent", "id": payment_intent.get("id"), "livemode": payment_intent.get("livemode")})
+                if payment_intent.get("livemode") is not False:
+                    mismatches.append(f"PaymentIntent {payment_intent_id} is not test-mode")
+                if int(payment_intent.get("amount_received", payment_intent.get("amount", expected_amount))) != expected_amount:
+                    mismatches.append(f"PaymentIntent {payment_intent_id} amount mismatch")
+                if str(payment_intent.get("currency", expected_currency)).lower() != expected_currency:
+                    mismatches.append(f"PaymentIntent {payment_intent_id} currency mismatch")
+            if charge_id:
+                charge = client.retrieve_charge(str(charge_id))
+                objects.append({"kind": "charge", "id": charge.get("id"), "livemode": charge.get("livemode")})
+                if charge.get("livemode") is not False:
+                    mismatches.append(f"Charge {charge_id} is not test-mode")
+        account_by_solver = {solver["id"]: solver.get("beneficiary_external_id") for solver in solvers}
+        for payout in payouts:
+            transfer_id = payout.get("stripe_transfer_id") or payout.get("gateway_payout_id")
+            if not transfer_id:
+                continue
+            expected_account = account_by_solver.get(payout["solver_id"])
+            if expected_account:
+                account = client.retrieve_account(str(expected_account))
+                objects.append({"kind": "connected_account", "id": account.get("id"), "livemode": account.get("livemode")})
+                if account.get("livemode") is not False:
+                    mismatches.append(f"Connected account {expected_account} is not test-mode")
+                if account.get("id") != expected_account:
+                    mismatches.append(f"Connected account {expected_account} id mismatch")
+            transfer = client.retrieve_transfer(str(transfer_id))
+            objects.append({"kind": "transfer", "id": transfer.get("id"), "livemode": transfer.get("livemode")})
+            if transfer.get("livemode") is not False:
+                mismatches.append(f"Transfer {transfer_id} is not test-mode")
+            if int(transfer.get("amount", payout["amount"])) != int(payout["amount"]):
+                mismatches.append(f"Transfer {transfer_id} amount mismatch")
+            if str(transfer.get("currency", payout["currency"])).lower() != str(payout["currency"]).lower():
+                mismatches.append(f"Transfer {transfer_id} currency mismatch")
+            if expected_account and transfer.get("destination") != expected_account:
+                mismatches.append(f"Transfer {transfer_id} destination mismatch")
+            if transfer.get("transfer_group") != payout.get("transfer_group"):
+                mismatches.append(f"Transfer {transfer_id} transfer group mismatch")
+            metadata = transfer.get("metadata") if isinstance(transfer.get("metadata"), dict) else {}
+            expected_metadata = {
+                "bounty_id": payout["bounty_id"],
+                "solver_id": payout["solver_id"],
+                "payout_id": payout["id"],
+                "receipt_id": payout["accepted_receipt_id"],
+            }
+            for key, expected in expected_metadata.items():
+                if expected is not None and metadata.get(key) != expected:
+                    mismatches.append(f"Transfer {transfer_id} metadata mismatch for {key}")
+    except Exception as exc:
+        mismatches.append(f"remote Stripe retrieval failed: {safe_error_message(exc)}")
     return {"checked": True, "objects": objects, "mismatches": mismatches}
 
 
@@ -857,10 +865,16 @@ def cmd_demo_stripe_motoko(args: argparse.Namespace) -> int:
                 client=client,
                 idempotency_key=f"stripe-transfer:{DEFAULT_BOUNTY_ID}:{DEFAULT_FINAL_COMMIT}",
             )
-        reconciliation = stripe_reconcile_report(market, project_id=DEFAULT_PROJECT_ID, solver_id=DEFAULT_SOLVER_ID, bounty_id=DEFAULT_BOUNTY_ID)
+        reconciliation = stripe_reconcile_report(
+            market,
+            project_id=DEFAULT_PROJECT_ID,
+            solver_id=DEFAULT_SOLVER_ID,
+            bounty_id=DEFAULT_BOUNTY_ID,
+            client=client,
+        )
         result = {
             "schema": "agent-bounty-demo-stripe-motoko-v1",
-            "ok": bool(reconciliation["ledger_reconciled"]) and transfer is not None and not transfer.get("failed", False),
+            "ok": bool(reconciliation["ledger_reconciled"]) and bool(reconciliation["remote_reconciled"]) and transfer is not None and not transfer.get("failed", False),
             "stage": "complete" if transfer and not transfer.get("failed", False) else "transfer_blocked",
             "reserve": reserve,
             "beneficiary": beneficiary,

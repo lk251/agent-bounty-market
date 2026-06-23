@@ -572,6 +572,7 @@ class PaymentTests(unittest.TestCase):
             market.release_stripe_transfer(bounty_id=bounty_id, client=client, idempotency_key="stripe-transfer:reconcile")
             report = stripe_reconcile_report(market, project_id=project_id, solver_id=solver_id, bounty_id=bounty_id, client=client)
             self.assertTrue(report["remote_checked"])
+            self.assertTrue(report["remote_reconciled"])
             self.assertEqual(report["remote"]["mismatches"], [])
             kinds = {item["kind"] for item in report["remote"]["objects"]}
             self.assertIn("checkout.session", kinds)
@@ -592,6 +593,7 @@ class PaymentTests(unittest.TestCase):
             result = market.release_stripe_transfer(bounty_id=bounty_id, client=client, idempotency_key="stripe-transfer:mismatch-report")
             client.transfers[result["transfer_id"]]["amount"] = 1
             report = stripe_reconcile_report(market, project_id=project_id, solver_id=solver_id, bounty_id=bounty_id, client=client)
+            self.assertFalse(report["remote_reconciled"])
             self.assertTrue(report["remote"]["mismatches"])
 
     def test_stripe_transfer_api_failure_records_failed_and_retry(self):
