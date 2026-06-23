@@ -1,15 +1,15 @@
 # Agent Bounty Market
 
-Agent Bounty Market is a small, stdlib-only transaction core for the hackathon
+Agent Bounty Market is a small transaction core for the hackathon
 loop where a funded project reserves a bounty, a solver submits a candidate
 commit, a platform-owned verifier emits an immutable receipt, and the payment
-gateway releases exactly one payout.
+gateway releases exactly one solver settlement.
 
-This is not the marketplace UI, not a production Stripe integration, and not a
-secure sandbox. It is the trustable local economic kernel that the later GitHub,
-Hermes, and NVIDIA safety integrations can build on. Stripe support is currently
-limited to an explicitly configured test-mode boundary and signed webhook
-ingestion.
+This is not the marketplace UI, not legal escrow, and not a production Stripe
+deployment. It is the trustable local economic kernel that later GitHub, Hermes,
+and sandbox integrations can build on. The default path is dependency-light and
+uses only Python's standard library. The real Stripe sandbox path is explicitly
+optional and uses the official `stripe==15.2.0` Python package.
 
 Product thesis: agent work needs an economic kernel that can prove exactly what
 was funded, claimed, verified, accepted, and paid before it touches real money.
@@ -27,7 +27,7 @@ python -m agent_bounty demo-motoko-suite \
 The suite rejects a synthetic malicious candidate, rejects the bug baseline,
 rejects the idle-only candidate, accepts the final background-study fix, pays
 once, replays the final transaction, and prints compact JSON with project funds,
-candidate SHA, verifier version/digest, backend/policy digests, receipt, payout
+candidate SHA, verifier version/digest, backend/policy digests, receipt, transfer
 ID, and reconciliation status.
 
 Run one accepted transaction:
@@ -55,9 +55,10 @@ The tests cover valid settlement, invalid transitions, insufficient funds,
 duplicate funding/reserve, exclusive claims, wrong-solver submission, stale SHA
 rejection, baseline/intermediate/final Motoko verdicts, candidate-owned verifier
 irrelevance, timeout/malformed verifier output, receipt binding, verifier
-recovery after incomplete `running` rows, payout retry, paid payout replay,
-Stripe test-mode request mapping, signed webhook replay, non-negative balances,
-reconciliation, and restart idempotency.
+recovery after incomplete `running` rows, fake-gateway payout retry, paid payout
+replay, Stripe Checkout request mapping, signed webhook funding, Connect
+Transfer request/retrieval binding, non-negative balances, reconciliation, and
+restart idempotency.
 
 Check the optional OpenShell backend:
 
@@ -70,22 +71,75 @@ the verifier backend and policy digests used for audit records.
 
 ## Stripe Test Sandbox
 
-Real Stripe calls are never made by default. To run the manual test-mode smoke
-path, provide only local environment variables and use a stable `--run-id` as
-the Stripe idempotency namespace:
+Real Stripe calls are never made by default. The real sandbox path is:
 
-```bash
-AGENT_BOUNTY_STRIPE_REAL_SANDBOX=1 \
-AGENT_BOUNTY_STRIPE_TEST_MODE=1 \
-STRIPE_SECRET_KEY=sk_test_... \
-AGENT_BOUNTY_STRIPE_SOLVER_ACCOUNTS_JSON='{"solver_stripe_smoke":"acct_..."}' \
-python -m agent_bounty stripe-sandbox-smoke \
-  --solver-id solver_stripe_smoke \
-  --amount-cents 100 \
-  --run-id manual-001
+```text
+Stripe-hosted Checkout payment
+-> signed webhook credits internal project treasury once
+-> accepted Motoko verifier receipt authorizes one Connect Transfer
+-> reconciliation compares Stripe object links and internal ledger rows
 ```
 
-The command creates and confirms a test-mode PaymentIntent, extracts the latest
-charge when Stripe returns it, creates a Transfer to the configured connected
-account, and prints compact JSON. Reusing the same `--run-id` reuses the same
-Stripe idempotency keys.
+Install the optional integration dependency outside the default test path:
+
+```bash
+python3 -m pip install -r requirements-stripe.txt
+```
+
+Check safe configuration status:
+
+```bash
+python -m agent_bounty stripe-status
+```
+
+Create a Checkout funding request:
+
+```bash
+AGENT_BOUNTY_STRIPE_SANDBOX=1 \
+STRIPE_TEST_SECRET_KEY=sk_test_... \
+python -m agent_bounty stripe-create-checkout \
+  --db .demo/stripe.sqlite3 \
+  --project-id project_motoko \
+  --source owner \
+  --amount-cents 2500 \
+  --currency usd \
+  --success-url http://127.0.0.1:4242/success \
+  --cancel-url http://127.0.0.1:4242/cancel
+```
+
+Run the signed webhook endpoint locally:
+
+```bash
+AGENT_BOUNTY_STRIPE_SANDBOX=1 \
+STRIPE_TEST_SECRET_KEY=sk_test_... \
+STRIPE_TEST_WEBHOOK_SECRET=whsec_... \
+python -m agent_bounty stripe-webhook-serve \
+  --db .demo/stripe.sqlite3 \
+  --host 127.0.0.1 \
+  --port 4242
+```
+
+Forward Stripe CLI test events:
+
+```bash
+stripe listen \
+  --events payment_intent.succeeded,payment_intent.payment_failed,checkout.session.completed,checkout.session.expired \
+  --forward-to localhost:4242/stripe/webhook
+```
+
+Attach a pre-created test connected account and release the accepted bounty:
+
+```bash
+python -m agent_bounty stripe-attach-beneficiary \
+  --db .demo/stripe.sqlite3 \
+  --solver-id solver_codex_motoko_issue_1 \
+  --account-id acct_...
+
+python -m agent_bounty stripe-release-transfer \
+  --db .demo/stripe.sqlite3 \
+  --bounty-id bounty_motoko_issue_1
+```
+
+`stripe-reconcile` reports funding requests, webhook rows, Stripe operations,
+ledger balance checks, and safe corrective actions. Bank payout from the
+connected account is outside this milestone.

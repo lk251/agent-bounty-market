@@ -20,7 +20,17 @@ from .ledger import (
 )
 from .payments import PaymentGateway, PaymentGatewayError
 from .state_machine import InvalidTransition, assert_transition
-from .stripe_webhooks import StripeWebhookError, finish_stripe_webhook_event, record_stripe_webhook_event
+from .stripe_sandbox import (
+    StripeClient,
+    StripeSandboxError,
+    checkout_params,
+    ensure_test_object,
+    request_digest,
+    require_id,
+    safe_error_message,
+    transfer_params,
+)
+from .stripe_webhooks import StripeWebhookError, finish_stripe_webhook_event, record_stripe_webhook_event, record_verified_stripe_event
 from .util import require_currency, require_positive_amount, stable_json, utc_now
 from .verification import ProtectedVerifierRunner, receipt_payload
 
@@ -31,6 +41,24 @@ class MarketError(RuntimeError):
 
 def new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex}"
+
+
+def _object_id(value: Any, prefix: str) -> str | None:
+    if isinstance(value, str) and value.startswith(prefix):
+        return value
+    if isinstance(value, dict):
+        object_id = value.get("id")
+        if isinstance(object_id, str) and object_id.startswith(prefix):
+            return object_id
+    return None
+
+
+def _amount_received(payment_intent: dict[str, Any]) -> int:
+    value = payment_intent.get("amount_received", payment_intent.get("amount"))
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise MarketError("PaymentIntent amount_received is missing or invalid") from exc
 
 
 class AgentBountyMarket:
@@ -163,6 +191,131 @@ class AgentBountyMarket:
             "gateway_source_transaction_id": credit.source_transaction_id,
             "replayed": False,
         }
+
+    def create_stripe_checkout(
+        self,
+        *,
+        project_id: str,
+        source_kind: str,
+        amount: int,
+        currency: str = "USD",
+        success_url: str,
+        cancel_url: str,
+        client: StripeClient,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        require_positive_amount(amount)
+        currency = require_currency(currency)
+        if source_kind not in {"owner", "donation"}:
+            raise MarketError("Stripe funding source must be owner or donation")
+        treasury = self.conn.execute("SELECT currency FROM treasuries WHERE project_id = ?", (project_id,)).fetchone()
+        if not treasury:
+            raise MarketError(f"unknown project treasury {project_id}")
+        if treasury["currency"] != currency:
+            raise MarketError(f"funding currency {currency} does not match treasury currency {treasury['currency']}")
+        request_key = idempotency_key or f"stripe-checkout:{project_id}:{source_kind}:{amount}:{currency}"
+        existing = self.conn.execute(
+            "SELECT * FROM funding_requests WHERE request_idempotency_key = ?",
+            (request_key,),
+        ).fetchone()
+        funding_request_id = existing["id"] if existing else new_id("fr")
+        params = checkout_params(
+            funding_request_id=funding_request_id,
+            project_id=project_id,
+            source_kind=source_kind,
+            amount=amount,
+            currency=currency,
+            success_url=success_url,
+            cancel_url=cancel_url,
+        )
+        digest = request_digest(params)
+        if existing and existing["request_parameters_digest"] != digest:
+            raise MarketError("Stripe checkout idempotency key replayed with different parameters")
+        if existing and existing["checkout_session_id"]:
+            return {
+                "funding_request_id": existing["id"],
+                "checkout_session_id": existing["checkout_session_id"],
+                "payment_intent_id": existing["payment_intent_id"],
+                "amount": int(existing["amount"]),
+                "currency": existing["currency"],
+                "status": existing["status"],
+                "replayed": True,
+            }
+        if not existing:
+            now = utc_now()
+            with self.conn:
+                self.conn.execute(
+                    """
+                    INSERT INTO funding_requests(
+                        id, project_id, source_kind, amount, currency, status,
+                        request_idempotency_key, request_parameters_digest, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, 'created', ?, ?, ?, ?)
+                    """,
+                    (funding_request_id, project_id, source_kind, amount, currency, request_key, digest, now, now),
+                )
+        operation_id = self._begin_stripe_operation(
+            kind="checkout_create",
+            idempotency_key=request_key,
+            request_parameters_digest=digest,
+        )
+        try:
+            session = client.create_checkout_session(idempotency_key=request_key, params=params)
+            require_id(session, prefix="cs_", object_name="Checkout Session")
+            payment_intent_id = _object_id(session.get("payment_intent"), "pi_")
+            customer_id = _object_id(session.get("customer"), "cus_")
+            url = session.get("url") if isinstance(session.get("url"), str) else None
+            with self.conn:
+                self.conn.execute(
+                    """
+                    UPDATE funding_requests
+                    SET status = 'checkout_pending', checkout_session_id = ?,
+                        payment_intent_id = COALESCE(?, payment_intent_id),
+                        stripe_customer_id = COALESCE(?, stripe_customer_id),
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (session["id"], payment_intent_id, customer_id, utc_now(), funding_request_id),
+                )
+                self._finish_stripe_operation(
+                    operation_id=operation_id,
+                    status="succeeded",
+                    stripe_object_type="checkout.session",
+                    stripe_object_id=session["id"],
+                )
+            return {
+                "funding_request_id": funding_request_id,
+                "checkout_session_id": session["id"],
+                "payment_intent_id": payment_intent_id,
+                "amount": amount,
+                "currency": currency,
+                "checkout_url": url,
+                "status": "checkout_pending",
+                "replayed": False,
+            }
+        except Exception as exc:
+            with self.conn:
+                self._finish_stripe_operation(
+                    operation_id=operation_id,
+                    status="failed",
+                    safe_error_message=safe_error_message(exc),
+                )
+            raise
+
+    def ingest_official_stripe_webhook(
+        self,
+        *,
+        payload: bytes,
+        signature_header: str,
+        endpoint_secret: str,
+        client: StripeClient,
+    ) -> dict[str, Any]:
+        try:
+            event = client.construct_event(payload, signature_header, endpoint_secret)
+        except Exception as exc:
+            raise StripeWebhookError(safe_error_message(exc)) from exc
+        recorded = record_verified_stripe_event(self.conn, event=event, payload=payload)
+        return self._process_recorded_stripe_event(recorded=recorded, client=client)
 
     def create_bounty(
         self,
@@ -734,11 +887,22 @@ class AgentBountyMarket:
                 "status": recorded["status"],
                 "action": recorded["action"],
             }
+        return self._process_recorded_stripe_event(recorded=recorded, client=None)
+
+    def _process_recorded_stripe_event(self, *, recorded: dict[str, Any], client: StripeClient | None) -> dict[str, Any]:
+        if recorded["replayed"]:
+            return {
+                "event_id": recorded["event_id"],
+                "event_type": recorded["event_type"],
+                "replayed": True,
+                "status": recorded["status"],
+                "action": recorded["action"],
+            }
         event = recorded["event"]
         event_id = recorded["event_id"]
         event_type = recorded["event_type"]
         try:
-            action = self._apply_stripe_event(event_id=event_id, event_type=event_type, event=event)
+            action = self._apply_stripe_event(event_id=event_id, event_type=event_type, event=event, client=client)
             finish_stripe_webhook_event(self.conn, event_id=event_id, status="processed", action=action)
             return {
                 "event_id": event_id,
@@ -771,6 +935,150 @@ class AgentBountyMarket:
         ).fetchone()[0]
         ok = internal_total == int(funding) and all(value >= 0 for value in named.values())
         return {"currency": currency, "balances": named, "funding_total": int(funding), "internal_total": internal_total, "ok": ok}
+
+    def attach_stripe_beneficiary(self, *, solver_id: str, account_id: str, client: StripeClient) -> dict[str, Any]:
+        account = client.retrieve_account(account_id)
+        actual_id = require_id(account, prefix="acct_", object_name="connected account")
+        if actual_id != account_id:
+            raise MarketError("Stripe connected account retrieval returned a different account")
+        country = account.get("country") if isinstance(account.get("country"), str) else None
+        charges_enabled = bool(account.get("charges_enabled", False))
+        payouts_enabled = bool(account.get("payouts_enabled", False))
+        with self.conn:
+            cursor = self.conn.execute(
+                """
+                UPDATE solver_identities
+                SET beneficiary_external_id = ?
+                WHERE id = ?
+                """,
+                (actual_id, solver_id),
+            )
+            if cursor.rowcount == 0:
+                self.conn.execute(
+                    """
+                    INSERT INTO solver_identities(id, display_name, beneficiary_external_id, created_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (solver_id, solver_id, actual_id, utc_now()),
+                )
+        return {
+            "solver_id": solver_id,
+            "account_id": actual_id,
+            "country": country,
+            "charges_enabled": charges_enabled,
+            "payouts_enabled": payouts_enabled,
+            "usable_for_test_transfer": True,
+        }
+
+    def release_stripe_transfer(self, *, bounty_id: str, client: StripeClient, idempotency_key: str | None = None) -> dict[str, Any]:
+        existing = self.conn.execute("SELECT * FROM payouts WHERE bounty_id = ?", (bounty_id,)).fetchone()
+        bounty = self._bounty(bounty_id)
+        submission = self.conn.execute(
+            "SELECT * FROM submissions WHERE bounty_id = ? ORDER BY created_at DESC LIMIT 1",
+            (bounty_id,),
+        ).fetchone()
+        if not submission:
+            raise MarketError("cannot create Stripe transfer without a submission")
+        if existing and existing["status"] == "paid":
+            return {"payout_id": existing["id"], "transfer_id": existing["gateway_payout_id"], "replayed": True}
+        if bounty["state"] not in {BountyState.ACCEPTED.value, BountyState.PAYOUT_FAILED.value, BountyState.PAYOUT_PENDING.value}:
+            raise MarketError(f"cannot create Stripe transfer from state {bounty['state']}")
+        receipt = self._accepted_receipt_for_payout(bounty, submission)
+        solver = self.conn.execute("SELECT * FROM solver_identities WHERE id = ?", (submission["solver_id"],)).fetchone()
+        if not solver or not solver["beneficiary_external_id"]:
+            raise MarketError("solver has no validated Stripe connected account")
+        account_id = solver["beneficiary_external_id"]
+        payout_id = existing["id"] if existing else new_id("payout")
+        transfer_key = idempotency_key or f"stripe-transfer:{payout_id}"
+        params = transfer_params(
+            project_id=bounty["project_id"],
+            bounty_id=bounty_id,
+            solver_id=submission["solver_id"],
+            payout_id=payout_id,
+            amount=int(bounty["reward_amount"]),
+            currency=bounty["currency"],
+            destination_account_id=account_id,
+            accepted_receipt_id=receipt["id"],
+            candidate_sha=submission["candidate_commit"],
+            verifier_digest=receipt["verifier_digest"],
+            backend_digest=receipt["backend_digest"],
+            policy_digest=receipt["policy_digest"],
+        )
+        digest = request_digest(params)
+        operation_id = self._begin_stripe_operation(
+            kind="transfer_create",
+            idempotency_key=transfer_key,
+            request_parameters_digest=digest,
+        )
+        now = utc_now()
+        with self.conn:
+            if not existing:
+                self.conn.execute(
+                    """
+                    INSERT INTO payouts(
+                        id, bounty_id, solver_id, amount, currency, status,
+                        accepted_receipt_id, verifier_digest, idempotency_key,
+                        transfer_group, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        payout_id,
+                        bounty_id,
+                        submission["solver_id"],
+                        int(bounty["reward_amount"]),
+                        bounty["currency"],
+                        receipt["id"],
+                        receipt["verifier_digest"],
+                        transfer_key,
+                        params["transfer_group"],
+                        now,
+                        now,
+                    ),
+                )
+            self._transition_bounty(bounty_id, BountyState.PAYOUT_PENDING, reason="stripe_transfer_started", idempotency_key=f"state:{transfer_key}:payout_pending")
+        try:
+            transfer = client.create_transfer(idempotency_key=transfer_key, params=params)
+            transfer_id = require_id(transfer, prefix="tr_", object_name="Connect Transfer")
+            retrieved = client.retrieve_transfer(transfer_id)
+            self._validate_transfer(retrieved, expected=params)
+            with self.conn:
+                self._finish_stripe_operation(
+                    operation_id=operation_id,
+                    status="succeeded",
+                    stripe_object_type="transfer",
+                    stripe_object_id=transfer_id,
+                )
+                self.conn.execute(
+                    """
+                    UPDATE payouts
+                    SET status = 'pending', gateway_payout_id = ?, stripe_transfer_id = ?,
+                        transfer_group = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (transfer_id, transfer_id, params["transfer_group"], utc_now(), payout_id),
+                )
+            self._complete_payout(
+                bounty=bounty,
+                submission=submission,
+                payout_id=payout_id,
+                gateway_payout_id=transfer_id,
+                idempotency_key=transfer_key,
+            )
+            return {"payout_id": payout_id, "transfer_id": transfer_id, "replayed": False}
+        except Exception as exc:
+            with self.conn:
+                self._finish_stripe_operation(
+                    operation_id=operation_id,
+                    status="failed",
+                    safe_error_message=safe_error_message(exc),
+                )
+                self.conn.execute(
+                    "UPDATE payouts SET status = 'failed', updated_at = ? WHERE id = ?",
+                    (utc_now(), payout_id),
+                )
+                self._transition_bounty(bounty_id, BountyState.PAYOUT_FAILED, reason=f"stripe_transfer_failed:{safe_error_message(exc)}", idempotency_key=f"state:{transfer_key}:payout_failed")
+            return {"payout_id": payout_id, "transfer_id": None, "replayed": False, "failed": True, "error": safe_error_message(exc)}
 
     def bounty_summary(self, bounty_id: str) -> dict[str, Any]:
         bounty = self._bounty(bounty_id)
@@ -909,7 +1217,61 @@ class AgentBountyMarket:
                 idempotency_key=f"state:{idempotency_key}:paid",
             )
 
-    def _apply_stripe_event(self, *, event_id: str, event_type: str, event: dict[str, Any]) -> str:
+    def _begin_stripe_operation(self, *, kind: str, idempotency_key: str, request_parameters_digest: str) -> str:
+        existing = self.conn.execute(
+            "SELECT * FROM stripe_operations WHERE idempotency_key = ?",
+            (idempotency_key,),
+        ).fetchone()
+        if existing:
+            if existing["kind"] != kind or existing["request_parameters_digest"] != request_parameters_digest:
+                raise MarketError("Stripe operation idempotency key replayed with different parameters")
+            return existing["id"]
+        operation_id = new_id("sop")
+        now = utc_now()
+        self.conn.execute(
+            """
+            INSERT INTO stripe_operations(
+                id, kind, idempotency_key, request_parameters_digest, status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, 'pending', ?, ?)
+            """,
+            (operation_id, kind, idempotency_key, request_parameters_digest, now, now),
+        )
+        return operation_id
+
+    def _finish_stripe_operation(
+        self,
+        *,
+        operation_id: str,
+        status: str,
+        stripe_object_type: str | None = None,
+        stripe_object_id: str | None = None,
+        stripe_request_id: str | None = None,
+        safe_error_code: str | None = None,
+        safe_error_message: str | None = None,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE stripe_operations
+            SET status = ?, stripe_object_type = COALESCE(?, stripe_object_type),
+                stripe_object_id = COALESCE(?, stripe_object_id),
+                stripe_request_id = COALESCE(?, stripe_request_id),
+                safe_error_code = ?, safe_error_message = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                status,
+                stripe_object_type,
+                stripe_object_id,
+                stripe_request_id,
+                safe_error_code,
+                safe_error_message,
+                utc_now(),
+                operation_id,
+            ),
+        )
+
+    def _apply_stripe_event(self, *, event_id: str, event_type: str, event: dict[str, Any], client: StripeClient | None) -> str:
         data = event.get("data")
         obj = data.get("object") if isinstance(data, dict) else None
         if not isinstance(obj, dict):
@@ -917,21 +1279,196 @@ class AgentBountyMarket:
         external_id = obj.get("id")
         if not isinstance(external_id, str) or not external_id:
             return "ignored_missing_object_id"
-        if event_type in {"transfer.created", "transfer.succeeded", "transfer.paid"}:
-            result = self.mark_gateway_payout_paid(
-                gateway_payout_id=external_id,
-                idempotency_key=f"stripe-webhook:{event_id}:paid",
-            )
-            return str(result["action"])
-        if event_type in {"transfer.failed", "payout.failed"}:
-            failure = obj.get("failure_message") or obj.get("failure_code") or event_type
-            result = self.mark_gateway_payout_failed(
-                gateway_payout_id=external_id,
-                reason=str(failure),
-                idempotency_key=f"stripe-webhook:{event_id}:failed",
-            )
-            return str(result["action"])
+        if event_type == "checkout.session.completed":
+            if client is None:
+                return "recorded_checkout_completed"
+            session = client.retrieve_checkout_session(external_id)
+            return self._credit_from_checkout_session(session=session, event_id=event_id, client=client)
+        if event_type == "checkout.session.expired":
+            return self._mark_checkout_expired(session=obj)
+        if event_type == "payment_intent.succeeded":
+            if client is None:
+                return "recorded_payment_intent_succeeded"
+            payment_intent = client.retrieve_payment_intent(external_id)
+            return self._credit_from_payment_intent(payment_intent=payment_intent, event_id=event_id)
+        if event_type == "payment_intent.payment_failed":
+            return self._mark_payment_failed(payment_intent=obj)
+        if event_type == "transfer.created":
+            return "transfer_created_audit"
+        if event_type == "transfer.reversed":
+            return str(self.mark_gateway_payout_reversed(gateway_payout_id=external_id, reason="transfer.reversed")["action"])
+        if event_type == "transfer.updated":
+            return "transfer_updated_audit"
         return f"ignored_{event_type}"
+
+    def _credit_from_checkout_session(self, *, session: dict[str, Any], event_id: str, client: StripeClient) -> str:
+        ensure_test_object(session, object_name="Checkout Session")
+        if session.get("payment_status") != "paid":
+            return "checkout_completed_unpaid"
+        payment_intent_id = _object_id(session.get("payment_intent"), "pi_")
+        if not payment_intent_id:
+            return "checkout_completed_missing_payment_intent"
+        payment_intent = session["payment_intent"] if isinstance(session.get("payment_intent"), dict) else client.retrieve_payment_intent(payment_intent_id)
+        return self._credit_from_payment_intent(payment_intent=payment_intent, event_id=event_id, checkout_session=session)
+
+    def _credit_from_payment_intent(self, *, payment_intent: dict[str, Any], event_id: str, checkout_session: dict[str, Any] | None = None) -> str:
+        ensure_test_object(payment_intent, object_name="PaymentIntent")
+        if payment_intent.get("status") != "succeeded":
+            return "payment_intent_not_succeeded"
+        metadata = payment_intent.get("metadata") if isinstance(payment_intent.get("metadata"), dict) else {}
+        funding_request_id = metadata.get("funding_request_id")
+        if not isinstance(funding_request_id, str) or not funding_request_id:
+            return "payment_intent_missing_funding_request"
+        request = self.conn.execute("SELECT * FROM funding_requests WHERE id = ?", (funding_request_id,)).fetchone()
+        if not request:
+            return "payment_intent_unknown_funding_request"
+        expected_amount = int(request["amount"])
+        expected_currency = request["currency"].lower()
+        received = _amount_received(payment_intent)
+        pi_currency = str(payment_intent.get("currency", "")).lower()
+        metadata_ok = (
+            metadata.get("project_id") == request["project_id"]
+            and metadata.get("amount") == str(expected_amount)
+            and str(metadata.get("currency", "")).lower() == expected_currency
+        )
+        if received != expected_amount or pi_currency != expected_currency or not metadata_ok:
+            with self.conn:
+                self.conn.execute(
+                    "UPDATE funding_requests SET status = 'review_required', payment_intent_id = COALESCE(?, payment_intent_id), updated_at = ? WHERE id = ?",
+                    (_object_id(payment_intent, "pi_"), utc_now(), request["id"]),
+                )
+            return "funding_review_required"
+        payment_intent_id = require_id(payment_intent, prefix="pi_", object_name="PaymentIntent")
+        checkout_id = _object_id(checkout_session, "cs_") if checkout_session else None
+        charge_id = _object_id(payment_intent.get("latest_charge"), "ch_")
+        funding_idempotency_key = f"stripe-credit:{payment_intent_id}"
+        existing = self.conn.execute(
+            "SELECT * FROM funding_events WHERE idempotency_key = ?",
+            (funding_idempotency_key,),
+        ).fetchone()
+        if existing:
+            with self.conn:
+                self.conn.execute(
+                    """
+                    UPDATE funding_requests
+                    SET status = 'paid', payment_intent_id = ?, charge_id = COALESCE(?, charge_id),
+                        checkout_session_id = COALESCE(?, checkout_session_id), paid_at = COALESCE(paid_at, ?),
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (payment_intent_id, charge_id, checkout_id, utc_now(), utc_now(), request["id"]),
+                )
+            return "funding_already_credited"
+        with self.conn:
+            self.conn.execute(
+                """
+                UPDATE funding_requests
+                SET status = 'paid', payment_intent_id = ?, charge_id = COALESCE(?, charge_id),
+                    checkout_session_id = COALESCE(?, checkout_session_id), paid_at = COALESCE(paid_at, ?),
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (payment_intent_id, charge_id, checkout_id, utc_now(), utc_now(), request["id"]),
+            )
+            funding_event_id = new_id("funding")
+            self.conn.execute(
+                """
+                INSERT INTO funding_events(
+                    id, project_id, amount, currency, gateway_event_id,
+                    gateway_source_transaction_id, idempotency_key, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    funding_event_id,
+                    request["project_id"],
+                    expected_amount,
+                    request["currency"],
+                    payment_intent_id,
+                    charge_id,
+                    funding_idempotency_key,
+                    utc_now(),
+                ),
+            )
+            self.ledger.transfer(
+                event_type="project_funded",
+                idempotency_key=f"ledger:{funding_idempotency_key}",
+                from_account=external_account(str(request["source_kind"])),
+                to_account=project_available_account(str(request["project_id"])),
+                amount=expected_amount,
+                currency=str(request["currency"]),
+                project_id=str(request["project_id"]),
+                external_id=payment_intent_id,
+            )
+        return "funding_credited"
+
+    def _mark_checkout_expired(self, *, session: dict[str, Any]) -> str:
+        checkout_id = _object_id(session, "cs_")
+        if not checkout_id:
+            return "ignored_checkout_expired_missing_id"
+        with self.conn:
+            self.conn.execute(
+                "UPDATE funding_requests SET status = 'expired', updated_at = ? WHERE checkout_session_id = ? AND status != 'paid'",
+                (utc_now(), checkout_id),
+            )
+        return "checkout_expired"
+
+    def _mark_payment_failed(self, *, payment_intent: dict[str, Any]) -> str:
+        pi_id = _object_id(payment_intent, "pi_")
+        metadata = payment_intent.get("metadata") if isinstance(payment_intent.get("metadata"), dict) else {}
+        funding_request_id = metadata.get("funding_request_id")
+        with self.conn:
+            if isinstance(funding_request_id, str):
+                self.conn.execute(
+                    "UPDATE funding_requests SET status = 'failed', payment_intent_id = COALESCE(?, payment_intent_id), updated_at = ? WHERE id = ? AND status != 'paid'",
+                    (pi_id, utc_now(), funding_request_id),
+                )
+            elif pi_id:
+                self.conn.execute(
+                    "UPDATE funding_requests SET status = 'failed', updated_at = ? WHERE payment_intent_id = ? AND status != 'paid'",
+                    (utc_now(), pi_id),
+                )
+        return "payment_failed"
+
+    def mark_gateway_payout_reversed(self, *, gateway_payout_id: str, reason: str) -> dict[str, Any]:
+        payout = self.conn.execute("SELECT * FROM payouts WHERE gateway_payout_id = ?", (gateway_payout_id,)).fetchone()
+        if not payout:
+            return {"gateway_payout_id": gateway_payout_id, "action": "ignored_unknown_transfer"}
+        if payout["status"] == "reversed":
+            return {"payout_id": payout["id"], "gateway_payout_id": gateway_payout_id, "action": "already_reversed"}
+        with self.conn:
+            self.conn.execute(
+                """
+                UPDATE payouts
+                SET status = 'reversed', reversal_reason = ?, review_required_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (reason, utc_now(), utc_now(), payout["id"]),
+            )
+            bounty = self._bounty(payout["bounty_id"])
+            if bounty["state"] == BountyState.PAID.value:
+                self._transition_bounty(
+                    payout["bounty_id"],
+                    BountyState.PAYOUT_FAILED,
+                    reason=f"stripe_transfer_reversed:{reason}",
+                    idempotency_key=f"state:stripe-reversal:{gateway_payout_id}:review",
+                )
+        return {"payout_id": payout["id"], "gateway_payout_id": gateway_payout_id, "action": "reversal_recorded"}
+
+    def _validate_transfer(self, transfer: dict[str, Any], *, expected: dict[str, Any]) -> None:
+        require_id(transfer, prefix="tr_", object_name="Connect Transfer")
+        if int(transfer.get("amount", -1)) != int(expected["amount"]):
+            raise MarketError("Stripe Transfer amount mismatch")
+        if str(transfer.get("currency", "")).lower() != str(expected["currency"]).lower():
+            raise MarketError("Stripe Transfer currency mismatch")
+        if transfer.get("destination") != expected["destination"]:
+            raise MarketError("Stripe Transfer destination mismatch")
+        if transfer.get("transfer_group") != expected["transfer_group"]:
+            raise MarketError("Stripe Transfer group mismatch")
+        metadata = transfer.get("metadata") if isinstance(transfer.get("metadata"), dict) else {}
+        for key, value in expected["metadata"].items():
+            if metadata.get(key) != value:
+                raise MarketError(f"Stripe Transfer metadata mismatch for {key}")
 
     def _bounty(self, bounty_id: str) -> sqlite3.Row:
         row = self.conn.execute("SELECT * FROM bounties WHERE id = ?", (bounty_id,)).fetchone()

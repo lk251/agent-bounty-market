@@ -5,8 +5,8 @@ Agent Bounty Market is a local transaction core with four trust zones:
 1. **Trusted orchestrator**: Python package and SQLite database in this repo.
 2. **Trusted verifier**: platform-owned verifier contract under `verifiers/`.
 3. **Untrusted candidate**: solver checkout, branch, and commit under test.
-4. **Payment gateway**: fake deterministic gateway by default, explicit
-   Stripe test-mode boundary when configured.
+4. **Payment gateway**: fake deterministic gateway by default; explicit
+   Stripe sandbox boundary when configured.
 
 The orchestrator owns bounty state, idempotency, ledger entries, verification
 receipts, and payout decisions. The candidate can supply code, but not the
@@ -71,30 +71,36 @@ leaves `verifying` so it can be retried.
 ## Payment Boundary
 
 `FakePaymentGateway` is deterministic and idempotent for local tests.
-`StripePaymentGateway` remains opt-in only: construction requires an explicit
-`StripeTestConfig`, an `sk_test_` key, and a solver-to-`acct_` mapping. It uses
-Python's standard library HTTP stack rather than the Stripe SDK, so the repo
-does not gain a runtime dependency.
+The legacy stdlib Stripe smoke gateway remains isolated as deterministic support
+for old tests, but the real sandbox integration uses the official
+`stripe==15.2.0` Python package through `OfficialStripeClient`.
 
-The test-mode mapping is intentionally narrow:
+The real sandbox mapping is:
 
-- project treasury funding -> Stripe PaymentIntent with the platform
-  idempotency key, requesting `latest_charge` expansion when available;
-- solver beneficiary -> configured Stripe Connect account ID;
-- payout release -> Stripe Transfer with the platform idempotency key and the
-  stored source charge when Stripe returned one for the funding event.
+- project treasury funding request -> Stripe-hosted Checkout Session in
+  payment mode;
+- Checkout creation -> no internal credit;
+- signed Stripe webhook -> persisted event row, then validated PaymentIntent or
+  Checkout Session retrieval;
+- validated `payment_intent.succeeded` or paid `checkout.session.completed` ->
+  exactly one internal treasury credit;
+- solver beneficiary -> retrieved test Connect account ID stored on the solver;
+- accepted verifier receipt -> one Connect Transfer to the connected account;
+- Transfer retrieval -> exact amount, currency, destination, transfer group,
+  metadata, and `livemode=false` validation before internal settlement is marked
+  paid.
 
-Stripe external IDs are stored in the existing funding, solver identity, payout,
-and ledger fields; funding events also retain the source charge ID used for
-source-backed Transfers. Signed Stripe webhook ingestion stores one row per
-event ID, rejects live-mode events, rejects invalid signatures, rejects
-changed-payload replays, and can settle or fail a pending transfer
-idempotently.
+Durable Stripe state is split across `funding_requests`,
+`stripe_webhook_events`, and `stripe_operations`. All Stripe POST calls use a
+stable idempotency key and an argument digest; reusing a key with changed
+arguments fails before calling Stripe. Webhook rows retain payload digests and
+safe metadata, not full unnecessary payloads or secrets.
 
-The `stripe-sandbox-smoke` CLI command is the only built-in real Stripe call
-path. It requires `AGENT_BOUNTY_STRIPE_REAL_SANDBOX=1`,
-`AGENT_BOUNTY_STRIPE_TEST_MODE=1`, an `sk_test_` key, and explicit solver
-account mapping from the environment.
+Public Transfer events are audit/recovery events. `transfer.created` does not
+settle a bounty a second time. `transfer.reversed` records a manual-review
+reversal state. Stripe does not expose a public `transfer.failed` event; Transfer
+creation failures are synchronous API failures or unknown remote outcomes that
+must be reconciled through the operation journal and idempotency key.
 
-Production keys, marketplace onboarding, Connect account creation, web UI, and
-live payout operations remain out of scope for this slice.
+Production keys, marketplace onboarding, public Connect account creation, web
+UI, legal escrow handling, and bank payouts remain out of scope for this slice.

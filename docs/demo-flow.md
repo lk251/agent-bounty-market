@@ -12,13 +12,13 @@ The suite proves:
 - synthetic malicious candidate -> rejected, no trusted-policy mutation;
 - bug baseline `f4ebe107...` -> rejected, no payout;
 - idle-only candidate `fdf54095...` -> rejected by verifier v2, no payout;
-- final candidate `4c03e0f...` -> accepted, payout pending, then paid;
+- final candidate `4c03e0f...` -> accepted, settlement pending, then paid;
 - replay of the final transaction -> same receipt and payout ID, with no
   duplicate ledger rows.
 
 The compact JSON distinguishes candidate-owned code (`candidate_sha`), trusted
 policy (`verifier_version`, `verifier_digest`), isolated execution (`backend`,
-`backend_digest`, `policy_digest`), measured evidence (`metrics`), and payout
+`backend_digest`, `policy_digest`), measured evidence (`metrics`), and transfer
 eligibility (`receipt.accepted`, `bounty.accepted_receipt_id`, `payout`).
 
 If a verifier process crashes after a run row is created but before a receipt is
@@ -55,3 +55,20 @@ python -m agent_bounty demo-motoko \
   --funding-cents 2500 \
   --reward-cents 2500
 ```
+
+## Stripe Sandbox Demo
+
+The real Stripe sandbox demo is deliberately split across trusted commands:
+
+1. `stripe-status` checks safe configuration and exact blockers.
+2. `stripe-create-checkout` creates a server-owned funding request and hosted
+   Checkout Session. This credits zero internal treasury.
+3. `stripe-webhook-serve` verifies raw signed events and credits treasury once
+   after retrieving and validating the PaymentIntent/Checkout state.
+4. The normal Motoko verifier flow accepts the exact candidate commit.
+5. `stripe-attach-beneficiary` validates a pre-created test connected account.
+6. `stripe-release-transfer` creates and retrieves one Connect Transfer.
+7. `stripe-reconcile` compares the internal ledger and Stripe operation rows.
+
+Use `requirements-stripe.txt` for the optional official Stripe SDK. The default
+demo and CI remain secret-free and use deterministic fake clients.

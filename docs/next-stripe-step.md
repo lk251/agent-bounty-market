@@ -1,50 +1,41 @@
-# Stripe Test-Mode Settlement Step
+# Stripe Sandbox Settlement Status
 
-The first Stripe milestone is implemented as a test-mode boundary, not a live
-marketplace integration.
+The old PaymentIntent smoke path has been superseded. The current milestone is
+the real sandbox loop:
 
-Implemented:
-
-- explicit Stripe test configuration that cannot be enabled accidentally;
-- `sk_test_` and solver `acct_` validation before gateway construction;
-- stdlib-only PaymentIntent funding and Transfer payout request mapping;
-- Stripe external IDs stored beside the existing idempotency keys;
-- PaymentIntent `latest_charge` extraction and source-backed Transfer requests
-  when Stripe returns a charge ID;
-- raw-payload webhook signature verification;
-- idempotent `stripe_webhook_events` rows;
-- manually gated `stripe-sandbox-smoke` command for real Stripe test-mode
-  PaymentIntent and Transfer calls;
-- duplicate webhook, payout failure, retry, and reconciliation tests.
-
-Manual real-sandbox validation is intentionally excluded from normal CI because
-it requires a local `sk_test_` key and connected test account:
-
-```bash
-AGENT_BOUNTY_STRIPE_REAL_SANDBOX=1 \
-AGENT_BOUNTY_STRIPE_TEST_MODE=1 \
-STRIPE_SECRET_KEY=sk_test_... \
-AGENT_BOUNTY_STRIPE_SOLVER_ACCOUNTS_JSON='{"solver_stripe_smoke":"acct_..."}' \
-python3 -m agent_bounty stripe-sandbox-smoke \
-  --solver-id solver_stripe_smoke \
-  --amount-cents 100 \
-  --run-id manual-001
+```text
+Stripe-hosted Checkout
+-> signed webhook credits internal treasury exactly once
+-> accepted Motoko verifier receipt
+-> one validated Connect Transfer to a test connected account
+-> replay-safe reconciliation
 ```
 
-Non-goals for that milestone: web UI, GitHub webhooks, Hermes agents, real
-marketplace onboarding, or production Stripe credentials.
+Implemented in this repo:
 
-Note: `docs/next-codex-goal-finish-real-stripe-sandbox.md` was not present in
-the fetched repository when this slice was implemented. This document is the
-authoritative in-repo Stripe milestone record.
+- optional official Stripe SDK dependency pinned in `requirements-stripe.txt`;
+- safe `stripe-status`;
+- durable `funding_requests`, `stripe_webhook_events`, and
+  `stripe_operations` tables;
+- Checkout funding request creation with no treasury credit;
+- official-library webhook path for real signed events;
+- exact-once treasury credit from validated PaymentIntent/Checkout state;
+- connected-account validation;
+- Connect Transfer creation plus retrieval/binding validation;
+- `transfer.created` audit handling and `transfer.reversed` manual-review
+  handling;
+- `stripe-reconcile` safe report;
+- deterministic fake-client tests covering the network-free contract.
 
-Focused validation:
+External blocker for full exit criteria in a fresh checkout:
 
-```bash
-python3 -m unittest tests.test_payments
+```text
+Need real Stripe sandbox credentials, webhook secret from stripe listen, and a
+pre-created test connected account before producing live cs_/pi_/ch_/evt_/tr_
+evidence.
 ```
 
-Full validation:
+Run local deterministic validation:
 
 ```bash
 python3 -m unittest discover -s tests

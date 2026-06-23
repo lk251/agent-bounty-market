@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import http.server
 import json
 import os
 import shutil
@@ -9,9 +10,19 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .core import AgentBountyMarket
+from .core import AgentBountyMarket, MarketError
 from .db import connect
-from .payments import FakePaymentGateway, PaymentGatewayError, StripePaymentGateway
+from .payments import FakePaymentGateway, StripePaymentGateway
+from .stripe_sandbox import (
+    OfficialStripeClient,
+    PINNED_STRIPE_PACKAGE,
+    STRIPE_INTEGRATION_ENV,
+    STRIPE_REAL_RUN_ENV,
+    StripeSandboxConfig,
+    StripeSandboxError,
+    stripe_cli_version,
+    stripe_package_version,
+)
 from .util import utc_now
 from .execution import openshell_status
 from .verification import ProtectedVerifierRunner, default_verifier_dir
@@ -403,24 +414,315 @@ def cmd_openshell_status(_args: argparse.Namespace) -> int:
     return 0 if status["available"] else 2
 
 
-def cmd_stripe_sandbox_smoke(args: argparse.Namespace) -> int:
-    if os.environ.get("AGENT_BOUNTY_STRIPE_REAL_SANDBOX") != "1":
-        raise SystemExit("refusing real Stripe sandbox call: set AGENT_BOUNTY_STRIPE_REAL_SANDBOX=1")
+def open_trusted_market(db_path: str | Path, *, verifier_timeout: float = 60.0) -> AgentBountyMarket:
+    conn = connect(db_path)
+    return AgentBountyMarket(conn, FakePaymentGateway(), ProtectedVerifierRunner(timeout_seconds=verifier_timeout))
+
+
+def make_official_stripe_client() -> tuple[StripeSandboxConfig, OfficialStripeClient]:
+    config = StripeSandboxConfig.from_env()
+    return config, OfficialStripeClient(config)
+
+
+def cmd_stripe_status(_args: argparse.Namespace) -> int:
+    config = StripeSandboxConfig.from_env()
+    blockers: list[str] = []
+    if not config.enabled:
+        blockers.append(f"set {STRIPE_INTEGRATION_ENV}=1")
+    if not config.secret_key:
+        blockers.append("set STRIPE_TEST_SECRET_KEY")
+    elif not (config.secret_key.startswith("sk_test_") or config.secret_key.startswith("rk_test_")):
+        blockers.append("replace non-test Stripe API key with sk_test_ or rk_test_")
+    if not config.webhook_secret:
+        blockers.append("set STRIPE_TEST_WEBHOOK_SECRET from stripe listen")
+    if not config.connected_account_id:
+        blockers.append("set STRIPE_TEST_CONNECTED_ACCOUNT_ID to a test connected account")
+    package_version = stripe_package_version()
+    if package_version != PINNED_STRIPE_PACKAGE:
+        blockers.append(f"install optional Stripe package stripe=={PINNED_STRIPE_PACKAGE}")
+    platform: dict[str, Any] | None = None
+    connected: dict[str, Any] | None = None
+    if config.enabled and config.secret_key and package_version == PINNED_STRIPE_PACKAGE:
+        try:
+            client = OfficialStripeClient(config)
+            account = client.retrieve_account(None)
+            platform = {
+                "id": account.get("id"),
+                "country": account.get("country"),
+                "livemode": account.get("livemode"),
+            }
+            if config.platform_account_id and platform["id"] != config.platform_account_id:
+                blockers.append("authenticated platform account does not match STRIPE_TEST_PLATFORM_ACCOUNT_ID")
+            if config.connected_account_id:
+                connected_account = client.retrieve_account(config.connected_account_id)
+                connected = {
+                    "id": connected_account.get("id"),
+                    "country": connected_account.get("country"),
+                    "livemode": connected_account.get("livemode"),
+                    "charges_enabled": bool(connected_account.get("charges_enabled", False)),
+                    "payouts_enabled": bool(connected_account.get("payouts_enabled", False)),
+                }
+        except Exception as exc:
+            blockers.append(f"Stripe authenticated status failed: {exc}")
+    result = {
+        "schema": "agent-bounty-stripe-status-v1",
+        "sandbox_enabled": config.enabled,
+        "stripe_package_version": package_version,
+        "stripe_package_required": f"stripe=={PINNED_STRIPE_PACKAGE}",
+        "stripe_cli": stripe_cli_version(),
+        "webhook_secret_configured": bool(config.webhook_secret),
+        "platform_account": platform,
+        "connected_account": connected or ({"id": config.connected_account_id} if config.connected_account_id else None),
+        "blockers": blockers,
+        "ok": not blockers,
+    }
+    print_json(result)
+    return 0 if not blockers else 2
+
+
+def cmd_stripe_create_checkout(args: argparse.Namespace) -> int:
     try:
-        gateway = StripePaymentGateway.from_env(env=dict(os.environ), explicitly_configured=True)
-        result = run_stripe_sandbox_smoke(
-            gateway=gateway,
+        _config, client = make_official_stripe_client()
+        market = open_trusted_market(args.db)
+        market.create_project(project_id=args.project_id, name=args.project_id, currency=args.currency)
+        result = market.create_stripe_checkout(
             project_id=args.project_id,
-            solver_id=args.solver_id,
+            source_kind=args.source,
             amount=args.amount_cents,
             currency=args.currency,
-            run_id=args.run_id,
+            success_url=args.success_url,
+            cancel_url=args.cancel_url,
+            client=client,
+            idempotency_key=args.idempotency_key,
         )
-    except PaymentGatewayError as exc:
-        print_json({"schema": "agent-bounty-stripe-sandbox-smoke-v1", "ok": False, "error": str(exc)})
+    except (StripeSandboxError, MarketError) as exc:
+        print_json({"schema": "agent-bounty-stripe-checkout-v1", "ok": False, "error": str(exc)})
         return 1
-    print_json({"ok": True, **result})
+    print_json({"schema": "agent-bounty-stripe-checkout-v1", "ok": True, **result})
     return 0
+
+
+def cmd_stripe_attach_beneficiary(args: argparse.Namespace) -> int:
+    try:
+        _config, client = make_official_stripe_client()
+        market = open_trusted_market(args.db)
+        result = market.attach_stripe_beneficiary(solver_id=args.solver_id, account_id=args.account_id, client=client)
+    except (StripeSandboxError, MarketError) as exc:
+        print_json({"schema": "agent-bounty-stripe-beneficiary-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "agent-bounty-stripe-beneficiary-v1", "ok": True, **result})
+    return 0
+
+
+def cmd_stripe_release_transfer(args: argparse.Namespace) -> int:
+    try:
+        _config, client = make_official_stripe_client()
+        market = open_trusted_market(args.db, verifier_timeout=args.verifier_timeout)
+        result = market.release_stripe_transfer(bounty_id=args.bounty_id, client=client, idempotency_key=args.idempotency_key)
+    except (StripeSandboxError, MarketError) as exc:
+        print_json({"schema": "agent-bounty-stripe-transfer-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "agent-bounty-stripe-transfer-v1", "ok": not result.get("failed", False), **result})
+    return 0 if not result.get("failed", False) else 1
+
+
+def cmd_stripe_reconcile(args: argparse.Namespace) -> int:
+    market = open_trusted_market(args.db)
+    result = stripe_reconcile_report(market, project_id=args.project_id, solver_id=args.solver_id, bounty_id=args.bounty_id)
+    print_json(result)
+    return 0 if result["ledger_reconciled"] else 1
+
+
+def stripe_reconcile_report(market: AgentBountyMarket, *, project_id: str, solver_id: str, bounty_id: str | None = None) -> dict[str, Any]:
+    funding_requests = [dict(row) for row in market.conn.execute("SELECT * FROM funding_requests ORDER BY created_at, id").fetchall()]
+    operations = [dict(row) for row in market.conn.execute("SELECT * FROM stripe_operations ORDER BY created_at, id").fetchall()]
+    webhooks = [dict(row) for row in market.conn.execute("SELECT * FROM stripe_webhook_events ORDER BY received_at, event_id").fetchall()]
+    payouts = [dict(row) for row in market.conn.execute("SELECT * FROM payouts ORDER BY created_at, id").fetchall()]
+    reconciliation = market.reconciliation(project_id=project_id, solver_id=solver_id)
+    bounty = market.bounty_summary(bounty_id) if bounty_id else None
+    return {
+        "schema": "agent-bounty-stripe-reconcile-v1",
+        "project_id": project_id,
+        "solver_id": solver_id,
+        "bounty_id": bounty_id,
+        "ledger_reconciled": bool(reconciliation["ok"]),
+        "reconciliation": reconciliation,
+        "funding_requests": funding_requests,
+        "stripe_operations": operations,
+        "stripe_webhook_events": webhooks,
+        "payouts": payouts,
+        "bounty": bounty,
+        "safe_corrective_actions": [] if reconciliation["ok"] else ["inspect mismatched funding, ledger, and transfer rows before retrying"],
+    }
+
+
+def cmd_stripe_webhook_serve(args: argparse.Namespace) -> int:
+    config, client = make_official_stripe_client()
+    endpoint_secret = config.require_webhook_secret()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802
+            if self.path != "/stripe/webhook":
+                self.send_response(404)
+                self.end_headers()
+                return
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = self.rfile.read(length)
+            signature = self.headers.get("Stripe-Signature", "")
+            market = open_trusted_market(args.db)
+            try:
+                result = market.ingest_official_stripe_webhook(
+                    payload=payload,
+                    signature_header=signature,
+                    endpoint_secret=endpoint_secret,
+                    client=client,
+                )
+            except Exception as exc:
+                body = json.dumps({"ok": False, "error": str(exc)}, sort_keys=True).encode("utf-8")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            body = json.dumps({"ok": True, **result}, sort_keys=True).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+            return
+
+    server = http.server.ThreadingHTTPServer((args.host, args.port), Handler)
+    print_json({"schema": "agent-bounty-stripe-webhook-server-v1", "ok": True, "host": args.host, "port": args.port, "path": "/stripe/webhook"})
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        return 130
+    return 0
+
+
+def cmd_demo_stripe_motoko(args: argparse.Namespace) -> int:
+    config = StripeSandboxConfig.from_env()
+    if not config.enabled:
+        print_json({
+            "schema": "agent-bounty-demo-stripe-motoko-v1",
+            "ok": False,
+            "blocker": f"set {STRIPE_INTEGRATION_ENV}=1 plus Stripe test key, webhook secret, and connected account",
+        })
+        return 1
+    try:
+        client = OfficialStripeClient(config)
+        market = open_trusted_market(args.db, verifier_timeout=args.verifier_timeout)
+        market.create_project(project_id=DEFAULT_PROJECT_ID, name="Motoko", currency=DEFAULT_CURRENCY)
+        market.set_budget_policy(
+            project_id=DEFAULT_PROJECT_ID,
+            max_bounty_amount=args.reward_cents,
+            monthly_budget=args.reward_cents,
+            human_approval_threshold=args.reward_cents,
+            allowed_issue_classes=["machine-verifiable-tui-regression"],
+        )
+        market.create_bounty(
+            bounty_id=DEFAULT_BOUNTY_ID,
+            project_id=DEFAULT_PROJECT_ID,
+            title="Eliminate idle Motoko TUI typing latency",
+            reward_amount=args.reward_cents,
+            currency=DEFAULT_CURRENCY,
+            base_commit=DEFAULT_BASE_COMMIT,
+            issue_ref="lk251/motoko#1",
+            verifier_id="motoko_issue_1_tui_latency_v2",
+        )
+        available = market.ledger.balance(f"project:{DEFAULT_PROJECT_ID}:available", DEFAULT_CURRENCY)
+        if available < args.reward_cents:
+            checkout = market.create_stripe_checkout(
+                project_id=DEFAULT_PROJECT_ID,
+                source_kind="owner",
+                amount=args.reward_cents,
+                currency=DEFAULT_CURRENCY,
+                success_url=f"{config.public_base_url}/success",
+                cancel_url=f"{config.public_base_url}/cancel",
+                client=client,
+                idempotency_key="demo-stripe-motoko:checkout",
+            )
+            result = {
+                "schema": "agent-bounty-demo-stripe-motoko-v1",
+                "ok": False,
+                "stage": "waiting_for_signed_webhook",
+                "checkout_session_id": checkout["checkout_session_id"],
+                "payment_intent_id": checkout["payment_intent_id"],
+                "checkout_url": checkout["checkout_url"],
+                "project_available_cents": available,
+                "next": "run stripe listen, complete Checkout, then rerun demo-stripe-motoko",
+            }
+            print_json(result)
+            return 1
+        reserve = market.reserve_bounty(
+            bounty_id=DEFAULT_BOUNTY_ID,
+            idempotency_key=f"reserve:{DEFAULT_BOUNTY_ID}:{args.reward_cents}",
+        )
+        market.create_solver(
+            solver_id=DEFAULT_SOLVER_ID,
+            display_name="Codex solver for Motoko issue #1",
+            idempotency_key=f"beneficiary:{DEFAULT_SOLVER_ID}",
+        )
+        if not config.connected_account_id:
+            raise StripeSandboxError("set STRIPE_TEST_CONNECTED_ACCOUNT_ID to a test connected account before transfer release")
+        beneficiary = market.attach_stripe_beneficiary(
+            solver_id=DEFAULT_SOLVER_ID,
+            account_id=config.connected_account_id,
+            client=client,
+        )
+        claim = market.claim_bounty(
+            bounty_id=DEFAULT_BOUNTY_ID,
+            solver_id=DEFAULT_SOLVER_ID,
+            lease_expires_at="2026-06-30T18:00:00Z",
+            idempotency_key=f"claim:{DEFAULT_BOUNTY_ID}:{DEFAULT_SOLVER_ID}",
+        )
+        submission = market.submit_candidate(
+            bounty_id=DEFAULT_BOUNTY_ID,
+            solver_id=DEFAULT_SOLVER_ID,
+            candidate_repo_path=str(Path(args.motoko_repo)),
+            candidate_commit=DEFAULT_FINAL_COMMIT,
+            idempotency_key=f"submission:{DEFAULT_BOUNTY_ID}:{DEFAULT_FINAL_COMMIT}",
+        )
+        verification = market.run_verification(
+            submission_id=submission["submission_id"],
+            idempotency_key=f"verify:{DEFAULT_BOUNTY_ID}:{DEFAULT_FINAL_COMMIT}",
+        )
+        transfer = None
+        if (verification.get("receipt") or {}).get("accepted") is True:
+            transfer = market.release_stripe_transfer(
+                bounty_id=DEFAULT_BOUNTY_ID,
+                client=client,
+                idempotency_key=f"stripe-transfer:{DEFAULT_BOUNTY_ID}:{DEFAULT_FINAL_COMMIT}",
+            )
+        reconciliation = stripe_reconcile_report(market, project_id=DEFAULT_PROJECT_ID, solver_id=DEFAULT_SOLVER_ID, bounty_id=DEFAULT_BOUNTY_ID)
+        result = {
+            "schema": "agent-bounty-demo-stripe-motoko-v1",
+            "ok": bool(reconciliation["ledger_reconciled"]) and transfer is not None and not transfer.get("failed", False),
+            "stage": "complete" if transfer and not transfer.get("failed", False) else "transfer_blocked",
+            "reserve": reserve,
+            "beneficiary": beneficiary,
+            "claim": claim,
+            "submission": submission,
+            "verification": verification,
+            "transfer": transfer,
+            "reconciliation": reconciliation,
+        }
+    except (StripeSandboxError, MarketError) as exc:
+        print_json({"schema": "agent-bounty-demo-stripe-motoko-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_stripe_automated_smoke(args: argparse.Namespace) -> int:
+    if os.environ.get(STRIPE_REAL_RUN_ENV) != "1":
+        print_json({"schema": "agent-bounty-stripe-automated-smoke-v1", "ok": False, "blocker": f"set {STRIPE_REAL_RUN_ENV}=1 after configuring Stripe sandbox credentials"})
+        return 1
+    return cmd_demo_stripe_motoko(args)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -460,13 +762,59 @@ def build_parser() -> argparse.ArgumentParser:
     openshell = sub.add_parser("openshell-status", help="inspect OpenShell verifier backend availability")
     openshell.set_defaults(func=cmd_openshell_status)
 
-    stripe = sub.add_parser("stripe-sandbox-smoke", help="run an explicitly gated real Stripe test-mode funding+transfer smoke test")
-    stripe.add_argument("--project-id", default="project_stripe_smoke")
-    stripe.add_argument("--solver-id", default="solver_stripe_smoke")
-    stripe.add_argument("--amount-cents", type=int, default=100)
-    stripe.add_argument("--currency", default=DEFAULT_CURRENCY)
-    stripe.add_argument("--run-id", required=True, help="stable idempotency namespace; reuse to prove Stripe idempotency")
-    stripe.set_defaults(func=cmd_stripe_sandbox_smoke)
+    status = sub.add_parser("stripe-status", help="show safe Stripe sandbox configuration status")
+    status.set_defaults(func=cmd_stripe_status)
+
+    checkout = sub.add_parser("stripe-create-checkout", help="create a Stripe-hosted Checkout funding request")
+    checkout.add_argument("--db", required=True)
+    checkout.add_argument("--project-id", required=True)
+    checkout.add_argument("--source", choices=["owner", "donation"], required=True)
+    checkout.add_argument("--amount-cents", type=int, required=True)
+    checkout.add_argument("--currency", default=DEFAULT_CURRENCY)
+    checkout.add_argument("--success-url", required=True)
+    checkout.add_argument("--cancel-url", required=True)
+    checkout.add_argument("--idempotency-key")
+    checkout.set_defaults(func=cmd_stripe_create_checkout)
+
+    webhook = sub.add_parser("stripe-webhook-serve", help="serve a local signed Stripe webhook endpoint")
+    webhook.add_argument("--db", required=True)
+    webhook.add_argument("--host", default="127.0.0.1")
+    webhook.add_argument("--port", type=int, default=4242)
+    webhook.set_defaults(func=cmd_stripe_webhook_serve)
+
+    beneficiary = sub.add_parser("stripe-attach-beneficiary", help="attach a validated Stripe test connected account to a solver")
+    beneficiary.add_argument("--db", required=True)
+    beneficiary.add_argument("--solver-id", required=True)
+    beneficiary.add_argument("--account-id", required=True)
+    beneficiary.set_defaults(func=cmd_stripe_attach_beneficiary)
+
+    transfer = sub.add_parser("stripe-release-transfer", help="create and verify a Stripe Connect Transfer for an accepted bounty")
+    transfer.add_argument("--db", required=True)
+    transfer.add_argument("--bounty-id", required=True)
+    transfer.add_argument("--idempotency-key")
+    transfer.add_argument("--verifier-timeout", type=float, default=60.0)
+    transfer.set_defaults(func=cmd_stripe_release_transfer)
+
+    reconcile = sub.add_parser("stripe-reconcile", help="report internal/Stripe settlement links without destructive repair")
+    reconcile.add_argument("--db", required=True)
+    reconcile.add_argument("--project-id", default=DEFAULT_PROJECT_ID)
+    reconcile.add_argument("--solver-id", default=DEFAULT_SOLVER_ID)
+    reconcile.add_argument("--bounty-id", default=DEFAULT_BOUNTY_ID)
+    reconcile.set_defaults(func=cmd_stripe_reconcile)
+
+    demo_stripe = sub.add_parser("demo-stripe-motoko", help="start the real Stripe sandbox Motoko demo")
+    demo_stripe.add_argument("--db", required=True)
+    demo_stripe.add_argument("--motoko-repo", required=True)
+    demo_stripe.add_argument("--reward-cents", type=int, default=2500)
+    demo_stripe.add_argument("--verifier-timeout", type=float, default=60.0)
+    demo_stripe.set_defaults(func=cmd_demo_stripe_motoko)
+
+    auto_stripe = sub.add_parser("stripe-automated-smoke", help="explicitly gated automated Stripe sandbox smoke path")
+    auto_stripe.add_argument("--db", required=True)
+    auto_stripe.add_argument("--motoko-repo", required=True)
+    auto_stripe.add_argument("--reward-cents", type=int, default=2500)
+    auto_stripe.add_argument("--verifier-timeout", type=float, default=60.0)
+    auto_stripe.set_defaults(func=cmd_stripe_automated_smoke)
 
     return parser
 

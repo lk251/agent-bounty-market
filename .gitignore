@@ -6,3 +6,5 @@ __pycache__/
 /.direnv/
 *.sqlite3
 *.sqlite3-*
+.env
+.demo/

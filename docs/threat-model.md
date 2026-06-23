@@ -4,8 +4,8 @@
 
 - Candidate branches cannot approve themselves by editing their own tests or
   verifier files.
-- Replayed funding, reserve, verification, and payout commands do not duplicate
-  ledger entries or payouts.
+- Replayed funding, reserve, verification, and settlement commands do not
+  duplicate ledger entries or Connect Transfers.
 - Idempotency keys are rejected if replayed with changed arguments.
 - Insufficient project balance cannot reserve a bounty.
 - Failed, malformed, timed-out, or stale verification does not pay.
@@ -22,16 +22,23 @@
 - Incomplete `running` verification rows do not replay as successful work with a
   null receipt. They are retried; verifier errors and timeouts leave no
   payout-eligible receipt and move the bounty out of `verifying`.
-- Fake gateway payout failure records `payout_failed` and can be retried safely.
-- Stripe cannot be enabled accidentally: the test gateway requires explicit
-  construction, an `sk_test_` key, and configured solver Connect accounts.
-- Real Stripe test-mode smoke calls require a second explicit
-  `AGENT_BOUNTY_STRIPE_REAL_SANDBOX=1` gate, and all credentials stay in the
-  local environment.
-- Stripe webhook ingestion verifies signatures over the raw payload, rejects
-  live-mode events, stores event IDs idempotently, rejects same-ID changed
-  payload replays, and can settle or fail pending transfers without duplicating
-  ledger rows.
+- Fake gateway payout failure records `payout_failed` and can be retried safely
+  in deterministic tests.
+- Stripe cannot be enabled accidentally: the real sandbox path requires
+  `AGENT_BOUNTY_STRIPE_SANDBOX=1`, a test-mode API key, the pinned optional
+  official Stripe package, and a configured test connected account for transfer
+  release.
+- Stripe webhook ingestion uses raw payload signature verification through the
+  official library in the real path, rejects live-mode events, stores event IDs
+  idempotently, rejects same-ID changed payload replays, and can credit a
+  funding request exactly once.
+- Checkout creation and success redirects do not credit treasury. Only a
+  signed, retrieved, validated payment completion can do that.
+- Connect Transfer retrieval must match amount, currency, destination, transfer
+  group, metadata, and `livemode=false`; a `tr_` prefix alone is not sufficient.
+- Public `transfer.created` events are audit-only. `transfer.reversed` records
+  manual-review state. There is no public `transfer.failed` handling in the real
+  path.
 - Secrets are not required for tests or demo execution.
 
 ## Not Yet Protected
@@ -49,3 +56,5 @@ runs when a host has an approved `openshell` sandbox available.
 - Run untrusted candidate work in the sponsor-prescribed OpenShell/NemoClaw
   sandbox once that runtime is installed and configured for this verifier.
 - Add GitHub App signature verification and repository installation scoping.
+- Run an actual Stripe sandbox Checkout/webhook/Connect Transfer once Javier
+  supplies test credentials and a connected account.

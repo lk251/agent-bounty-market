@@ -1,0 +1,79 @@
+# Stripe Sandbox Runbook
+
+This repo's real Stripe path is sandbox-only. It uses the official
+`stripe==15.2.0` Python package, keeps secrets in the operator environment, and
+persists only safe object IDs, digests, statuses, and metadata needed for
+reconciliation.
+
+## Setup
+
+```bash
+python3 -m pip install -r requirements-stripe.txt
+cp .env.example .env
+```
+
+Set real local values in `.env` or the shell:
+
+```bash
+AGENT_BOUNTY_STRIPE_SANDBOX=1
+STRIPE_TEST_SECRET_KEY=sk_test_...
+STRIPE_TEST_WEBHOOK_SECRET=whsec_...
+STRIPE_TEST_CONNECTED_ACCOUNT_ID=acct_...
+AGENT_BOUNTY_PUBLIC_BASE_URL=http://127.0.0.1:4242
+```
+
+Never commit `.env`, API keys, webhook secrets, Checkout URLs with sensitive
+client state, or full webhook payloads.
+
+## Commands
+
+```bash
+python -m agent_bounty stripe-status
+
+python -m agent_bounty stripe-create-checkout \
+  --db .demo/stripe.sqlite3 \
+  --project-id project_motoko \
+  --source owner \
+  --amount-cents 2500 \
+  --currency usd \
+  --success-url http://127.0.0.1:4242/success \
+  --cancel-url http://127.0.0.1:4242/cancel
+
+python -m agent_bounty stripe-webhook-serve \
+  --db .demo/stripe.sqlite3 \
+  --host 127.0.0.1 \
+  --port 4242
+
+stripe listen \
+  --events payment_intent.succeeded,payment_intent.payment_failed,checkout.session.completed,checkout.session.expired \
+  --forward-to localhost:4242/stripe/webhook
+
+python -m agent_bounty stripe-attach-beneficiary \
+  --db .demo/stripe.sqlite3 \
+  --solver-id solver_codex_motoko_issue_1 \
+  --account-id acct_...
+
+python -m agent_bounty stripe-release-transfer \
+  --db .demo/stripe.sqlite3 \
+  --bounty-id bounty_motoko_issue_1
+
+python -m agent_bounty stripe-reconcile \
+  --db .demo/stripe.sqlite3 \
+  --project-id project_motoko \
+  --solver-id solver_codex_motoko_issue_1 \
+  --bounty-id bounty_motoko_issue_1
+```
+
+## Semantics
+
+- Checkout payment moves money into the Stripe platform sandbox.
+- The internal project treasury is credited only from a signed, retrieved,
+  validated payment completion event.
+- A bounty reservation is internal ledger movement from available to reserved.
+- A Connect Transfer moves platform Stripe balance to a connected account
+  balance after an accepted verifier receipt.
+- A bank payout is not part of this milestone.
+
+`transfer.created` is audit-only. `transfer.reversed` records manual review.
+Transfer creation failures are synchronous API failures or unknown remote
+outcomes recovered by idempotency key and reconciliation.

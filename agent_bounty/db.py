@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -24,7 +24,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             value TEXT NOT NULL
         );
 
-        INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '5');
+        INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '6');
 
         CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
@@ -216,7 +216,45 @@ def init_db(conn: sqlite3.Connection) -> None:
             processed_at TEXT,
             status TEXT NOT NULL,
             action TEXT,
-            error TEXT
+            error TEXT,
+            api_version TEXT,
+            account_id TEXT,
+            object_id TEXT,
+            processing_attempts INTEGER NOT NULL DEFAULT 0,
+            next_attempt_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS funding_requests (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES projects(id),
+            source_kind TEXT NOT NULL CHECK(source_kind IN ('owner', 'donation')),
+            amount INTEGER NOT NULL CHECK(amount > 0),
+            currency TEXT NOT NULL,
+            status TEXT NOT NULL,
+            checkout_session_id TEXT UNIQUE,
+            payment_intent_id TEXT UNIQUE,
+            charge_id TEXT,
+            stripe_customer_id TEXT,
+            request_idempotency_key TEXT NOT NULL UNIQUE,
+            request_parameters_digest TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            paid_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS stripe_operations (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL UNIQUE,
+            request_parameters_digest TEXT NOT NULL,
+            status TEXT NOT NULL,
+            stripe_object_type TEXT,
+            stripe_object_id TEXT,
+            stripe_request_id TEXT,
+            safe_error_code TEXT,
+            safe_error_message TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
         );
         """
     )
@@ -240,6 +278,19 @@ def init_db(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "payouts", "verifier_digest", "TEXT")
     _ensure_column(conn, "stripe_webhook_events", "action", "TEXT")
     _ensure_column(conn, "stripe_webhook_events", "error", "TEXT")
+    _ensure_column(conn, "stripe_webhook_events", "api_version", "TEXT")
+    _ensure_column(conn, "stripe_webhook_events", "account_id", "TEXT")
+    _ensure_column(conn, "stripe_webhook_events", "object_id", "TEXT")
+    _ensure_column(conn, "stripe_webhook_events", "processing_attempts", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "stripe_webhook_events", "next_attempt_at", "TEXT")
+    _ensure_column(conn, "solver_identities", "beneficiary_external_id", "TEXT")
+    _ensure_column(conn, "payouts", "stripe_transfer_id", "TEXT")
+    _ensure_column(conn, "payouts", "transfer_group", "TEXT")
+    _ensure_column(conn, "payouts", "reversal_reason", "TEXT")
+    _ensure_column(conn, "payouts", "review_required_at", "TEXT")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_funding_requests_checkout ON funding_requests(checkout_session_id) WHERE checkout_session_id IS NOT NULL")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_funding_requests_payment_intent ON funding_requests(payment_intent_id) WHERE payment_intent_id IS NOT NULL")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_stripe_operations_object ON stripe_operations(stripe_object_type, stripe_object_id)")
     conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))
     conn.commit()
 

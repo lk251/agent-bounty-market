@@ -3,13 +3,15 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 from agent_bounty.core import AgentBountyMarket, MarketError
 from agent_bounty.db import connect
-from agent_bounty.cli import run_stripe_sandbox_smoke
+from agent_bounty.cli import cmd_stripe_status, run_stripe_sandbox_smoke
 from agent_bounty.payments import (
     FakePaymentGateway,
     GatewayCredit,
@@ -18,6 +20,7 @@ from agent_bounty.payments import (
     StripePaymentGateway,
     StripeTestConfig,
 )
+from agent_bounty.stripe_sandbox import FakeStripeClient, StripeSandboxConfig
 from agent_bounty.stripe_webhooks import StripeWebhookError, record_stripe_webhook_event
 from agent_bounty.verification import ProtectedVerifierRunner
 
@@ -105,6 +108,10 @@ def signed_stripe_payload(event: dict, *, secret: str = "whsec_test", timestamp:
     return payload, f"t={timestamp},v1={digest}"
 
 
+def signed_current_payload(event: dict, *, secret: str = "whsec_test") -> tuple[bytes, str]:
+    return signed_stripe_payload(event, secret=secret, timestamp=int(time.time()))
+
+
 def make_market_with_gateway(verifier_dir: Path, gateway):
     tmp = tempfile.TemporaryDirectory()
     conn = connect(Path(tmp.name) / "market.sqlite3")
@@ -113,6 +120,33 @@ def make_market_with_gateway(verifier_dir: Path, gateway):
 
 
 class PaymentTests(unittest.TestCase):
+    def _stripe_market(self):
+        tmp = tempfile.TemporaryDirectory()
+        conn = connect(Path(tmp.name) / "market.sqlite3")
+        market = AgentBountyMarket(conn, FakePaymentGateway(), ProtectedVerifierRunner(timeout_seconds=5.0))
+        market.create_project(project_id="project_test", name="Test Project")
+        return tmp, market
+
+    def _checkout(self, market: AgentBountyMarket, client: FakeStripeClient, *, amount: int = 2500):
+        return market.create_stripe_checkout(
+            project_id="project_test",
+            source_kind="owner",
+            amount=amount,
+            currency="USD",
+            success_url="http://127.0.0.1:4242/success",
+            cancel_url="http://127.0.0.1:4242/cancel",
+            client=client,
+            idempotency_key=f"checkout:{amount}",
+        )
+
+    def _payment_event(self, payment_intent_id: str, *, event_id: str = "evt_pi_succeeded") -> dict:
+        return {
+            "id": event_id,
+            "type": "payment_intent.succeeded",
+            "livemode": False,
+            "data": {"object": {"id": payment_intent_id, "object": "payment_intent"}},
+        }
+
     def test_stripe_gateway_requires_explicit_test_configuration(self):
         with self.assertRaises(PaymentGatewayError):
             StripePaymentGateway()
@@ -233,7 +267,7 @@ class PaymentTests(unittest.TestCase):
             with self.assertRaises(MarketError):
                 market.release_payout(bounty_id=bounty_id, idempotency_key="payout:test")
 
-    def test_signed_stripe_webhook_settles_pending_payout_once(self):
+    def test_transfer_created_webhook_is_audit_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             verifier_dir = accepted_verifier(Path(tmp))
             holder, market = make_market_with_gateway(verifier_dir, PendingPaymentGateway())
@@ -265,49 +299,42 @@ class PaymentTests(unittest.TestCase):
                 now=1_800_000_000,
             )
 
-            self.assertEqual(first["action"], "paid")
+            self.assertEqual(first["action"], "transfer_created_audit")
             self.assertTrue(replay["replayed"])
             self.assertEqual(len(market.stripe_webhook_rows()), 1)
             self.assertEqual(len(market.ledger_rows()), ledger_count)
-            self.assertEqual(market.bounty_summary(bounty_id)["state"], "paid")
+            self.assertEqual(market.bounty_summary(bounty_id)["state"], "payout_pending")
             self.assertTrue(market.reconciliation(project_id=project_id, solver_id=solver_id)["ok"])
 
-    def test_stripe_webhook_failure_can_retry_payout_and_reconcile(self):
+    def test_transfer_reversed_records_manual_review(self):
         with tempfile.TemporaryDirectory() as tmp:
             verifier_dir = accepted_verifier(Path(tmp))
-            holder, market = make_market_with_gateway(verifier_dir, PendingPaymentGateway(external_id="tr_will_fail"))
+            holder, market = make_market(verifier_dir)
             self.addCleanup(holder.cleanup)
-            project_id, bounty_id, solver_id, submission_id = submit_ready(market)
+            _project_id, bounty_id, _solver_id, submission_id = submit_ready(market)
             market.run_verification(submission_id=submission_id, idempotency_key="verify:test")
-            pending = market.release_payout(bounty_id=bounty_id, idempotency_key="payout:first")
+            paid = market.release_payout(bounty_id=bounty_id, idempotency_key="payout:first")
 
             event = {
-                "id": "evt_transfer_failed",
-                "type": "transfer.failed",
+                "id": "evt_transfer_reversed",
+                "type": "transfer.reversed",
                 "livemode": False,
                 "data": {
                     "object": {
-                        "id": pending["gateway_payout_id"],
+                        "id": paid["gateway_payout_id"],
                         "object": "transfer",
-                        "failure_message": "test transfer failure",
                     }
                 },
             }
             payload, signature = signed_stripe_payload(event)
-            failed = market.ingest_stripe_webhook(
+            reversed_result = market.ingest_stripe_webhook(
                 payload=payload,
                 signature_header=signature,
                 endpoint_secret="whsec_test",
                 now=1_800_000_000,
             )
-            self.assertEqual(failed["action"], "failed")
+            self.assertEqual(reversed_result["action"], "reversal_recorded")
             self.assertEqual(market.bounty_summary(bounty_id)["state"], "payout_failed")
-
-            market.gateway = FakePaymentGateway()
-            paid = market.release_payout(bounty_id=bounty_id, idempotency_key="payout:retry")
-            self.assertFalse(paid.get("failed", False))
-            self.assertEqual(market.bounty_summary(bounty_id)["state"], "paid")
-            self.assertTrue(market.reconciliation(project_id=project_id, solver_id=solver_id)["ok"])
 
     def test_stripe_webhook_signature_rejects_invalid_and_live_events(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -332,6 +359,211 @@ class PaymentTests(unittest.TestCase):
                     endpoint_secret="whsec_test",
                     now=1_800_000_000,
                 )
+
+    def test_stripe_checkout_creation_does_not_credit_treasury(self):
+        holder, market = self._stripe_market()
+        self.addCleanup(holder.cleanup)
+        client = FakeStripeClient()
+        checkout = self._checkout(market, client)
+        self.assertTrue(checkout["checkout_session_id"].startswith("cs_test_"))
+        self.assertEqual(market.ledger.balance("project:project_test:available"), 0)
+
+    def test_signed_payment_intent_credits_once(self):
+        holder, market = self._stripe_market()
+        self.addCleanup(holder.cleanup)
+        client = FakeStripeClient()
+        checkout = self._checkout(market, client)
+        payload, signature = signed_current_payload(self._payment_event(checkout["payment_intent_id"]))
+        first = market.ingest_official_stripe_webhook(payload=payload, signature_header=signature, endpoint_secret="whsec_test", client=client)
+        replay = market.ingest_official_stripe_webhook(payload=payload, signature_header=signature, endpoint_secret="whsec_test", client=client)
+        self.assertEqual(first["action"], "funding_credited")
+        self.assertTrue(replay["replayed"])
+        self.assertEqual(market.ledger.balance("project:project_test:available"), 2500)
+        self.assertEqual(len([row for row in market.ledger_rows() if row["event_type"] == "project_funded"]), 1)
+
+    def test_checkout_completed_and_payment_intent_succeeded_credit_once(self):
+        holder, market = self._stripe_market()
+        self.addCleanup(holder.cleanup)
+        client = FakeStripeClient()
+        checkout = self._checkout(market, client)
+        checkout_event = {
+            "id": "evt_checkout_completed",
+            "type": "checkout.session.completed",
+            "livemode": False,
+            "data": {"object": {"id": checkout["checkout_session_id"], "object": "checkout.session"}},
+        }
+        payload, signature = signed_current_payload(checkout_event)
+        first = market.ingest_official_stripe_webhook(payload=payload, signature_header=signature, endpoint_secret="whsec_test", client=client)
+        payload2, signature2 = signed_current_payload(self._payment_event(checkout["payment_intent_id"], event_id="evt_pi_after_checkout"))
+        second = market.ingest_official_stripe_webhook(payload=payload2, signature_header=signature2, endpoint_secret="whsec_test", client=client)
+        self.assertEqual(first["action"], "funding_credited")
+        self.assertEqual(second["action"], "funding_already_credited")
+        self.assertEqual(market.ledger.balance("project:project_test:available"), 2500)
+
+    def test_amount_currency_metadata_mismatch_requires_review_without_credit(self):
+        holder, market = self._stripe_market()
+        self.addCleanup(holder.cleanup)
+        client = FakeStripeClient()
+        checkout = self._checkout(market, client)
+        client.payment_intents[checkout["payment_intent_id"]]["amount_received"] = 2400
+        payload, signature = signed_current_payload(self._payment_event(checkout["payment_intent_id"]))
+        result = market.ingest_official_stripe_webhook(payload=payload, signature_header=signature, endpoint_secret="whsec_test", client=client)
+        row = market.conn.execute("SELECT status FROM funding_requests WHERE id = ?", (checkout["funding_request_id"],)).fetchone()
+        self.assertEqual(result["action"], "funding_review_required")
+        self.assertEqual(row["status"], "review_required")
+        self.assertEqual(market.ledger.balance("project:project_test:available"), 0)
+
+    def test_payment_failed_and_checkout_expired_do_not_credit(self):
+        holder, market = self._stripe_market()
+        self.addCleanup(holder.cleanup)
+        client = FakeStripeClient()
+        checkout = self._checkout(market, client)
+        failed_event = {
+            "id": "evt_pi_failed",
+            "type": "payment_intent.payment_failed",
+            "livemode": False,
+            "data": {"object": client.payment_intents[checkout["payment_intent_id"]]},
+        }
+        payload, signature = signed_current_payload(failed_event)
+        market.ingest_official_stripe_webhook(payload=payload, signature_header=signature, endpoint_secret="whsec_test", client=client)
+        expired_event = {
+            "id": "evt_checkout_expired",
+            "type": "checkout.session.expired",
+            "livemode": False,
+            "data": {"object": client.checkout_sessions[checkout["checkout_session_id"]]},
+        }
+        payload2, signature2 = signed_current_payload(expired_event)
+        market.ingest_official_stripe_webhook(payload=payload2, signature_header=signature2, endpoint_secret="whsec_test", client=client)
+        self.assertEqual(market.ledger.balance("project:project_test:available"), 0)
+
+    def test_operation_idempotency_rejects_parameter_changes(self):
+        holder, market = self._stripe_market()
+        self.addCleanup(holder.cleanup)
+        client = FakeStripeClient()
+        self._checkout(market, client, amount=2500)
+        with self.assertRaises(MarketError):
+            market.create_stripe_checkout(
+                project_id="project_test",
+                source_kind="owner",
+                amount=2600,
+                currency="USD",
+                success_url="http://127.0.0.1:4242/success",
+                cancel_url="http://127.0.0.1:4242/cancel",
+                client=client,
+                idempotency_key="checkout:2500",
+            )
+
+    def test_attach_beneficiary_validates_connected_account(self):
+        holder, market = self._stripe_market()
+        self.addCleanup(holder.cleanup)
+        client = FakeStripeClient()
+        result = market.attach_stripe_beneficiary(solver_id="solver_test", account_id="acct_solver_test", client=client)
+        row = market.conn.execute("SELECT beneficiary_external_id FROM solver_identities WHERE id = 'solver_test'").fetchone()
+        self.assertEqual(result["account_id"], "acct_solver_test")
+        self.assertEqual(row["beneficiary_external_id"], "acct_solver_test")
+
+    def test_stripe_transfer_requires_accepted_receipt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier_dir = accepted_verifier(Path(tmp))
+            holder, market = make_market(verifier_dir)
+            self.addCleanup(holder.cleanup)
+            _project_id, bounty_id, solver_id, _submission_id = submit_ready(market)
+            client = FakeStripeClient()
+            market.attach_stripe_beneficiary(solver_id=solver_id, account_id="acct_solver_test", client=client)
+            with self.assertRaises(MarketError):
+                market.release_stripe_transfer(bounty_id=bounty_id, client=client)
+
+    def test_stripe_transfer_creates_and_replays_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier_dir = accepted_verifier(Path(tmp))
+            holder, market = make_market(verifier_dir)
+            self.addCleanup(holder.cleanup)
+            project_id, bounty_id, solver_id, submission_id = submit_ready(market)
+            market.run_verification(submission_id=submission_id, idempotency_key="verify:test")
+            client = FakeStripeClient()
+            market.attach_stripe_beneficiary(solver_id=solver_id, account_id="acct_solver_test", client=client)
+            first = market.release_stripe_transfer(bounty_id=bounty_id, client=client, idempotency_key="stripe-transfer:test")
+            replay = market.release_stripe_transfer(bounty_id=bounty_id, client=client, idempotency_key="stripe-transfer:test")
+            self.assertTrue(first["transfer_id"].startswith("tr_test_"))
+            self.assertTrue(replay["replayed"])
+            self.assertEqual(market.bounty_summary(bounty_id)["state"], "paid")
+            self.assertTrue(market.reconciliation(project_id=project_id, solver_id=solver_id)["ok"])
+            transfer_params = client.created_transfer_params[0]["params"]
+            self.assertEqual(transfer_params["metadata"]["receipt_id"], market.bounty_summary(bounty_id)["accepted_receipt_id"])
+
+    def test_stripe_transfer_api_failure_records_failed_and_retry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier_dir = accepted_verifier(Path(tmp))
+            holder, market = make_market(verifier_dir)
+            self.addCleanup(holder.cleanup)
+            _project_id, bounty_id, solver_id, submission_id = submit_ready(market)
+            market.run_verification(submission_id=submission_id, idempotency_key="verify:test")
+            client = FakeStripeClient()
+            market.attach_stripe_beneficiary(solver_id=solver_id, account_id="acct_solver_test", client=client)
+            client.fail_next_transfer = "insufficient test balance"
+            failed = market.release_stripe_transfer(bounty_id=bounty_id, client=client, idempotency_key="stripe-transfer:fail")
+            self.assertTrue(failed["failed"])
+            self.assertEqual(market.bounty_summary(bounty_id)["state"], "payout_failed")
+            retry = market.release_stripe_transfer(bounty_id=bounty_id, client=client, idempotency_key="stripe-transfer:retry")
+            self.assertFalse(retry.get("failed", False))
+
+    def test_stripe_transfer_retrieval_mismatch_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier_dir = accepted_verifier(Path(tmp))
+            holder, market = make_market(verifier_dir)
+            self.addCleanup(holder.cleanup)
+            _project_id, bounty_id, solver_id, submission_id = submit_ready(market)
+            market.run_verification(submission_id=submission_id, idempotency_key="verify:test")
+            client = FakeStripeClient()
+            market.attach_stripe_beneficiary(solver_id=solver_id, account_id="acct_solver_test", client=client)
+            original = client.retrieve_transfer
+            def bad_retrieve(transfer_id):
+                transfer = original(transfer_id)
+                transfer["amount"] = 1
+                return transfer
+            client.retrieve_transfer = bad_retrieve
+            result = market.release_stripe_transfer(bounty_id=bounty_id, client=client, idempotency_key="stripe-transfer:mismatch")
+            self.assertTrue(result["failed"])
+
+    def test_database_restart_preserves_stripe_event_idempotency(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "market.sqlite3"
+            conn = connect(db_path)
+            market = AgentBountyMarket(conn, FakePaymentGateway(), ProtectedVerifierRunner(timeout_seconds=5.0))
+            market.create_project(project_id="project_test", name="Test Project")
+            client = FakeStripeClient()
+            checkout = self._checkout(market, client)
+            payload, signature = signed_current_payload(self._payment_event(checkout["payment_intent_id"]))
+            market.ingest_official_stripe_webhook(payload=payload, signature_header=signature, endpoint_secret="whsec_test", client=client)
+            conn.close()
+            restarted = AgentBountyMarket(connect(db_path), FakePaymentGateway(), ProtectedVerifierRunner(timeout_seconds=5.0))
+            replay = restarted.ingest_official_stripe_webhook(payload=payload, signature_header=signature, endpoint_secret="whsec_test", client=client)
+            self.assertTrue(replay["replayed"])
+            self.assertEqual(restarted.ledger.balance("project:project_test:available"), 2500)
+
+    def test_transfer_failed_event_is_not_handled_as_public_stripe_event(self):
+        core_text = Path("agent_bounty/core.py").read_text(encoding="utf-8")
+        self.assertNotIn("transfer.failed", core_text)
+
+    def test_official_webhook_path_rejects_live_events(self):
+        holder, market = self._stripe_market()
+        self.addCleanup(holder.cleanup)
+        client = FakeStripeClient()
+        live_event = {
+            "id": "evt_live_official",
+            "type": "payment_intent.succeeded",
+            "livemode": True,
+            "data": {"object": {"id": "pi_live_bad", "object": "payment_intent", "livemode": True}},
+        }
+        payload, signature = signed_current_payload(live_event)
+        with self.assertRaises(StripeWebhookError):
+            market.ingest_official_stripe_webhook(payload=payload, signature_header=signature, endpoint_secret="whsec_test", client=client)
+
+    def test_optional_real_stripe_integration_has_explicit_gate(self):
+        if os.environ.get("AGENT_BOUNTY_STRIPE_SANDBOX") != "1" or os.environ.get("AGENT_BOUNTY_RUN_STRIPE_INTEGRATION") != "1":
+            self.skipTest("set AGENT_BOUNTY_STRIPE_SANDBOX=1 and AGENT_BOUNTY_RUN_STRIPE_INTEGRATION=1 with Stripe test credentials")
+        config = StripeSandboxConfig.from_env(dict(os.environ))
+        config.require_enabled()
 
 
 if __name__ == "__main__":

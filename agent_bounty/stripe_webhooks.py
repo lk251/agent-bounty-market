@@ -57,11 +57,31 @@ def record_stripe_webhook_event(
         raise StripeWebhookError("Stripe webhook payload must be UTF-8 JSON") from exc
     if not isinstance(event, dict):
         raise StripeWebhookError("Stripe webhook event must be a JSON object")
+    return record_verified_stripe_event(
+        conn,
+        event=event,
+        payload=payload,
+        signature_timestamp=signature_timestamp,
+    )
+
+
+def record_verified_stripe_event(
+    conn: Connection,
+    *,
+    event: dict[str, Any],
+    payload: bytes,
+    signature_timestamp: int = 0,
+) -> dict[str, Any]:
     event_id = _required_str(event, "id")
     event_type = _required_str(event, "type")
     livemode = event.get("livemode")
     if livemode is not False:
         raise StripeWebhookError("Stripe webhook event must be test-mode")
+    data = event.get("data")
+    obj = data.get("object") if isinstance(data, dict) else None
+    object_id = obj.get("id") if isinstance(obj, dict) and isinstance(obj.get("id"), str) else None
+    account_id = event.get("account") if isinstance(event.get("account"), str) else None
+    api_version = event.get("api_version") if isinstance(event.get("api_version"), str) else None
     payload_hash = sha256_bytes(payload)
     existing = conn.execute("SELECT * FROM stripe_webhook_events WHERE event_id = ?", (event_id,)).fetchone()
     if existing:
@@ -81,11 +101,11 @@ def record_stripe_webhook_event(
             """
             INSERT INTO stripe_webhook_events(
                 event_id, event_type, livemode, payload_sha256, signature_timestamp,
-                received_at, status
+                received_at, status, api_version, account_id, object_id, processing_attempts
             )
-            VALUES (?, ?, 0, ?, ?, ?, 'recorded')
+            VALUES (?, ?, 0, ?, ?, ?, 'recorded', ?, ?, ?, 0)
             """,
-            (event_id, event_type, payload_hash, signature_timestamp, received_at),
+            (event_id, event_type, payload_hash, signature_timestamp, received_at, api_version, account_id, object_id),
         )
     return {
         "event_id": event_id,
@@ -102,7 +122,8 @@ def finish_stripe_webhook_event(conn: Connection, *, event_id: str, status: str,
         conn.execute(
             """
             UPDATE stripe_webhook_events
-            SET status = ?, action = ?, error = ?, processed_at = ?
+            SET status = ?, action = ?, error = ?, processed_at = ?,
+                processing_attempts = processing_attempts + 1
             WHERE event_id = ?
             """,
             (status, action, error, utc_now(), event_id),
