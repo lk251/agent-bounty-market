@@ -23,6 +23,7 @@ from .state_machine import InvalidTransition, assert_transition
 from .stripe_sandbox import (
     StripeClient,
     StripeSandboxError,
+    automated_payment_intent_params,
     checkout_params,
     ensure_test_object,
     request_digest,
@@ -292,6 +293,110 @@ class AgentBountyMarket:
                 "checkout_url": url,
                 "status": "checkout_pending",
                 "replayed": False,
+            }
+        except Exception as exc:
+            with self.conn:
+                self._finish_stripe_operation(
+                    operation_id=operation_id,
+                    status="failed",
+                    safe_error_message=safe_error_message(exc),
+                )
+            raise
+
+    def create_stripe_automated_payment(
+        self,
+        *,
+        project_id: str,
+        source_kind: str,
+        amount: int,
+        currency: str = "USD",
+        payment_method: str,
+        client: StripeClient,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        require_positive_amount(amount)
+        currency = require_currency(currency)
+        if source_kind not in {"owner", "donation"}:
+            raise MarketError("Stripe funding source must be owner or donation")
+        treasury = self.conn.execute("SELECT currency FROM treasuries WHERE project_id = ?", (project_id,)).fetchone()
+        if not treasury:
+            raise MarketError(f"unknown project treasury {project_id}")
+        if treasury["currency"] != currency:
+            raise MarketError(f"funding currency {currency} does not match treasury currency {treasury['currency']}")
+        request_key = idempotency_key or f"stripe-automated-payment:{project_id}:{source_kind}:{amount}:{currency}:{payment_method}"
+        existing = self.conn.execute(
+            "SELECT * FROM funding_requests WHERE request_idempotency_key = ?",
+            (request_key,),
+        ).fetchone()
+        funding_request_id = existing["id"] if existing else new_id("fr")
+        params = automated_payment_intent_params(
+            funding_request_id=funding_request_id,
+            project_id=project_id,
+            source_kind=source_kind,
+            amount=amount,
+            currency=currency,
+            payment_method=payment_method,
+        )
+        digest = request_digest(params)
+        if existing and existing["request_parameters_digest"] != digest:
+            raise MarketError("Stripe automated payment idempotency key replayed with different parameters")
+        if existing and existing["payment_intent_id"]:
+            return {
+                "funding_request_id": existing["id"],
+                "payment_intent_id": existing["payment_intent_id"],
+                "charge_id": existing["charge_id"],
+                "amount": int(existing["amount"]),
+                "currency": existing["currency"],
+                "status": existing["status"],
+                "replayed": True,
+            }
+        if not existing:
+            now = utc_now()
+            with self.conn:
+                self.conn.execute(
+                    """
+                    INSERT INTO funding_requests(
+                        id, project_id, source_kind, amount, currency, status,
+                        request_idempotency_key, request_parameters_digest, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, 'created', ?, ?, ?, ?)
+                    """,
+                    (funding_request_id, project_id, source_kind, amount, currency, request_key, digest, now, now),
+                )
+        operation_id = self._begin_stripe_operation(
+            kind="payment_intent_create",
+            idempotency_key=request_key,
+            request_parameters_digest=digest,
+        )
+        try:
+            payment_intent = client.create_payment_intent(idempotency_key=request_key, params=params)
+            payment_intent_id = require_id(payment_intent, prefix="pi_", object_name="PaymentIntent")
+            charge_id = _object_id(payment_intent.get("latest_charge"), "ch_")
+            with self.conn:
+                self.conn.execute(
+                    """
+                    UPDATE funding_requests
+                    SET status = 'checkout_pending', payment_intent_id = ?,
+                        charge_id = COALESCE(?, charge_id), updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (payment_intent_id, charge_id, utc_now(), funding_request_id),
+                )
+                self._finish_stripe_operation(
+                    operation_id=operation_id,
+                    status="succeeded",
+                    stripe_object_type="payment_intent",
+                    stripe_object_id=payment_intent_id,
+                )
+            return {
+                "funding_request_id": funding_request_id,
+                "payment_intent_id": payment_intent_id,
+                "charge_id": charge_id,
+                "amount": amount,
+                "currency": currency,
+                "status": "checkout_pending",
+                "replayed": False,
+                "credit_requires_signed_webhook": True,
             }
         except Exception as exc:
             with self.conn:

@@ -63,6 +63,8 @@ The real Stripe sandbox demo is deliberately split across trusted commands:
 1. `stripe-status` checks safe configuration and exact blockers.
 2. `stripe-create-checkout` creates a server-owned funding request and hosted
    Checkout Session. This credits zero internal treasury.
+   `stripe-automated-payment` is the separate integration-gated test
+   PaymentMethod helper for repeatable smoke runs.
 3. `stripe-webhook-serve` verifies raw signed events, durably records them,
    returns 2xx, and then processes them. `stripe-process-events` recovers rows
    left recorded after restart.

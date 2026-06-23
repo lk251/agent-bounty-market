@@ -39,6 +39,15 @@ python -m agent_bounty stripe-create-checkout \
   --success-url http://127.0.0.1:4242/success \
   --cancel-url http://127.0.0.1:4242/cancel
 
+AGENT_BOUNTY_RUN_STRIPE_INTEGRATION=1 \
+python -m agent_bounty stripe-automated-payment \
+  --db .demo/stripe.sqlite3 \
+  --project-id project_motoko \
+  --source owner \
+  --amount-cents 2500 \
+  --currency usd \
+  --payment-method pm_card_visa
+
 python -m agent_bounty stripe-webhook-serve \
   --db .demo/stripe.sqlite3 \
   --host 127.0.0.1 \
@@ -70,6 +79,8 @@ python -m agent_bounty stripe-reconcile \
 ## Semantics
 
 - Checkout payment moves money into the Stripe platform sandbox.
+- The automated test PaymentMethod helper is only for repeatable sandbox smoke
+  tests and is gated by `AGENT_BOUNTY_RUN_STRIPE_INTEGRATION=1`.
 - The internal project treasury is credited only from a signed, retrieved,
   validated payment completion event.
 - A bounty reservation is internal ledger movement from available to reserved.

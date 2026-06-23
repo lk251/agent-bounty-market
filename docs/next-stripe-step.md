@@ -18,6 +18,8 @@ Implemented in this repo:
 - durable `funding_requests`, `stripe_webhook_events`, and
   `stripe_operations` tables;
 - Checkout funding request creation with no treasury credit;
+- separate integration-gated automated test PaymentMethod helper with no
+  immediate internal credit;
 - official-library webhook path for real signed events;
 - record-first webhook service plus `stripe-process-events` restart recovery;
 - exact-once treasury credit from validated PaymentIntent/Checkout state;

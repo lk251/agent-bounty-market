@@ -502,6 +502,30 @@ def cmd_stripe_create_checkout(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stripe_automated_payment(args: argparse.Namespace) -> int:
+    if os.environ.get(STRIPE_REAL_RUN_ENV) != "1":
+        print_json({"schema": "agent-bounty-stripe-automated-payment-v1", "ok": False, "blocker": f"set {STRIPE_REAL_RUN_ENV}=1 to run the real Stripe test PaymentMethod helper"})
+        return 1
+    try:
+        _config, client = make_official_stripe_client()
+        market = open_trusted_market(args.db)
+        market.create_project(project_id=args.project_id, name=args.project_id, currency=args.currency)
+        result = market.create_stripe_automated_payment(
+            project_id=args.project_id,
+            source_kind=args.source,
+            amount=args.amount_cents,
+            currency=args.currency,
+            payment_method=args.payment_method,
+            client=client,
+            idempotency_key=args.idempotency_key,
+        )
+    except (StripeSandboxError, MarketError) as exc:
+        print_json({"schema": "agent-bounty-stripe-automated-payment-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "agent-bounty-stripe-automated-payment-v1", "ok": True, **result})
+    return 0
+
+
 def cmd_stripe_attach_beneficiary(args: argparse.Namespace) -> int:
     try:
         _config, client = make_official_stripe_client()
@@ -801,6 +825,16 @@ def build_parser() -> argparse.ArgumentParser:
     checkout.add_argument("--cancel-url", required=True)
     checkout.add_argument("--idempotency-key")
     checkout.set_defaults(func=cmd_stripe_create_checkout)
+
+    automated_payment = sub.add_parser("stripe-automated-payment", help="explicitly gated real Stripe test PaymentMethod funding helper")
+    automated_payment.add_argument("--db", required=True)
+    automated_payment.add_argument("--project-id", required=True)
+    automated_payment.add_argument("--source", choices=["owner", "donation"], required=True)
+    automated_payment.add_argument("--amount-cents", type=int, required=True)
+    automated_payment.add_argument("--currency", default=DEFAULT_CURRENCY)
+    automated_payment.add_argument("--payment-method", default="pm_card_visa")
+    automated_payment.add_argument("--idempotency-key")
+    automated_payment.set_defaults(func=cmd_stripe_automated_payment)
 
     webhook = sub.add_parser("stripe-webhook-serve", help="serve a local signed Stripe webhook endpoint")
     webhook.add_argument("--db", required=True)

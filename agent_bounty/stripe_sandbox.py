@@ -30,6 +30,9 @@ class StripeClient(Protocol):
     def retrieve_payment_intent(self, payment_intent_id: str) -> dict[str, Any]:
         raise NotImplementedError
 
+    def create_payment_intent(self, *, idempotency_key: str, params: dict[str, Any]) -> dict[str, Any]:
+        raise NotImplementedError
+
     def retrieve_account(self, account_id: str | None = None) -> dict[str, Any]:
         raise NotImplementedError
 
@@ -163,6 +166,35 @@ def checkout_params(
     }
 
 
+def automated_payment_intent_params(
+    *,
+    funding_request_id: str,
+    project_id: str,
+    source_kind: str,
+    amount: int,
+    currency: str,
+    payment_method: str,
+) -> dict[str, Any]:
+    require_positive_amount(amount)
+    currency = require_currency(currency).lower()
+    metadata = {
+        "agent_bounty_kind": "project_funding",
+        "funding_request_id": funding_request_id,
+        "project_id": project_id,
+        "source_kind": source_kind,
+        "amount": str(amount),
+        "currency": currency,
+    }
+    return {
+        "amount": amount,
+        "currency": currency,
+        "payment_method": payment_method,
+        "confirm": True,
+        "error_on_requires_action": True,
+        "metadata": metadata,
+    }
+
+
 def transfer_params(
     *,
     project_id: str,
@@ -236,6 +268,15 @@ class OfficialStripeClient:
             self.stripe.PaymentIntent.retrieve(payment_intent_id, expand=["latest_charge"])
         )
 
+    def create_payment_intent(self, *, idempotency_key: str, params: dict[str, Any]) -> dict[str, Any]:
+        return _stripe_object_to_dict(
+            self.stripe.PaymentIntent.create(
+                **params,
+                expand=["latest_charge"],
+                idempotency_key=idempotency_key,
+            )
+        )
+
     def retrieve_account(self, account_id: str | None = None) -> dict[str, Any]:
         if account_id:
             return _stripe_object_to_dict(self.stripe.Account.retrieve(account_id))
@@ -264,6 +305,7 @@ class FakeStripeClient:
         self.accounts: dict[str, dict[str, Any]] = {}
         self.transfers: dict[str, dict[str, Any]] = {}
         self.created_checkout_params: list[dict[str, Any]] = []
+        self.created_payment_intent_params: list[dict[str, Any]] = []
         self.created_transfer_params: list[dict[str, Any]] = []
         self.fail_next_transfer: str | None = None
         self.platform_account = {"id": "acct_platform_test", "object": "account", "livemode": False, "country": "US"}
@@ -319,6 +361,27 @@ class FakeStripeClient:
 
     def retrieve_payment_intent(self, payment_intent_id: str) -> dict[str, Any]:
         return dict(self.payment_intents[payment_intent_id])
+
+    def create_payment_intent(self, *, idempotency_key: str, params: dict[str, Any]) -> dict[str, Any]:
+        self.created_payment_intent_params.append({"idempotency_key": idempotency_key, "params": params})
+        payment_intent_id = self._fake_id("pi_test", idempotency_key)
+        existing = self.payment_intents.get(payment_intent_id)
+        if existing:
+            return dict(existing)
+        charge_id = self._fake_id("ch_test", idempotency_key)
+        payment_intent = {
+            "id": payment_intent_id,
+            "object": "payment_intent",
+            "livemode": False,
+            "amount": int(params["amount"]),
+            "amount_received": int(params["amount"]),
+            "currency": params["currency"],
+            "status": "succeeded",
+            "metadata": dict(params["metadata"]),
+            "latest_charge": {"id": charge_id, "object": "charge", "livemode": False},
+        }
+        self.payment_intents[payment_intent_id] = payment_intent
+        return dict(payment_intent)
 
     def retrieve_account(self, account_id: str | None = None) -> dict[str, Any]:
         if not account_id:

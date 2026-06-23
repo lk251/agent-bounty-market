@@ -368,6 +368,43 @@ class PaymentTests(unittest.TestCase):
         self.assertTrue(checkout["checkout_session_id"].startswith("cs_test_"))
         self.assertEqual(market.ledger.balance("project:project_test:available"), 0)
 
+    def test_automated_payment_creates_payment_intent_without_credit(self):
+        holder, market = self._stripe_market()
+        self.addCleanup(holder.cleanup)
+        client = FakeStripeClient()
+        result = market.create_stripe_automated_payment(
+            project_id="project_test",
+            source_kind="owner",
+            amount=2500,
+            currency="USD",
+            payment_method="pm_card_visa",
+            client=client,
+            idempotency_key="automated:test",
+        )
+        self.assertTrue(result["payment_intent_id"].startswith("pi_test_"))
+        self.assertTrue(result["charge_id"].startswith("ch_test_"))
+        self.assertTrue(result["credit_requires_signed_webhook"])
+        self.assertEqual(market.ledger.balance("project:project_test:available"), 0)
+        self.assertEqual(client.created_payment_intent_params[0]["params"]["payment_method"], "pm_card_visa")
+
+    def test_automated_payment_credits_only_after_signed_event(self):
+        holder, market = self._stripe_market()
+        self.addCleanup(holder.cleanup)
+        client = FakeStripeClient()
+        result = market.create_stripe_automated_payment(
+            project_id="project_test",
+            source_kind="owner",
+            amount=2500,
+            currency="USD",
+            payment_method="pm_card_visa",
+            client=client,
+            idempotency_key="automated:test",
+        )
+        payload, signature = signed_current_payload(self._payment_event(result["payment_intent_id"]))
+        credited = market.ingest_official_stripe_webhook(payload=payload, signature_header=signature, endpoint_secret="whsec_test", client=client)
+        self.assertEqual(credited["action"], "funding_credited")
+        self.assertEqual(market.ledger.balance("project:project_test:available"), 2500)
+
     def test_signed_payment_intent_credits_once(self):
         holder, market = self._stripe_market()
         self.addCleanup(holder.cleanup)

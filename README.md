@@ -127,6 +127,24 @@ stripe listen \
   --forward-to localhost:4242/stripe/webhook
 ```
 
+For repeatable sandbox tests, an explicit automated PaymentMethod helper can
+create and confirm a test PaymentIntent. It is separate from the hosted Checkout
+path and still does not credit internal treasury until the signed event is
+processed:
+
+```bash
+AGENT_BOUNTY_STRIPE_SANDBOX=1 \
+AGENT_BOUNTY_RUN_STRIPE_INTEGRATION=1 \
+STRIPE_TEST_SECRET_KEY=sk_test_... \
+python -m agent_bounty stripe-automated-payment \
+  --db .demo/stripe.sqlite3 \
+  --project-id project_motoko \
+  --source owner \
+  --amount-cents 2500 \
+  --currency usd \
+  --payment-method pm_card_visa
+```
+
 Attach a pre-created test connected account and release the accepted bounty:
 
 ```bash
