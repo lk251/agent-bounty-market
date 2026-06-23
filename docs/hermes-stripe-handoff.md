@@ -8,7 +8,7 @@ Trusted operator/orchestrator responsibilities:
 
 - keep Stripe credentials in the local environment;
 - run `stripe-status`, `stripe-create-checkout`, `stripe-webhook-serve`,
-  `stripe-attach-beneficiary`, `stripe-release-transfer`, and
+  `stripe-process-events`, `stripe-attach-beneficiary`, `stripe-release-transfer`, and
   `stripe-reconcile`;
 - inspect compact JSON outputs and safe object IDs;
 - decide whether a reconciliation blocker needs manual Stripe dashboard work.

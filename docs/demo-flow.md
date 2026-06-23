@@ -63,8 +63,9 @@ The real Stripe sandbox demo is deliberately split across trusted commands:
 1. `stripe-status` checks safe configuration and exact blockers.
 2. `stripe-create-checkout` creates a server-owned funding request and hosted
    Checkout Session. This credits zero internal treasury.
-3. `stripe-webhook-serve` verifies raw signed events and credits treasury once
-   after retrieving and validating the PaymentIntent/Checkout state.
+3. `stripe-webhook-serve` verifies raw signed events, durably records them,
+   returns 2xx, and then processes them. `stripe-process-events` recovers rows
+   left recorded after restart.
 4. The normal Motoko verifier flow accepts the exact candidate commit.
 5. `stripe-attach-beneficiary` validates a pre-created test connected account.
 6. `stripe-release-transfer` creates and retrieves one Connect Transfer.

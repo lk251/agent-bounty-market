@@ -19,6 +19,7 @@ Implemented in this repo:
   `stripe_operations` tables;
 - Checkout funding request creation with no treasury credit;
 - official-library webhook path for real signed events;
+- record-first webhook service plus `stripe-process-events` restart recovery;
 - exact-once treasury credit from validated PaymentIntent/Checkout state;
 - connected-account validation;
 - Connect Transfer creation plus retrieval/binding validation;

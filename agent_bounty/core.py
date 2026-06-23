@@ -317,6 +317,66 @@ class AgentBountyMarket:
         recorded = record_verified_stripe_event(self.conn, event=event, payload=payload)
         return self._process_recorded_stripe_event(recorded=recorded, client=client)
 
+    def record_official_stripe_webhook(
+        self,
+        *,
+        payload: bytes,
+        signature_header: str,
+        endpoint_secret: str,
+        client: StripeClient,
+    ) -> dict[str, Any]:
+        try:
+            event = client.construct_event(payload, signature_header, endpoint_secret)
+        except Exception as exc:
+            raise StripeWebhookError(safe_error_message(exc)) from exc
+        recorded = record_verified_stripe_event(self.conn, event=event, payload=payload)
+        return {
+            "event_id": recorded["event_id"],
+            "event_type": recorded["event_type"],
+            "replayed": recorded["replayed"],
+            "status": recorded["status"],
+            "action": recorded["action"],
+        }
+
+    def process_stripe_event_row(self, *, event_id: str, client: StripeClient) -> dict[str, Any]:
+        row = self.conn.execute("SELECT * FROM stripe_webhook_events WHERE event_id = ?", (event_id,)).fetchone()
+        if not row:
+            raise MarketError(f"unknown Stripe webhook event {event_id}")
+        if row["status"] == "processed":
+            return {
+                "event_id": row["event_id"],
+                "event_type": row["event_type"],
+                "replayed": True,
+                "status": row["status"],
+                "action": row["action"],
+            }
+        if row["livemode"]:
+            raise StripeWebhookError("Stripe webhook event must be test-mode")
+        object_id = row["object_id"]
+        if not object_id:
+            return {
+                "event_id": row["event_id"],
+                "event_type": row["event_type"],
+                "replayed": False,
+                "status": row["status"],
+                "action": "ignored_missing_object_id",
+            }
+        event = {
+            "id": row["event_id"],
+            "type": row["event_type"],
+            "livemode": False,
+            "data": {"object": {"id": object_id}},
+        }
+        recorded = {
+            "event_id": row["event_id"],
+            "event_type": row["event_type"],
+            "event": event,
+            "replayed": False,
+            "status": row["status"],
+            "action": row["action"],
+        }
+        return self._process_recorded_stripe_event(recorded=recorded, client=client)
+
     def create_bounty(
         self,
         *,

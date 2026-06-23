@@ -533,6 +533,28 @@ def cmd_stripe_reconcile(args: argparse.Namespace) -> int:
     return 0 if result["ledger_reconciled"] else 1
 
 
+def cmd_stripe_process_events(args: argparse.Namespace) -> int:
+    try:
+        _config, client = make_official_stripe_client()
+        market = open_trusted_market(args.db)
+        rows = market.conn.execute(
+            """
+            SELECT event_id
+            FROM stripe_webhook_events
+            WHERE status IN ('recorded', 'failed')
+            ORDER BY received_at, event_id
+            LIMIT ?
+            """,
+            (args.limit,),
+        ).fetchall()
+        results = [market.process_stripe_event_row(event_id=row["event_id"], client=client) for row in rows]
+    except (StripeSandboxError, MarketError) as exc:
+        print_json({"schema": "agent-bounty-stripe-process-events-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "agent-bounty-stripe-process-events-v1", "ok": True, "processed": len(results), "events": results})
+    return 0
+
+
 def stripe_reconcile_report(market: AgentBountyMarket, *, project_id: str, solver_id: str, bounty_id: str | None = None) -> dict[str, Any]:
     funding_requests = [dict(row) for row in market.conn.execute("SELECT * FROM funding_requests ORDER BY created_at, id").fetchall()]
     operations = [dict(row) for row in market.conn.execute("SELECT * FROM stripe_operations ORDER BY created_at, id").fetchall()]
@@ -571,7 +593,7 @@ def cmd_stripe_webhook_serve(args: argparse.Namespace) -> int:
             signature = self.headers.get("Stripe-Signature", "")
             market = open_trusted_market(args.db)
             try:
-                result = market.ingest_official_stripe_webhook(
+                result = market.record_official_stripe_webhook(
                     payload=payload,
                     signature_header=signature,
                     endpoint_secret=endpoint_secret,
@@ -591,6 +613,10 @@ def cmd_stripe_webhook_serve(args: argparse.Namespace) -> int:
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            try:
+                market.process_stripe_event_row(event_id=str(result["event_id"]), client=client)
+            except Exception:
+                return
 
         def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
             return
@@ -801,6 +827,11 @@ def build_parser() -> argparse.ArgumentParser:
     reconcile.add_argument("--solver-id", default=DEFAULT_SOLVER_ID)
     reconcile.add_argument("--bounty-id", default=DEFAULT_BOUNTY_ID)
     reconcile.set_defaults(func=cmd_stripe_reconcile)
+
+    process = sub.add_parser("stripe-process-events", help="process recorded Stripe webhook rows after restart")
+    process.add_argument("--db", required=True)
+    process.add_argument("--limit", type=int, default=100)
+    process.set_defaults(func=cmd_stripe_process_events)
 
     demo_stripe = sub.add_parser("demo-stripe-motoko", help="start the real Stripe sandbox Motoko demo")
     demo_stripe.add_argument("--db", required=True)

@@ -44,6 +44,9 @@ python -m agent_bounty stripe-webhook-serve \
   --host 127.0.0.1 \
   --port 4242
 
+python -m agent_bounty stripe-process-events \
+  --db .demo/stripe.sqlite3
+
 stripe listen \
   --events payment_intent.succeeded,payment_intent.payment_failed,checkout.session.completed,checkout.session.expired \
   --forward-to localhost:4242/stripe/webhook

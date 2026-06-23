@@ -1,18 +1,30 @@
 name: CI
 
 on:
-  push:
   pull_request:
+  push:
 
 jobs:
-  test:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Compile
-        run: python -m compileall agent_bounty tests verifiers
-      - name: Unit tests
-        run: python -m unittest discover -s tests
+      - name: Run default deterministic tests
+        run: |
+          python -m unittest discover -s tests
+          python -m py_compile $(find agent_bounty verifiers tests -name '*.py' -print)
+
+  stripe-adapter-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned official Stripe SDK
+        run: python -m pip install -r requirements-stripe.txt
+      - name: Run secret-free Stripe adapter contract tests
+        run: python -m unittest tests.test_payments

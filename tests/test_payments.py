@@ -381,6 +381,26 @@ class PaymentTests(unittest.TestCase):
         self.assertEqual(market.ledger.balance("project:project_test:available"), 2500)
         self.assertEqual(len([row for row in market.ledger_rows() if row["event_type"] == "project_funded"]), 1)
 
+    def test_signed_webhook_can_record_then_process_after_restart(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "market.sqlite3"
+            conn = connect(db_path)
+            market = AgentBountyMarket(conn, FakePaymentGateway(), ProtectedVerifierRunner(timeout_seconds=5.0))
+            market.create_project(project_id="project_test", name="Test Project")
+            client = FakeStripeClient()
+            checkout = self._checkout(market, client)
+            payload, signature = signed_current_payload(self._payment_event(checkout["payment_intent_id"]))
+            recorded = market.record_official_stripe_webhook(payload=payload, signature_header=signature, endpoint_secret="whsec_test", client=client)
+            self.assertEqual(recorded["status"], "recorded")
+            self.assertEqual(market.ledger.balance("project:project_test:available"), 0)
+            conn.close()
+            restarted = AgentBountyMarket(connect(db_path), FakePaymentGateway(), ProtectedVerifierRunner(timeout_seconds=5.0))
+            processed = restarted.process_stripe_event_row(event_id=recorded["event_id"], client=client)
+            replay = restarted.process_stripe_event_row(event_id=recorded["event_id"], client=client)
+            self.assertEqual(processed["action"], "funding_credited")
+            self.assertTrue(replay["replayed"])
+            self.assertEqual(restarted.ledger.balance("project:project_test:available"), 2500)
+
     def test_checkout_completed_and_payment_intent_succeeded_credit_once(self):
         holder, market = self._stripe_market()
         self.addCleanup(holder.cleanup)

@@ -143,3 +143,10 @@ python -m agent_bounty stripe-release-transfer \
 `stripe-reconcile` reports funding requests, webhook rows, Stripe operations,
 ledger balance checks, and safe corrective actions. Bank payout from the
 connected account is outside this milestone.
+
+If the webhook service is interrupted after recording an event but before
+processing it, run:
+
+```bash
+python -m agent_bounty stripe-process-events --db .demo/stripe.sqlite3
+```
