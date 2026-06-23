@@ -20,6 +20,7 @@ from .ledger import (
 )
 from .payments import PaymentGateway, PaymentGatewayError
 from .state_machine import InvalidTransition, assert_transition
+from .stripe_webhooks import StripeWebhookError, finish_stripe_webhook_event, record_stripe_webhook_event
 from .util import require_currency, require_positive_amount, stable_json, utc_now
 from .verification import ProtectedVerifierRunner, receipt_payload
 
@@ -586,6 +587,13 @@ class AgentBountyMarket:
             raise MarketError("cannot release payout without a submission")
         if existing and existing["status"] == "paid":
             return {"payout_id": existing["id"], "gateway_payout_id": existing["gateway_payout_id"], "replayed": True}
+        if existing and existing["status"] == "pending" and bounty["state"] == BountyState.PAYOUT_PENDING.value:
+            return {
+                "payout_id": existing["id"],
+                "gateway_payout_id": existing["gateway_payout_id"],
+                "replayed": True,
+                "pending": True,
+            }
         if bounty["state"] not in {BountyState.ACCEPTED.value, BountyState.PAYOUT_FAILED.value}:
             raise MarketError(f"cannot release payout from state {bounty['state']}")
         receipt = self._accepted_receipt_for_payout(bounty, submission)
@@ -623,39 +631,29 @@ class AgentBountyMarket:
                 currency=bounty["currency"],
                 idempotency_key=idempotency_key,
             )
-            with self.conn:
-                self.ledger.transfer(
-                    event_type="payout_in_transit",
-                    idempotency_key=f"ledger:{idempotency_key}:transit",
-                    from_account=solver_earned_account(submission["solver_id"]),
-                    to_account=solver_payout_transit_account(submission["solver_id"]),
-                    amount=int(bounty["reward_amount"]),
-                    currency=bounty["currency"],
-                    project_id=bounty["project_id"],
-                    bounty_id=bounty_id,
-                    solver_id=submission["solver_id"],
-                    payout_id=payout_id,
-                    prevent_negative_accounts={solver_earned_account(submission["solver_id"])},
-                )
-                self.ledger.transfer(
-                    event_type="payout_paid",
-                    idempotency_key=f"ledger:{idempotency_key}:paid",
-                    from_account=solver_payout_transit_account(submission["solver_id"]),
-                    to_account=solver_paid_account(submission["solver_id"]),
-                    amount=int(bounty["reward_amount"]),
-                    currency=bounty["currency"],
-                    project_id=bounty["project_id"],
-                    bounty_id=bounty_id,
-                    solver_id=submission["solver_id"],
-                    payout_id=payout_id,
-                    external_id=gateway_payout.external_id,
-                    prevent_negative_accounts={solver_payout_transit_account(submission["solver_id"])},
-                )
-                self.conn.execute(
-                    "UPDATE payouts SET status = 'paid', gateway_payout_id = ?, updated_at = ? WHERE id = ?",
-                    (gateway_payout.external_id, utc_now(), payout_id),
-                )
-                self._transition_bounty(bounty_id, BountyState.PAID, reason="payout_paid", idempotency_key=f"state:{idempotency_key}:paid")
+            if gateway_payout.status == "pending":
+                with self.conn:
+                    self.conn.execute(
+                        "UPDATE payouts SET status = 'pending', gateway_payout_id = ?, updated_at = ? WHERE id = ?",
+                        (gateway_payout.external_id, utc_now(), payout_id),
+                    )
+                return {
+                    "payout_id": payout_id,
+                    "gateway_payout_id": gateway_payout.external_id,
+                    "replayed": False,
+                    "pending": True,
+                }
+            if gateway_payout.status == "failed":
+                raise PaymentGatewayError(f"gateway payout failed for {gateway_payout.external_id}")
+            if gateway_payout.status != "paid":
+                raise PaymentGatewayError(f"gateway returned unsupported payout status {gateway_payout.status}")
+            self._complete_payout(
+                bounty=bounty,
+                submission=submission,
+                payout_id=payout_id,
+                gateway_payout_id=gateway_payout.external_id,
+                idempotency_key=idempotency_key,
+            )
             return {"payout_id": payout_id, "gateway_payout_id": gateway_payout.external_id, "replayed": False}
         except PaymentGatewayError as exc:
             with self.conn:
@@ -683,6 +681,48 @@ class AgentBountyMarket:
                 )
                 self._transition_bounty(bounty_id, BountyState.PAYOUT_FAILED, reason=f"payout_failed:{exc}", idempotency_key=f"state:{idempotency_key}:payout_failed")
             return {"payout_id": payout_id, "gateway_payout_id": None, "replayed": False, "failed": True, "error": str(exc)}
+
+    def ingest_stripe_webhook(
+        self,
+        *,
+        payload: bytes,
+        signature_header: str,
+        endpoint_secret: str,
+        now: int | None = None,
+        tolerance_seconds: int = 300,
+    ) -> dict[str, Any]:
+        recorded = record_stripe_webhook_event(
+            self.conn,
+            payload=payload,
+            signature_header=signature_header,
+            endpoint_secret=endpoint_secret,
+            now=now,
+            tolerance_seconds=tolerance_seconds,
+        )
+        if recorded["replayed"]:
+            return {
+                "event_id": recorded["event_id"],
+                "event_type": recorded["event_type"],
+                "replayed": True,
+                "status": recorded["status"],
+                "action": recorded["action"],
+            }
+        event = recorded["event"]
+        event_id = recorded["event_id"]
+        event_type = recorded["event_type"]
+        try:
+            action = self._apply_stripe_event(event_id=event_id, event_type=event_type, event=event)
+            finish_stripe_webhook_event(self.conn, event_id=event_id, status="processed", action=action)
+            return {
+                "event_id": event_id,
+                "event_type": event_type,
+                "replayed": False,
+                "status": "processed",
+                "action": action,
+            }
+        except (MarketError, StripeWebhookError) as exc:
+            finish_stripe_webhook_event(self.conn, event_id=event_id, status="failed", error=str(exc))
+            raise
 
     def reconciliation(self, *, project_id: str, solver_id: str, currency: str = "USD") -> dict[str, Any]:
         currency = require_currency(currency)
@@ -727,6 +767,126 @@ class AgentBountyMarket:
     def ledger_rows(self) -> list[dict[str, Any]]:
         rows = self.conn.execute("SELECT * FROM ledger_entries ORDER BY created_at, id").fetchall()
         return [dict(row) for row in rows]
+
+    def stripe_webhook_rows(self) -> list[dict[str, Any]]:
+        rows = self.conn.execute("SELECT * FROM stripe_webhook_events ORDER BY received_at, event_id").fetchall()
+        return [dict(row) for row in rows]
+
+    def mark_gateway_payout_paid(self, *, gateway_payout_id: str, idempotency_key: str) -> dict[str, Any]:
+        payout = self.conn.execute("SELECT * FROM payouts WHERE gateway_payout_id = ?", (gateway_payout_id,)).fetchone()
+        if not payout:
+            return {"gateway_payout_id": gateway_payout_id, "action": "ignored_unknown_payout"}
+        if payout["status"] == "paid":
+            return {"payout_id": payout["id"], "gateway_payout_id": gateway_payout_id, "replayed": True, "action": "already_paid"}
+        if payout["status"] == "failed":
+            return {"payout_id": payout["id"], "gateway_payout_id": gateway_payout_id, "action": "ignored_failed_payout"}
+        bounty = self._bounty(payout["bounty_id"])
+        submission = self.conn.execute(
+            "SELECT * FROM submissions WHERE bounty_id = ? AND solver_id = ? ORDER BY created_at DESC LIMIT 1",
+            (payout["bounty_id"], payout["solver_id"]),
+        ).fetchone()
+        if not submission:
+            raise MarketError("cannot mark payout paid without a submission")
+        self._complete_payout(
+            bounty=bounty,
+            submission=submission,
+            payout_id=payout["id"],
+            gateway_payout_id=gateway_payout_id,
+            idempotency_key=idempotency_key,
+        )
+        return {"payout_id": payout["id"], "gateway_payout_id": gateway_payout_id, "replayed": False, "action": "paid"}
+
+    def mark_gateway_payout_failed(self, *, gateway_payout_id: str, reason: str, idempotency_key: str) -> dict[str, Any]:
+        payout = self.conn.execute("SELECT * FROM payouts WHERE gateway_payout_id = ?", (gateway_payout_id,)).fetchone()
+        if not payout:
+            return {"gateway_payout_id": gateway_payout_id, "action": "ignored_unknown_payout"}
+        if payout["status"] == "paid":
+            return {"payout_id": payout["id"], "gateway_payout_id": gateway_payout_id, "action": "ignored_paid_payout"}
+        if payout["status"] == "failed":
+            return {"payout_id": payout["id"], "gateway_payout_id": gateway_payout_id, "replayed": True, "action": "already_failed"}
+        with self.conn:
+            self.conn.execute("UPDATE payouts SET status = 'failed', updated_at = ? WHERE id = ?", (utc_now(), payout["id"]))
+            bounty = self._bounty(payout["bounty_id"])
+            if bounty["state"] == BountyState.PAYOUT_PENDING.value:
+                self._transition_bounty(
+                    payout["bounty_id"],
+                    BountyState.PAYOUT_FAILED,
+                    reason=f"stripe_payout_failed:{reason}",
+                    idempotency_key=f"state:{idempotency_key}:payout_failed",
+                )
+        return {"payout_id": payout["id"], "gateway_payout_id": gateway_payout_id, "replayed": False, "action": "failed"}
+
+    def _complete_payout(
+        self,
+        *,
+        bounty: sqlite3.Row,
+        submission: sqlite3.Row,
+        payout_id: str,
+        gateway_payout_id: str,
+        idempotency_key: str,
+    ) -> None:
+        with self.conn:
+            self.ledger.transfer(
+                event_type="payout_in_transit",
+                idempotency_key=f"ledger:{idempotency_key}:transit",
+                from_account=solver_earned_account(submission["solver_id"]),
+                to_account=solver_payout_transit_account(submission["solver_id"]),
+                amount=int(bounty["reward_amount"]),
+                currency=bounty["currency"],
+                project_id=bounty["project_id"],
+                bounty_id=bounty["id"],
+                solver_id=submission["solver_id"],
+                payout_id=payout_id,
+                prevent_negative_accounts={solver_earned_account(submission["solver_id"])},
+            )
+            self.ledger.transfer(
+                event_type="payout_paid",
+                idempotency_key=f"ledger:{idempotency_key}:paid",
+                from_account=solver_payout_transit_account(submission["solver_id"]),
+                to_account=solver_paid_account(submission["solver_id"]),
+                amount=int(bounty["reward_amount"]),
+                currency=bounty["currency"],
+                project_id=bounty["project_id"],
+                bounty_id=bounty["id"],
+                solver_id=submission["solver_id"],
+                payout_id=payout_id,
+                external_id=gateway_payout_id,
+                prevent_negative_accounts={solver_payout_transit_account(submission["solver_id"])},
+            )
+            self.conn.execute(
+                "UPDATE payouts SET status = 'paid', gateway_payout_id = ?, updated_at = ? WHERE id = ?",
+                (gateway_payout_id, utc_now(), payout_id),
+            )
+            self._transition_bounty(
+                bounty["id"],
+                BountyState.PAID,
+                reason="payout_paid",
+                idempotency_key=f"state:{idempotency_key}:paid",
+            )
+
+    def _apply_stripe_event(self, *, event_id: str, event_type: str, event: dict[str, Any]) -> str:
+        data = event.get("data")
+        obj = data.get("object") if isinstance(data, dict) else None
+        if not isinstance(obj, dict):
+            return "ignored_missing_object"
+        external_id = obj.get("id")
+        if not isinstance(external_id, str) or not external_id:
+            return "ignored_missing_object_id"
+        if event_type in {"transfer.created", "transfer.succeeded", "transfer.paid"}:
+            result = self.mark_gateway_payout_paid(
+                gateway_payout_id=external_id,
+                idempotency_key=f"stripe-webhook:{event_id}:paid",
+            )
+            return str(result["action"])
+        if event_type in {"transfer.failed", "payout.failed"}:
+            failure = obj.get("failure_message") or obj.get("failure_code") or event_type
+            result = self.mark_gateway_payout_failed(
+                gateway_payout_id=external_id,
+                reason=str(failure),
+                idempotency_key=f"stripe-webhook:{event_id}:failed",
+            )
+            return str(result["action"])
+        return f"ignored_{event_type}"
 
     def _bounty(self, bounty_id: str) -> sqlite3.Row:
         row = self.conn.execute("SELECT * FROM bounties WHERE id = ?", (bounty_id,)).fetchone()

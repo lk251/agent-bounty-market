@@ -23,6 +23,12 @@
   null receipt. They are retried; verifier errors and timeouts leave no
   payout-eligible receipt and move the bounty out of `verifying`.
 - Fake gateway payout failure records `payout_failed` and can be retried safely.
+- Stripe cannot be enabled accidentally: the test gateway requires explicit
+  construction, an `sk_test_` key, and configured solver Connect accounts.
+- Stripe webhook ingestion verifies signatures over the raw payload, rejects
+  live-mode events, stores event IDs idempotently, rejects same-ID changed
+  payload replays, and can settle or fail pending transfers without duplicating
+  ledger rows.
 - Secrets are not required for tests or demo execution.
 
 ## Not Yet Protected
@@ -39,5 +45,6 @@ runs when a host has an approved `openshell` sandbox available.
 
 - Run untrusted candidate work in the sponsor-prescribed OpenShell/NemoClaw
   sandbox once that runtime is installed and configured for this verifier.
-- Add Stripe webhook signature verification and idempotent event ingestion.
+- Add a real Stripe test-account smoke test that is manually gated by
+  environment variables and never required for normal CI.
 - Add GitHub App signature verification and repository installation scoping.

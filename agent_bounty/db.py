@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -24,7 +24,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             value TEXT NOT NULL
         );
 
-        INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '3');
+        INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '4');
 
         CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
@@ -204,6 +204,19 @@ def init_db(conn: sqlite3.Connection) -> None:
 
         CREATE UNIQUE INDEX IF NOT EXISTS one_receipt_per_candidate_verifier
             ON verification_receipts(bounty_id, candidate_commit, verifier_digest);
+
+        CREATE TABLE IF NOT EXISTS stripe_webhook_events (
+            event_id TEXT PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            livemode INTEGER NOT NULL CHECK(livemode IN (0, 1)),
+            payload_sha256 TEXT NOT NULL,
+            signature_timestamp INTEGER NOT NULL,
+            received_at TEXT NOT NULL,
+            processed_at TEXT,
+            status TEXT NOT NULL,
+            action TEXT,
+            error TEXT
+        );
         """
     )
     _ensure_column(conn, "verification_receipts", "project_id", "TEXT")
@@ -223,6 +236,8 @@ def init_db(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "verification_runs", "attempt", "INTEGER NOT NULL DEFAULT 1")
     _ensure_column(conn, "payouts", "accepted_receipt_id", "TEXT")
     _ensure_column(conn, "payouts", "verifier_digest", "TEXT")
+    _ensure_column(conn, "stripe_webhook_events", "action", "TEXT")
+    _ensure_column(conn, "stripe_webhook_events", "error", "TEXT")
     conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))
     conn.commit()
 

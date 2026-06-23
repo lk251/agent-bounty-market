@@ -7,7 +7,9 @@ gateway releases exactly one payout.
 
 This is not the marketplace UI, not a production Stripe integration, and not a
 secure sandbox. It is the trustable local economic kernel that the later GitHub,
-Stripe, Hermes, and NVIDIA safety integrations can build on.
+Hermes, and NVIDIA safety integrations can build on. Stripe support is currently
+limited to an explicitly configured test-mode boundary and signed webhook
+ingestion.
 
 Product thesis: agent work needs an economic kernel that can prove exactly what
 was funded, claimed, verified, accepted, and paid before it touches real money.
@@ -54,7 +56,8 @@ duplicate funding/reserve, exclusive claims, wrong-solver submission, stale SHA
 rejection, baseline/intermediate/final Motoko verdicts, candidate-owned verifier
 irrelevance, timeout/malformed verifier output, receipt binding, verifier
 recovery after incomplete `running` rows, payout retry, paid payout replay,
-non-negative balances, reconciliation, and restart idempotency.
+Stripe test-mode request mapping, signed webhook replay, non-negative balances,
+reconciliation, and restart idempotency.
 
 Check the optional OpenShell backend:
 
