@@ -67,3 +67,25 @@ python -m agent_bounty openshell-status
 
 If `openshell` is not installed, this reports an exact blocker and still prints
 the verifier backend and policy digests used for audit records.
+
+## Stripe Test Sandbox
+
+Real Stripe calls are never made by default. To run the manual test-mode smoke
+path, provide only local environment variables and use a stable `--run-id` as
+the Stripe idempotency namespace:
+
+```bash
+AGENT_BOUNTY_STRIPE_REAL_SANDBOX=1 \
+AGENT_BOUNTY_STRIPE_TEST_MODE=1 \
+STRIPE_SECRET_KEY=sk_test_... \
+AGENT_BOUNTY_STRIPE_SOLVER_ACCOUNTS_JSON='{"solver_stripe_smoke":"acct_..."}' \
+python -m agent_bounty stripe-sandbox-smoke \
+  --solver-id solver_stripe_smoke \
+  --amount-cents 100 \
+  --run-id manual-001
+```
+
+The command creates and confirms a test-mode PaymentIntent, extracts the latest
+charge when Stripe returns it, creates a Transfer to the configured connected
+account, and prints compact JSON. Reusing the same `--run-id` reuses the same
+Stripe idempotency keys.

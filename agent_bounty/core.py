@@ -104,13 +104,22 @@ class AgentBountyMarket:
         if treasury["currency"] != currency:
             raise MarketError(f"funding currency {currency} does not match treasury currency {treasury['currency']}")
         existing = self.conn.execute(
-            "SELECT id, project_id, amount, currency, gateway_event_id FROM funding_events WHERE idempotency_key = ?",
+            """
+            SELECT id, project_id, amount, currency, gateway_event_id, gateway_source_transaction_id
+            FROM funding_events
+            WHERE idempotency_key = ?
+            """,
             (idempotency_key,),
         ).fetchone()
         if existing:
             if existing["project_id"] != project_id or int(existing["amount"]) != amount or existing["currency"] != currency:
                 raise MarketError("funding idempotency key was replayed with different arguments")
-            return {"funding_event_id": existing["id"], "gateway_event_id": existing["gateway_event_id"], "replayed": True}
+            return {
+                "funding_event_id": existing["id"],
+                "gateway_event_id": existing["gateway_event_id"],
+                "gateway_source_transaction_id": existing["gateway_source_transaction_id"],
+                "replayed": True,
+            }
         credit = self.gateway.credit_project_treasury(
             project_id=project_id,
             amount=amount,
@@ -121,10 +130,22 @@ class AgentBountyMarket:
         with self.conn:
             self.conn.execute(
                 """
-                INSERT INTO funding_events(id, project_id, amount, currency, gateway_event_id, idempotency_key, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO funding_events(
+                    id, project_id, amount, currency, gateway_event_id,
+                    gateway_source_transaction_id, idempotency_key, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (event_id, project_id, amount, currency, credit.external_id, idempotency_key, utc_now()),
+                (
+                    event_id,
+                    project_id,
+                    amount,
+                    currency,
+                    credit.external_id,
+                    credit.source_transaction_id,
+                    idempotency_key,
+                    utc_now(),
+                ),
             )
             self.ledger.transfer(
                 event_type="project_funded",
@@ -136,7 +157,12 @@ class AgentBountyMarket:
                 project_id=project_id,
                 external_id=credit.external_id,
             )
-        return {"funding_event_id": event_id, "gateway_event_id": credit.external_id, "replayed": False}
+        return {
+            "funding_event_id": event_id,
+            "gateway_event_id": credit.external_id,
+            "gateway_source_transaction_id": credit.source_transaction_id,
+            "replayed": False,
+        }
 
     def create_bounty(
         self,
@@ -630,6 +656,7 @@ class AgentBountyMarket:
                 amount=int(bounty["reward_amount"]),
                 currency=bounty["currency"],
                 idempotency_key=idempotency_key,
+                source_transaction_id=self._source_transaction_for_payout(bounty),
             )
             if gateway_payout.status == "pending":
                 with self.conn:
@@ -771,6 +798,24 @@ class AgentBountyMarket:
     def stripe_webhook_rows(self) -> list[dict[str, Any]]:
         rows = self.conn.execute("SELECT * FROM stripe_webhook_events ORDER BY received_at, event_id").fetchall()
         return [dict(row) for row in rows]
+
+    def _source_transaction_for_payout(self, bounty: sqlite3.Row) -> str | None:
+        row = self.conn.execute(
+            """
+            SELECT gateway_source_transaction_id
+            FROM funding_events
+            WHERE project_id = ?
+              AND currency = ?
+              AND amount >= ?
+              AND gateway_source_transaction_id IS NOT NULL
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (bounty["project_id"], bounty["currency"], int(bounty["reward_amount"])),
+        ).fetchone()
+        if not row:
+            return None
+        return row["gateway_source_transaction_id"]
 
     def mark_gateway_payout_paid(self, *, gateway_payout_id: str, idempotency_key: str) -> dict[str, Any]:
         payout = self.conn.execute("SELECT * FROM payouts WHERE gateway_payout_id = ?", (gateway_payout_id,)).fetchone()

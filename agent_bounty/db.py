@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -24,7 +24,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             value TEXT NOT NULL
         );
 
-        INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '4');
+        INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '5');
 
         CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
@@ -52,6 +52,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             amount INTEGER NOT NULL CHECK(amount > 0),
             currency TEXT NOT NULL,
             gateway_event_id TEXT NOT NULL,
+            gateway_source_transaction_id TEXT,
             idempotency_key TEXT NOT NULL UNIQUE,
             created_at TEXT NOT NULL
         );
@@ -220,6 +221,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
     _ensure_column(conn, "verification_receipts", "project_id", "TEXT")
+    _ensure_column(conn, "funding_events", "gateway_source_transaction_id", "TEXT")
     _ensure_column(conn, "verification_receipts", "issue_ref", "TEXT")
     _ensure_column(conn, "verification_receipts", "submission_id", "TEXT")
     _ensure_column(conn, "verification_receipts", "solver_id", "TEXT")

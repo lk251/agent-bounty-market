@@ -79,14 +79,22 @@ does not gain a runtime dependency.
 The test-mode mapping is intentionally narrow:
 
 - project treasury funding -> Stripe PaymentIntent with the platform
-  idempotency key;
+  idempotency key, requesting `latest_charge` expansion when available;
 - solver beneficiary -> configured Stripe Connect account ID;
-- payout release -> Stripe Transfer with the platform idempotency key.
+- payout release -> Stripe Transfer with the platform idempotency key and the
+  stored source charge when Stripe returned one for the funding event.
 
 Stripe external IDs are stored in the existing funding, solver identity, payout,
-and ledger fields. Signed Stripe webhook ingestion stores one row per event ID,
-rejects live-mode events, rejects invalid signatures, rejects changed-payload
-replays, and can settle or fail a pending transfer idempotently.
+and ledger fields; funding events also retain the source charge ID used for
+source-backed Transfers. Signed Stripe webhook ingestion stores one row per
+event ID, rejects live-mode events, rejects invalid signatures, rejects
+changed-payload replays, and can settle or fail a pending transfer
+idempotently.
+
+The `stripe-sandbox-smoke` CLI command is the only built-in real Stripe call
+path. It requires `AGENT_BOUNTY_STRIPE_REAL_SANDBOX=1`,
+`AGENT_BOUNTY_STRIPE_TEST_MODE=1`, an `sk_test_` key, and explicit solver
+account mapping from the environment.
 
 Production keys, marketplace onboarding, Connect account creation, web UI, and
 live payout operations remain out of scope for this slice.

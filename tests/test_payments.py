@@ -9,8 +9,10 @@ from pathlib import Path
 
 from agent_bounty.core import AgentBountyMarket, MarketError
 from agent_bounty.db import connect
+from agent_bounty.cli import run_stripe_sandbox_smoke
 from agent_bounty.payments import (
     FakePaymentGateway,
+    GatewayCredit,
     GatewayPayout,
     PaymentGatewayError,
     StripePaymentGateway,
@@ -35,6 +37,7 @@ class RecordingStripeTransport:
                 "amount": int(data["amount"]),
                 "currency": data["currency"],
                 "livemode": False,
+                "latest_charge": {"id": "ch_test_funding", "object": "charge"},
                 "status": "succeeded",
             }
         if path == "/v1/transfers":
@@ -61,8 +64,39 @@ class PendingPaymentGateway(FakePaymentGateway):
         super().__init__()
         self.external_id = external_id
 
-    def release_payout(self, *, payout_id: str, solver_id: str, amount: int, currency: str, idempotency_key: str) -> GatewayPayout:
+    def release_payout(
+        self,
+        *,
+        payout_id: str,
+        solver_id: str,
+        amount: int,
+        currency: str,
+        idempotency_key: str,
+        source_transaction_id: str | None = None,
+    ) -> GatewayPayout:
         return GatewayPayout(self.external_id, "pending", amount, currency, False)
+
+
+class SourceRecordingGateway(FakePaymentGateway):
+    def __init__(self):
+        super().__init__()
+        self.payout_source_transaction_id = None
+
+    def credit_project_treasury(self, *, project_id: str, amount: int, currency: str, idempotency_key: str) -> GatewayCredit:
+        return GatewayCredit("pi_source_test", amount, currency, False, "ch_source_test")
+
+    def release_payout(
+        self,
+        *,
+        payout_id: str,
+        solver_id: str,
+        amount: int,
+        currency: str,
+        idempotency_key: str,
+        source_transaction_id: str | None = None,
+    ) -> GatewayPayout:
+        self.payout_source_transaction_id = source_transaction_id
+        return GatewayPayout("tr_source_test", "paid", amount, currency, False)
 
 
 def signed_stripe_payload(event: dict, *, secret: str = "whsec_test", timestamp: int = 1_800_000_000) -> tuple[bytes, str]:
@@ -117,6 +151,7 @@ class PaymentTests(unittest.TestCase):
         )
 
         self.assertEqual(credit.external_id, "pi_test_funding")
+        self.assertEqual(credit.source_transaction_id, "ch_test_funding")
         self.assertEqual(beneficiary.external_id, "acct_test_solver")
         self.assertEqual(payout.external_id, "tr_test_payout")
         payment_intent = transport.requests[0]
@@ -130,7 +165,30 @@ class PaymentTests(unittest.TestCase):
         self.assertEqual(transfer["headers"]["Idempotency-Key"], "payout:test")
         self.assertEqual(transfer["data"]["destination"], "acct_test_solver")
         self.assertEqual(transfer["data"]["transfer_group"], "payout_test")
+        self.assertNotIn("source_transaction", transfer["data"])
         self.assertEqual(gateway.retrieve_payout_status(external_id="tr_test_payout"), "paid")
+
+    def test_stripe_sandbox_smoke_uses_source_transaction_for_transfer(self):
+        transport = RecordingStripeTransport()
+        gateway = StripePaymentGateway(
+            config=StripeTestConfig(secret_key="sk_test_123", solver_accounts={"solver_test": "acct_test_solver"}),
+            explicitly_configured=True,
+            transport=transport,
+        )
+        result = run_stripe_sandbox_smoke(
+            gateway=gateway,
+            project_id="project_test",
+            solver_id="solver_test",
+            amount=2500,
+            currency="USD",
+            run_id="unit",
+        )
+
+        transfer = transport.requests[1]
+        self.assertEqual(result["funding"]["source_transaction_id"], "ch_test_funding")
+        self.assertEqual(result["payout"]["transfer_id"], "tr_test_payout")
+        self.assertEqual(result["payout"]["status"], "paid")
+        self.assertEqual(transfer["data"]["source_transaction"], "ch_test_funding")
 
     def test_payout_failure_records_failed_and_retries_safely(self):
         payout_key = "payout:test"
@@ -147,6 +205,20 @@ class PaymentTests(unittest.TestCase):
             paid = market.release_payout(bounty_id=bounty_id, idempotency_key=payout_key)
             self.assertFalse(paid.get("failed", False))
             self.assertEqual(market.bounty_summary(bounty_id)["state"], "paid")
+            self.assertTrue(market.reconciliation(project_id=project_id, solver_id=solver_id)["ok"])
+
+    def test_core_passes_stored_funding_source_transaction_to_gateway_payout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier_dir = accepted_verifier(Path(tmp))
+            gateway = SourceRecordingGateway()
+            holder, market = make_market_with_gateway(verifier_dir, gateway)
+            self.addCleanup(holder.cleanup)
+            project_id, bounty_id, solver_id, submission_id = submit_ready(market)
+            market.run_verification(submission_id=submission_id, idempotency_key="verify:test")
+            payout = market.release_payout(bounty_id=bounty_id, idempotency_key="payout:test")
+
+            self.assertEqual(gateway.payout_source_transaction_id, "ch_source_test")
+            self.assertEqual(payout["gateway_payout_id"], "tr_source_test")
             self.assertTrue(market.reconciliation(project_id=project_id, solver_id=solver_id)["ok"])
 
     def test_rejected_bounty_cannot_pay(self):

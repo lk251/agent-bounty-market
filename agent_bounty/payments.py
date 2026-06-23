@@ -21,6 +21,7 @@ class GatewayCredit:
     amount: int
     currency: str
     replayed: bool
+    source_transaction_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,7 @@ class PaymentGateway:
         amount: int,
         currency: str,
         idempotency_key: str,
+        source_transaction_id: str | None = None,
     ) -> GatewayPayout:
         raise NotImplementedError
 
@@ -137,7 +139,7 @@ class FakePaymentGateway(PaymentGateway):
         currency = require_currency(currency)
         if idempotency_key in self.credits:
             old = self.credits[idempotency_key]
-            return GatewayCredit(old.external_id, old.amount, old.currency, True)
+            return GatewayCredit(old.external_id, old.amount, old.currency, True, old.source_transaction_id)
         credit = GatewayCredit(self._id("fake_credit", idempotency_key), amount, currency, False)
         self.credits[idempotency_key] = credit
         return credit
@@ -157,6 +159,7 @@ class FakePaymentGateway(PaymentGateway):
         amount: int,
         currency: str,
         idempotency_key: str,
+        source_transaction_id: str | None = None,
     ) -> GatewayPayout:
         require_positive_amount(amount)
         currency = require_currency(currency)
@@ -216,6 +219,7 @@ class StripePaymentGateway(PaymentGateway):
             solver_accounts=accounts,
             payment_method=env.get("AGENT_BOUNTY_STRIPE_PAYMENT_METHOD", "pm_card_visa"),
             api_base=env.get("STRIPE_API_BASE", "https://api.stripe.com"),
+            api_version=env.get("STRIPE_API_VERSION") or None,
         )
         return cls(config=config, explicitly_configured=explicitly_configured)
 
@@ -224,7 +228,7 @@ class StripePaymentGateway(PaymentGateway):
         currency = require_currency(currency)
         if idempotency_key in self._credits:
             old = self._credits[idempotency_key]
-            return GatewayCredit(old.external_id, old.amount, old.currency, True)
+            return GatewayCredit(old.external_id, old.amount, old.currency, True, old.source_transaction_id)
         response = self._post(
             "/v1/payment_intents",
             idempotency_key=idempotency_key,
@@ -232,6 +236,8 @@ class StripePaymentGateway(PaymentGateway):
                 "amount": str(amount),
                 "currency": currency.lower(),
                 "confirm": "true",
+                "error_on_requires_action": "true",
+                "expand[]": "latest_charge",
                 "payment_method": self.config.payment_method,
                 "metadata[agent_bounty_kind]": "project_funding",
                 "metadata[project_id]": project_id,
@@ -240,7 +246,8 @@ class StripePaymentGateway(PaymentGateway):
         )
         external_id = self._require_id(response, prefix="pi_")
         self._assert_amount_currency(response, amount=amount, currency=currency)
-        credit = GatewayCredit(external_id, amount, currency, False)
+        source_transaction = self._latest_charge_id(response)
+        credit = GatewayCredit(external_id, amount, currency, False, source_transaction)
         self._credits[idempotency_key] = credit
         return credit
 
@@ -262,6 +269,7 @@ class StripePaymentGateway(PaymentGateway):
         amount: int,
         currency: str,
         idempotency_key: str,
+        source_transaction_id: str | None = None,
     ) -> GatewayPayout:
         require_positive_amount(amount)
         currency = require_currency(currency)
@@ -271,20 +279,19 @@ class StripePaymentGateway(PaymentGateway):
         destination = self.config.solver_accounts.get(solver_id)
         if destination is None:
             raise PaymentGatewayError(f"no Stripe test connected account configured for solver {solver_id}")
-        response = self._post(
-            "/v1/transfers",
-            idempotency_key=idempotency_key,
-            data={
-                "amount": str(amount),
-                "currency": currency.lower(),
-                "destination": destination,
-                "transfer_group": payout_id,
-                "metadata[agent_bounty_kind]": "solver_payout",
-                "metadata[payout_id]": payout_id,
-                "metadata[solver_id]": solver_id,
-                "metadata[idempotency_key]": idempotency_key,
-            },
-        )
+        data = {
+            "amount": str(amount),
+            "currency": currency.lower(),
+            "destination": destination,
+            "transfer_group": payout_id,
+            "metadata[agent_bounty_kind]": "solver_payout",
+            "metadata[payout_id]": payout_id,
+            "metadata[solver_id]": solver_id,
+            "metadata[idempotency_key]": idempotency_key,
+        }
+        if source_transaction_id:
+            data["source_transaction"] = source_transaction_id
+        response = self._post("/v1/transfers", idempotency_key=idempotency_key, data=data)
         external_id = self._require_id(response, prefix="tr_")
         self._assert_amount_currency(response, amount=amount, currency=currency)
         payout = GatewayPayout(external_id, "paid", amount, currency, False)
@@ -333,3 +340,14 @@ class StripePaymentGateway(PaymentGateway):
             raise PaymentGatewayError("Stripe response amount was missing or invalid") from exc
         if parsed_amount != amount or str(response_currency).upper() != currency:
             raise PaymentGatewayError("Stripe response amount/currency did not match request")
+
+    @staticmethod
+    def _latest_charge_id(response: dict[str, Any]) -> str | None:
+        latest_charge = response.get("latest_charge")
+        if isinstance(latest_charge, str):
+            return latest_charge if latest_charge.startswith("ch_") else None
+        if isinstance(latest_charge, dict):
+            charge_id = latest_charge.get("id")
+            if isinstance(charge_id, str) and charge_id.startswith("ch_"):
+                return charge_id
+        return None

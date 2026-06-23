@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -10,7 +11,7 @@ from typing import Any
 
 from .core import AgentBountyMarket
 from .db import connect
-from .payments import FakePaymentGateway
+from .payments import FakePaymentGateway, PaymentGatewayError, StripePaymentGateway
 from .util import utc_now
 from .execution import openshell_status
 from .verification import ProtectedVerifierRunner, default_verifier_dir
@@ -27,6 +28,59 @@ DEFAULT_FINAL_COMMIT = "4c03e0fa02a26f1cbadbe593ae687eaa9b333d2c"
 
 def print_json(value: Any) -> None:
     print(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+
+
+def run_stripe_sandbox_smoke(
+    *,
+    gateway: StripePaymentGateway,
+    project_id: str,
+    solver_id: str,
+    amount: int,
+    currency: str,
+    run_id: str,
+) -> dict[str, Any]:
+    funding_key = f"stripe-smoke:{run_id}:fund:{project_id}:{amount}:{currency}"
+    beneficiary_key = f"stripe-smoke:{run_id}:beneficiary:{solver_id}"
+    payout_key = f"stripe-smoke:{run_id}:payout:{solver_id}:{amount}:{currency}"
+    payout_id = f"payout_stripe_smoke_{run_id}"
+    credit = gateway.credit_project_treasury(
+        project_id=project_id,
+        amount=amount,
+        currency=currency,
+        idempotency_key=funding_key,
+    )
+    beneficiary = gateway.ensure_solver_beneficiary(solver_id=solver_id, idempotency_key=beneficiary_key)
+    payout = gateway.release_payout(
+        payout_id=payout_id,
+        solver_id=solver_id,
+        amount=amount,
+        currency=currency,
+        idempotency_key=payout_key,
+        source_transaction_id=credit.source_transaction_id,
+    )
+    status = gateway.retrieve_payout_status(external_id=payout.external_id)
+    return {
+        "schema": "agent-bounty-stripe-sandbox-smoke-v1",
+        "project_id": project_id,
+        "solver_id": solver_id,
+        "amount": amount,
+        "currency": currency,
+        "run_id": run_id,
+        "funding": {
+            "payment_intent_id": credit.external_id,
+            "source_transaction_id": credit.source_transaction_id,
+            "replayed": credit.replayed,
+        },
+        "beneficiary": {
+            "account_id": beneficiary.external_id,
+            "replayed": beneficiary.replayed,
+        },
+        "payout": {
+            "transfer_id": payout.external_id,
+            "status": status,
+            "replayed": payout.replayed,
+        },
+    }
 
 
 def open_market(db_path: str | Path, *, fail_payout_key: str | None = None, verifier_timeout: float = 20.0) -> AgentBountyMarket:
@@ -349,6 +403,26 @@ def cmd_openshell_status(_args: argparse.Namespace) -> int:
     return 0 if status["available"] else 2
 
 
+def cmd_stripe_sandbox_smoke(args: argparse.Namespace) -> int:
+    if os.environ.get("AGENT_BOUNTY_STRIPE_REAL_SANDBOX") != "1":
+        raise SystemExit("refusing real Stripe sandbox call: set AGENT_BOUNTY_STRIPE_REAL_SANDBOX=1")
+    try:
+        gateway = StripePaymentGateway.from_env(env=dict(os.environ), explicitly_configured=True)
+        result = run_stripe_sandbox_smoke(
+            gateway=gateway,
+            project_id=args.project_id,
+            solver_id=args.solver_id,
+            amount=args.amount_cents,
+            currency=args.currency,
+            run_id=args.run_id,
+        )
+    except PaymentGatewayError as exc:
+        print_json({"schema": "agent-bounty-stripe-sandbox-smoke-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"ok": True, **result})
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="agent-bounty", description="Trusted local transaction core for agent bounties")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -385,6 +459,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     openshell = sub.add_parser("openshell-status", help="inspect OpenShell verifier backend availability")
     openshell.set_defaults(func=cmd_openshell_status)
+
+    stripe = sub.add_parser("stripe-sandbox-smoke", help="run an explicitly gated real Stripe test-mode funding+transfer smoke test")
+    stripe.add_argument("--project-id", default="project_stripe_smoke")
+    stripe.add_argument("--solver-id", default="solver_stripe_smoke")
+    stripe.add_argument("--amount-cents", type=int, default=100)
+    stripe.add_argument("--currency", default=DEFAULT_CURRENCY)
+    stripe.add_argument("--run-id", required=True, help="stable idempotency namespace; reuse to prove Stripe idempotency")
+    stripe.set_defaults(func=cmd_stripe_sandbox_smoke)
 
     return parser
 
