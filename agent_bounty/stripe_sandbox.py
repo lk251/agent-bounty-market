@@ -30,6 +30,9 @@ class StripeClient(Protocol):
     def retrieve_payment_intent(self, payment_intent_id: str) -> dict[str, Any]:
         raise NotImplementedError
 
+    def retrieve_charge(self, charge_id: str) -> dict[str, Any]:
+        raise NotImplementedError
+
     def create_payment_intent(self, *, idempotency_key: str, params: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError
 
@@ -268,6 +271,9 @@ class OfficialStripeClient:
             self.stripe.PaymentIntent.retrieve(payment_intent_id, expand=["latest_charge"])
         )
 
+    def retrieve_charge(self, charge_id: str) -> dict[str, Any]:
+        return _stripe_object_to_dict(self.stripe.Charge.retrieve(charge_id))
+
     def create_payment_intent(self, *, idempotency_key: str, params: dict[str, Any]) -> dict[str, Any]:
         return _stripe_object_to_dict(
             self.stripe.PaymentIntent.create(
@@ -361,6 +367,20 @@ class FakeStripeClient:
 
     def retrieve_payment_intent(self, payment_intent_id: str) -> dict[str, Any]:
         return dict(self.payment_intents[payment_intent_id])
+
+    def retrieve_charge(self, charge_id: str) -> dict[str, Any]:
+        for payment_intent in self.payment_intents.values():
+            latest_charge = payment_intent.get("latest_charge")
+            if isinstance(latest_charge, dict) and latest_charge.get("id") == charge_id:
+                return {
+                    "id": charge_id,
+                    "object": "charge",
+                    "livemode": False,
+                    "amount": payment_intent["amount"],
+                    "currency": payment_intent["currency"],
+                    "payment_intent": payment_intent["id"],
+                }
+        return {"id": charge_id, "object": "charge", "livemode": False}
 
     def create_payment_intent(self, *, idempotency_key: str, params: dict[str, Any]) -> dict[str, Any]:
         self.created_payment_intent_params.append({"idempotency_key": idempotency_key, "params": params})

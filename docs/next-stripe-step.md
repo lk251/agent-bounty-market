@@ -27,7 +27,7 @@ Implemented in this repo:
 - Connect Transfer creation plus retrieval/binding validation;
 - `transfer.created` audit handling and `transfer.reversed` manual-review
   handling;
-- `stripe-reconcile` safe report;
+- `stripe-reconcile` safe local report plus `--remote` Stripe object retrieval;
 - deterministic fake-client tests covering the network-free contract.
 
 External blocker for full exit criteria in a fresh checkout:

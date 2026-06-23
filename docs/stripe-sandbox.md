@@ -74,6 +74,13 @@ python -m agent_bounty stripe-reconcile \
   --project-id project_motoko \
   --solver-id solver_codex_motoko_issue_1 \
   --bounty-id bounty_motoko_issue_1
+
+python -m agent_bounty stripe-reconcile \
+  --db .demo/stripe.sqlite3 \
+  --project-id project_motoko \
+  --solver-id solver_codex_motoko_issue_1 \
+  --bounty-id bounty_motoko_issue_1 \
+  --remote
 ```
 
 ## Semantics
@@ -87,6 +94,11 @@ python -m agent_bounty stripe-reconcile \
 - A Connect Transfer moves platform Stripe balance to a connected account
   balance after an accepted verifier receipt.
 - A bank payout is not part of this milestone.
+
+Plain `stripe-reconcile` is local and safe without credentials. `--remote`
+requires sandbox credentials and retrieves Stripe-side Checkout Session,
+PaymentIntent, Charge, connected account, and Transfer objects, then reports
+content-safe mismatches instead of performing destructive repair.
 
 `transfer.created` is audit-only. `transfer.reversed` records manual review.
 Transfer creation failures are synchronous API failures or unknown remote

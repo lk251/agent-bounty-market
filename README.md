@@ -159,8 +159,10 @@ python -m agent_bounty stripe-release-transfer \
 ```
 
 `stripe-reconcile` reports funding requests, webhook rows, Stripe operations,
-ledger balance checks, and safe corrective actions. Bank payout from the
-connected account is outside this milestone.
+ledger balance checks, and safe corrective actions. Add `--remote` when sandbox
+credentials are configured to retrieve and compare the Checkout Session,
+PaymentIntent, Charge, connected account, and Connect Transfer. Bank payout from
+the connected account is outside this milestone.
 
 If the webhook service is interrupted after recording an event but before
 processing it, run:

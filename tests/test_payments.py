@@ -11,7 +11,7 @@ from pathlib import Path
 
 from agent_bounty.core import AgentBountyMarket, MarketError
 from agent_bounty.db import connect
-from agent_bounty.cli import cmd_stripe_status, run_stripe_sandbox_smoke
+from agent_bounty.cli import cmd_stripe_status, run_stripe_sandbox_smoke, stripe_reconcile_report
 from agent_bounty.payments import (
     FakePaymentGateway,
     GatewayCredit,
@@ -547,6 +547,52 @@ class PaymentTests(unittest.TestCase):
             self.assertTrue(market.reconciliation(project_id=project_id, solver_id=solver_id)["ok"])
             transfer_params = client.created_transfer_params[0]["params"]
             self.assertEqual(transfer_params["metadata"]["receipt_id"], market.bounty_summary(bounty_id)["accepted_receipt_id"])
+
+    def test_remote_reconciliation_retrieves_stripe_objects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier_dir = accepted_verifier(Path(tmp))
+            holder, market = make_market(verifier_dir)
+            self.addCleanup(holder.cleanup)
+            project_id, bounty_id, solver_id, submission_id = submit_ready(market)
+            market.run_verification(submission_id=submission_id, idempotency_key="verify:test")
+            client = FakeStripeClient()
+            checkout = market.create_stripe_checkout(
+                project_id=project_id,
+                source_kind="owner",
+                amount=2500,
+                currency="USD",
+                success_url="http://127.0.0.1:4242/success",
+                cancel_url="http://127.0.0.1:4242/cancel",
+                client=client,
+                idempotency_key="checkout:reconcile",
+            )
+            payload, signature = signed_current_payload(self._payment_event(checkout["payment_intent_id"], event_id="evt_reconcile"))
+            market.ingest_official_stripe_webhook(payload=payload, signature_header=signature, endpoint_secret="whsec_test", client=client)
+            market.attach_stripe_beneficiary(solver_id=solver_id, account_id="acct_solver_test", client=client)
+            market.release_stripe_transfer(bounty_id=bounty_id, client=client, idempotency_key="stripe-transfer:reconcile")
+            report = stripe_reconcile_report(market, project_id=project_id, solver_id=solver_id, bounty_id=bounty_id, client=client)
+            self.assertTrue(report["remote_checked"])
+            self.assertEqual(report["remote"]["mismatches"], [])
+            kinds = {item["kind"] for item in report["remote"]["objects"]}
+            self.assertIn("checkout.session", kinds)
+            self.assertIn("payment_intent", kinds)
+            self.assertIn("charge", kinds)
+            self.assertIn("connected_account", kinds)
+            self.assertIn("transfer", kinds)
+
+    def test_remote_reconciliation_reports_transfer_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier_dir = accepted_verifier(Path(tmp))
+            holder, market = make_market(verifier_dir)
+            self.addCleanup(holder.cleanup)
+            project_id, bounty_id, solver_id, submission_id = submit_ready(market)
+            market.run_verification(submission_id=submission_id, idempotency_key="verify:test")
+            client = FakeStripeClient()
+            market.attach_stripe_beneficiary(solver_id=solver_id, account_id="acct_solver_test", client=client)
+            result = market.release_stripe_transfer(bounty_id=bounty_id, client=client, idempotency_key="stripe-transfer:mismatch-report")
+            client.transfers[result["transfer_id"]]["amount"] = 1
+            report = stripe_reconcile_report(market, project_id=project_id, solver_id=solver_id, bounty_id=bounty_id, client=client)
+            self.assertTrue(report["remote"]["mismatches"])
 
     def test_stripe_transfer_api_failure_records_failed_and_retry(self):
         with tempfile.TemporaryDirectory() as tmp:

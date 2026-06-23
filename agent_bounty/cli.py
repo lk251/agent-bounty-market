@@ -552,7 +552,21 @@ def cmd_stripe_release_transfer(args: argparse.Namespace) -> int:
 
 def cmd_stripe_reconcile(args: argparse.Namespace) -> int:
     market = open_trusted_market(args.db)
-    result = stripe_reconcile_report(market, project_id=args.project_id, solver_id=args.solver_id, bounty_id=args.bounty_id)
+    client: OfficialStripeClient | None = None
+    remote_blockers: list[str] = []
+    if args.remote:
+        try:
+            _config, client = make_official_stripe_client()
+        except Exception as exc:
+            remote_blockers.append(str(exc))
+    result = stripe_reconcile_report(
+        market,
+        project_id=args.project_id,
+        solver_id=args.solver_id,
+        bounty_id=args.bounty_id,
+        client=client,
+        remote_blockers=remote_blockers,
+    )
     print_json(result)
     return 0 if result["ledger_reconciled"] else 1
 
@@ -579,27 +593,122 @@ def cmd_stripe_process_events(args: argparse.Namespace) -> int:
     return 0
 
 
-def stripe_reconcile_report(market: AgentBountyMarket, *, project_id: str, solver_id: str, bounty_id: str | None = None) -> dict[str, Any]:
+def stripe_reconcile_report(
+    market: AgentBountyMarket,
+    *,
+    project_id: str,
+    solver_id: str,
+    bounty_id: str | None = None,
+    client: OfficialStripeClient | None = None,
+    remote_blockers: list[str] | None = None,
+) -> dict[str, Any]:
     funding_requests = [dict(row) for row in market.conn.execute("SELECT * FROM funding_requests ORDER BY created_at, id").fetchall()]
     operations = [dict(row) for row in market.conn.execute("SELECT * FROM stripe_operations ORDER BY created_at, id").fetchall()]
     webhooks = [dict(row) for row in market.conn.execute("SELECT * FROM stripe_webhook_events ORDER BY received_at, event_id").fetchall()]
     payouts = [dict(row) for row in market.conn.execute("SELECT * FROM payouts ORDER BY created_at, id").fetchall()]
+    solvers = [dict(row) for row in market.conn.execute("SELECT * FROM solver_identities ORDER BY created_at, id").fetchall()]
     reconciliation = market.reconciliation(project_id=project_id, solver_id=solver_id)
     bounty = market.bounty_summary(bounty_id) if bounty_id else None
+    remote = _remote_stripe_reconciliation(client=client, funding_requests=funding_requests, payouts=payouts, solvers=solvers)
+    blockers = list(remote_blockers or [])
+    if client is None and not blockers:
+        blockers.append("remote Stripe retrieval not requested; pass --remote with sandbox credentials")
     return {
         "schema": "agent-bounty-stripe-reconcile-v1",
         "project_id": project_id,
         "solver_id": solver_id,
         "bounty_id": bounty_id,
         "ledger_reconciled": bool(reconciliation["ok"]),
+        "remote_checked": client is not None,
+        "remote_blockers": blockers,
+        "remote": remote,
         "reconciliation": reconciliation,
         "funding_requests": funding_requests,
         "stripe_operations": operations,
         "stripe_webhook_events": webhooks,
         "payouts": payouts,
+        "solver_identities": solvers,
         "bounty": bounty,
         "safe_corrective_actions": [] if reconciliation["ok"] else ["inspect mismatched funding, ledger, and transfer rows before retrying"],
     }
+
+
+def _remote_stripe_reconciliation(
+    *,
+    client: OfficialStripeClient | None,
+    funding_requests: list[dict[str, Any]],
+    payouts: list[dict[str, Any]],
+    solvers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if client is None:
+        return {"checked": False, "objects": [], "mismatches": []}
+    objects: list[dict[str, Any]] = []
+    mismatches: list[str] = []
+    for request in funding_requests:
+        expected_amount = int(request["amount"])
+        expected_currency = str(request["currency"]).lower()
+        checkout_id = request.get("checkout_session_id")
+        payment_intent_id = request.get("payment_intent_id")
+        charge_id = request.get("charge_id")
+        if checkout_id:
+            session = client.retrieve_checkout_session(str(checkout_id))
+            objects.append({"kind": "checkout.session", "id": session.get("id"), "livemode": session.get("livemode")})
+            if session.get("livemode") is not False:
+                mismatches.append(f"Checkout Session {checkout_id} is not test-mode")
+            if int(session.get("amount_total", expected_amount)) != expected_amount:
+                mismatches.append(f"Checkout Session {checkout_id} amount mismatch")
+            if str(session.get("currency", expected_currency)).lower() != expected_currency:
+                mismatches.append(f"Checkout Session {checkout_id} currency mismatch")
+        if payment_intent_id:
+            payment_intent = client.retrieve_payment_intent(str(payment_intent_id))
+            objects.append({"kind": "payment_intent", "id": payment_intent.get("id"), "livemode": payment_intent.get("livemode")})
+            if payment_intent.get("livemode") is not False:
+                mismatches.append(f"PaymentIntent {payment_intent_id} is not test-mode")
+            if int(payment_intent.get("amount_received", payment_intent.get("amount", expected_amount))) != expected_amount:
+                mismatches.append(f"PaymentIntent {payment_intent_id} amount mismatch")
+            if str(payment_intent.get("currency", expected_currency)).lower() != expected_currency:
+                mismatches.append(f"PaymentIntent {payment_intent_id} currency mismatch")
+        if charge_id:
+            charge = client.retrieve_charge(str(charge_id))
+            objects.append({"kind": "charge", "id": charge.get("id"), "livemode": charge.get("livemode")})
+            if charge.get("livemode") is not False:
+                mismatches.append(f"Charge {charge_id} is not test-mode")
+    account_by_solver = {solver["id"]: solver.get("beneficiary_external_id") for solver in solvers}
+    for payout in payouts:
+        transfer_id = payout.get("stripe_transfer_id") or payout.get("gateway_payout_id")
+        if not transfer_id:
+            continue
+        expected_account = account_by_solver.get(payout["solver_id"])
+        if expected_account:
+            account = client.retrieve_account(str(expected_account))
+            objects.append({"kind": "connected_account", "id": account.get("id"), "livemode": account.get("livemode")})
+            if account.get("livemode") is not False:
+                mismatches.append(f"Connected account {expected_account} is not test-mode")
+            if account.get("id") != expected_account:
+                mismatches.append(f"Connected account {expected_account} id mismatch")
+        transfer = client.retrieve_transfer(str(transfer_id))
+        objects.append({"kind": "transfer", "id": transfer.get("id"), "livemode": transfer.get("livemode")})
+        if transfer.get("livemode") is not False:
+            mismatches.append(f"Transfer {transfer_id} is not test-mode")
+        if int(transfer.get("amount", payout["amount"])) != int(payout["amount"]):
+            mismatches.append(f"Transfer {transfer_id} amount mismatch")
+        if str(transfer.get("currency", payout["currency"])).lower() != str(payout["currency"]).lower():
+            mismatches.append(f"Transfer {transfer_id} currency mismatch")
+        if expected_account and transfer.get("destination") != expected_account:
+            mismatches.append(f"Transfer {transfer_id} destination mismatch")
+        if transfer.get("transfer_group") != payout.get("transfer_group"):
+            mismatches.append(f"Transfer {transfer_id} transfer group mismatch")
+        metadata = transfer.get("metadata") if isinstance(transfer.get("metadata"), dict) else {}
+        expected_metadata = {
+            "bounty_id": payout["bounty_id"],
+            "solver_id": payout["solver_id"],
+            "payout_id": payout["id"],
+            "receipt_id": payout["accepted_receipt_id"],
+        }
+        for key, expected in expected_metadata.items():
+            if expected is not None and metadata.get(key) != expected:
+                mismatches.append(f"Transfer {transfer_id} metadata mismatch for {key}")
+    return {"checked": True, "objects": objects, "mismatches": mismatches}
 
 
 def cmd_stripe_webhook_serve(args: argparse.Namespace) -> int:
@@ -860,6 +969,7 @@ def build_parser() -> argparse.ArgumentParser:
     reconcile.add_argument("--project-id", default=DEFAULT_PROJECT_ID)
     reconcile.add_argument("--solver-id", default=DEFAULT_SOLVER_ID)
     reconcile.add_argument("--bounty-id", default=DEFAULT_BOUNTY_ID)
+    reconcile.add_argument("--remote", action="store_true", help="retrieve Stripe objects with configured sandbox credentials")
     reconcile.set_defaults(func=cmd_stripe_reconcile)
 
     process = sub.add_parser("stripe-process-events", help="process recorded Stripe webhook rows after restart")

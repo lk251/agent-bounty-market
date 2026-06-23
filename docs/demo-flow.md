@@ -72,6 +72,8 @@ The real Stripe sandbox demo is deliberately split across trusted commands:
 5. `stripe-attach-beneficiary` validates a pre-created test connected account.
 6. `stripe-release-transfer` creates and retrieves one Connect Transfer.
 7. `stripe-reconcile` compares the internal ledger and Stripe operation rows.
+   With `--remote`, it also retrieves the Checkout Session, PaymentIntent,
+   Charge, connected account, and Transfer for safe mismatch reporting.
 
 Use `requirements-stripe.txt` for the optional official Stripe SDK. The default
 demo and CI remain secret-free and use deterministic fake clients.
