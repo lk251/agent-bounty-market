@@ -22,10 +22,11 @@ python -m agent_bounty demo-motoko-suite \
   --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
 ```
 
-The suite rejects the bug baseline, rejects the idle-only candidate, accepts the
-final background-study fix, pays once, replays the final transaction, and prints
-compact JSON with project funds, candidate SHA, verifier version/digest,
-backend/policy digests, receipt, payout ID, and reconciliation status.
+The suite rejects a synthetic malicious candidate, rejects the bug baseline,
+rejects the idle-only candidate, accepts the final background-study fix, pays
+once, replays the final transaction, and prints compact JSON with project funds,
+candidate SHA, verifier version/digest, backend/policy digests, receipt, payout
+ID, and reconciliation status.
 
 Run one accepted transaction:
 

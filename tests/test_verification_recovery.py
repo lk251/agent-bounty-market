@@ -52,6 +52,31 @@ class VerificationRecoveryTests(unittest.TestCase):
             self.assertTrue(result["receipt"]["accepted"])
             self.assertEqual(reopened.bounty_summary(bounty_id)["state"], "accepted")
 
+    def test_partial_running_result_recovers_with_exactly_one_receipt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier_dir = accepted_verifier(Path(tmp) / "verifier")
+            holder, market = make_market(verifier_dir)
+            self.addCleanup(holder.cleanup)
+            _project_id, _bounty_id, _solver_id, submission_id = submit_ready(market)
+            run_id = self._insert_running_run(market, submission_id=submission_id, idempotency_key="verify:test")
+            with market.conn:
+                market.conn.execute(
+                    """
+                    UPDATE verification_runs
+                    SET stdout_sha256 = 'sha256:partial', stderr_sha256 = 'sha256:partial',
+                        result_json = '{"accepted":true}', finished_at = '2026-06-22T00:00:01Z'
+                    WHERE id = ?
+                    """,
+                    (run_id,),
+                )
+            market.conn.close()
+            reopened = self._reopen(holder, verifier_dir)
+            result = reopened.run_verification(submission_id=submission_id, idempotency_key="verify:test")
+            self.assertEqual(result["run_id"], run_id)
+            self.assertTrue(result["receipt"]["accepted"])
+            count = reopened.conn.execute("SELECT COUNT(*) FROM verification_receipts").fetchone()[0]
+            self.assertEqual(count, 1)
+
     def test_completed_replay_returns_same_receipt_once(self):
         with tempfile.TemporaryDirectory() as tmp:
             verifier_dir = accepted_verifier(Path(tmp))
@@ -64,6 +89,16 @@ class VerificationRecoveryTests(unittest.TestCase):
             self.assertEqual(first["receipt_id"], second["receipt_id"])
             count = market.conn.execute("SELECT COUNT(*) FROM verification_receipts").fetchone()[0]
             self.assertEqual(count, 1)
+
+    def test_completed_verification_key_cannot_be_reused_for_new_submission(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier_dir = accepted_verifier(Path(tmp))
+            holder, market = make_market(verifier_dir)
+            self.addCleanup(holder.cleanup)
+            _project_id, _bounty_id, _solver_id, submission_id = submit_ready(market)
+            market.run_verification(submission_id=submission_id, idempotency_key="verify:test")
+            with self.assertRaises(MarketError):
+                market.run_verification(submission_id="submission_other_candidate", idempotency_key="verify:test")
 
     def test_timeout_exits_verifying_and_cannot_pay(self):
         with tempfile.TemporaryDirectory() as tmp:

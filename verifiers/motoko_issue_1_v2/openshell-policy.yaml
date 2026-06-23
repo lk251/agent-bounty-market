@@ -1,0 +1,14 @@
+schema: agent-bounty-openshell-policy-v1
+purpose: Run untrusted candidate verifier probes without exposing parent credentials.
+network:
+  default: deny
+  allow: []
+credentials:
+  expose_to_candidate: []
+host_paths:
+  verifier_policy: read-only-host-side
+  candidate_checkout: untrusted-input
+  receipts: host-side-only
+process:
+  stdout_stderr: observation-only
+  verdict_authority: trusted-parent

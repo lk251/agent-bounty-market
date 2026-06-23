@@ -2,23 +2,17 @@
 from __future__ import annotations
 
 import argparse
-import collections
 import contextlib
-import fcntl
 import hashlib
 import json
 import os
 import pathlib
-import pty
 import re
 import secrets
 import select
-import struct
 import subprocess
 import sys
 import tempfile
-import termios
-import threading
 import time
 from typing import Any
 
@@ -29,22 +23,12 @@ MAX_PTY_CAPTURE_BYTES = 1_000_000
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-from agent_bounty.execution import LocalIsolatedProcessBackend, OpenShellBackend, kill_process_group, scrubbed_env  # noqa: E402
+from agent_bounty.execution import ExecutionBackend, LocalIsolatedProcessBackend, OpenShellBackend, scrubbed_env  # noqa: E402
 from agent_bounty.util import sha256_bytes, stable_json, utc_now  # noqa: E402
 
 
 class VerificationFailure(RuntimeError):
     pass
-
-
-class CountingMessageList(list):
-    def __init__(self, rows=()):
-        super().__init__(rows)
-        self.iterations = 0
-
-    def __iter__(self):
-        self.iterations += len(self)
-        return super().__iter__()
 
 
 def strip_ansi(text: str) -> str:
@@ -87,10 +71,6 @@ def verifier_tree_digest() -> str:
         path = pathlib.Path(__file__).with_name(name)
         pieces.append(f"{name}:{sha256_bytes(path.read_bytes())}")
     return sha256_bytes("\n".join(pieces).encode("utf-8"))
-
-
-def set_winsz(fd: int, rows: int, cols: int) -> None:
-    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
 
 def read_available(fd: int) -> str:
@@ -185,43 +165,6 @@ def make_measurement_text(nonce: str) -> str:
     if len(text) != samples or nonce[:8] not in text or not any(ord(char) > 127 for char in text):
         raise VerificationFailure("measurement fixture is invalid")
     return text
-
-
-def make_latency_tui(m, slave_fd: int, *, title: str, transcript_pairs: int, width: int = 140):
-    conv = m.new_conversation(title)
-    ui = m.MotokoTui(conv)
-    ui.stdin_fd = slave_fd
-    ui.stdout_fd = slave_fd
-    ui.start_study_loop = lambda: None
-    ui.start_maintenance = lambda *args, **kwargs: None
-    ui.resume_maintenance_on_start = False
-    ui.pending_prompts = collections.deque()
-    ui.report_running = 0
-    ui.foreground_running = 0
-    ui.maintaining = False
-    ui.study_running = False
-    ui.cwd_indexing = False
-    ui.index_progress = None
-    ui.status = "ready"
-    ui.input_buffer = ""
-    ui.cursor = 0
-    ui.dropdown_index = 0
-    rows = []
-    for idx in range(transcript_pairs):
-        rows.append({"role": "user", "content": f"transcript user row {idx}"})
-        rows.append({"role": "assistant", "content": f"transcript answer row {idx}"})
-    ui.messages = CountingMessageList(rows or [{"role": "system", "content": "empty transcript probe"}])
-    ui.rendered_message_ids = set()
-    ui.bottom_rows_rendered = 0
-    ui.bottom_cursor_row_offset = 0
-    ui.bottom_frame_key = None
-    ui.answer_stream_width = 0
-    ui.answer_stream_emitted_lines = 0
-    ui.generating = False
-    ui.answer_phase = ""
-    ui.answer_entry = None
-    set_winsz(slave_fd, 18, width)
-    return ui
 
 
 def scenario_metrics(row: dict[str, Any]) -> dict[str, Any]:
@@ -329,10 +272,16 @@ if __name__ == "__main__":
 '''
 
 
-def run_latency_probe(worktree: pathlib.Path, *, name: str, text: str, transcript_pairs: int) -> dict[str, Any]:
+def run_latency_probe(
+    backend: ExecutionBackend,
+    worktree: pathlib.Path,
+    *,
+    name: str,
+    text: str,
+    transcript_pairs: int,
+) -> dict[str, Any]:
     errors: list[str] = []
-    master_fd = slave_fd = None
-    proc: subprocess.Popen | None = None
+    session = None
     try:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = pathlib.Path(tmp)
@@ -353,20 +302,15 @@ def run_latency_probe(worktree: pathlib.Path, *, name: str, text: str, transcrip
                     "PYTHONUNBUFFERED": "1",
                 }
             )
-            master_fd, slave_fd = pty.openpty()
-            set_winsz(slave_fd, 18, 140)
-            proc = subprocess.Popen(
+            session = backend.start_pty(
                 [sys.executable, str(driver_path), str(worktree), f"Protected Latency {name}", str(transcript_pairs)],
                 cwd=str(tmp_path),
                 env=env,
-                stdin=slave_fd,
-                stdout=slave_fd,
-                stderr=slave_fd,
-                close_fds=True,
-                start_new_session=True,
+                timeout_seconds=8.0,
+                rows=18,
+                cols=140,
             )
-            os.close(slave_fd)
-            slave_fd = None
+            master_fd = session.master_fd
             initial = read_until_visible(master_fd, f"Protected Latency {name}", timeout=4.0)
             if f"Protected Latency {name}" not in strip_ansi(initial):
                 errors.append("initial render did not become visible")
@@ -386,10 +330,8 @@ def run_latency_probe(worktree: pathlib.Path, *, name: str, text: str, transcrip
                 errors.append(f"latency samples missing: {len(observed_latencies)}/{len(text)}")
             with contextlib.suppress(OSError):
                 os.write(master_fd, b"\x03")
-            if proc.poll() is None:
-                kill_process_group(proc)
             with contextlib.suppress(Exception):
-                proc.wait(timeout=2.0)
+                session.wait(timeout=2.0)
             return {
                 "name": name,
                 "final_input": final_input,
@@ -400,18 +342,14 @@ def run_latency_probe(worktree: pathlib.Path, *, name: str, text: str, transcrip
                 "samples": len(observed_latencies),
                 "transcript_iterations": 0,
                 "output_contains_final": text in visible_output,
+                "backend": session.backend,
+                "backend_digest": session.backend_digest,
+                "policy_digest": session.policy_digest,
                 "errors": errors,
             }
     finally:
-        if proc is not None and proc.poll() is None:
-            kill_process_group(proc)
-        if master_fd is not None:
-            with contextlib.suppress(OSError):
-                os.write(master_fd, b"\x03")
-        for fd in (master_fd, slave_fd):
-            if fd is not None:
-                with contextlib.suppress(OSError):
-                    os.close(fd)
+        if session is not None:
+            session.close()
 
 
 def write_json(path: pathlib.Path, data: dict) -> None:
@@ -590,9 +528,15 @@ def wait_for_background_artifact(state_dir: pathlib.Path, fd: int, *, timeout: f
     return evidence_artifact_integrity(state_dir), b"".join(chunks).decode("utf-8", errors="replace")
 
 
-def run_background_study_latency_probe(worktree: pathlib.Path, *, text: str, nonce: str, width: int = 140) -> dict[str, Any]:
-    master_fd = slave_fd = None
-    proc: subprocess.Popen | None = None
+def run_background_study_latency_probe(
+    backend: ExecutionBackend,
+    worktree: pathlib.Path,
+    *,
+    text: str,
+    nonce: str,
+    width: int = 140,
+) -> dict[str, Any]:
+    session = None
     errors: list[str] = []
     try:
         with tempfile.TemporaryDirectory() as tmp_name:
@@ -621,20 +565,15 @@ def run_background_study_latency_probe(worktree: pathlib.Path, *, text: str, non
                     "MOTOKO_TUI_INPUT_BATCH_LIMIT": "64",
                 }
             )
-            master_fd, slave_fd = pty.openpty()
-            set_winsz(slave_fd, 24, width)
-            proc = subprocess.Popen(
+            session = backend.start_pty(
                 [sys.executable, str(worktree / "motoko"), "chat", "--title", "Background Study Latency"],
                 cwd=str(tmp),
                 env=env,
-                stdin=slave_fd,
-                stdout=slave_fd,
-                stderr=slave_fd,
-                close_fds=True,
-                start_new_session=True,
+                timeout_seconds=30.0,
+                rows=24,
+                cols=width,
             )
-            os.close(slave_fd)
-            slave_fd = None
+            master_fd = session.master_fd
             initial, ready = read_pty_until(master_fd, lambda visible: "Background Study Latency" in visible, timeout=5.0)
             if not ready:
                 errors.append("child TUI did not render initial conversation title")
@@ -666,11 +605,10 @@ def run_background_study_latency_probe(worktree: pathlib.Path, *, text: str, non
             with contextlib.suppress(OSError):
                 os.write(master_fd, b"\x03")
             try:
-                proc.wait(timeout=3.0)
+                session.wait(timeout=3.0)
             except subprocess.TimeoutExpired:
-                kill_process_group(proc)
                 with contextlib.suppress(Exception):
-                    proc.wait(timeout=2.0)
+                    session.close()
             latencies = observed["latencies"]
             return {
                 "phase": "study: evidence-store",
@@ -683,15 +621,14 @@ def run_background_study_latency_probe(worktree: pathlib.Path, *, text: str, non
                 "input_integrity": text in final_visible,
                 "background_completed": completed,
                 "artifact_integrity": completed,
+                "backend": session.backend,
+                "backend_digest": session.backend_digest,
+                "policy_digest": session.policy_digest,
                 "errors": errors,
             }
     finally:
-        if proc is not None and proc.poll() is None:
-            kill_process_group(proc)
-        for fd in (master_fd, slave_fd):
-            if fd is not None:
-                with contextlib.suppress(OSError):
-                    os.close(fd)
+        if session is not None:
+            session.close()
 
 
 def backend_for(name: str):
@@ -722,10 +659,10 @@ def verify_candidate(repo: pathlib.Path, base_commit: str, candidate_commit: str
         tmp_path = pathlib.Path(tmp)
         worktree = create_worktree(repo, resolved_candidate, tmp_path)
         try:
-            run_latency_probe(worktree, name="warmup", text=text[:32], transcript_pairs=2)
-            short = run_latency_probe(worktree, name="short", text=text, transcript_pairs=3)
-            long = run_latency_probe(worktree, name="long", text=text, transcript_pairs=900)
-            background = run_background_study_latency_probe(worktree, text=background_text, nonce=nonce)
+            run_latency_probe(backend, worktree, name="warmup", text=text[:32], transcript_pairs=2)
+            short = run_latency_probe(backend, worktree, name="short", text=text, transcript_pairs=3)
+            long = run_latency_probe(backend, worktree, name="long", text=text, transcript_pairs=900)
+            background = run_background_study_latency_probe(backend, worktree, text=background_text, nonce=nonce)
         finally:
             remove_worktree(repo, worktree)
     after_digest = verifier_tree_digest()

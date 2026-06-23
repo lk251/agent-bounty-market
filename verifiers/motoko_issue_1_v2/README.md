@@ -6,9 +6,9 @@ workflows, candidate thresholds, or candidate verdict logic.
 
 The verifier creates a detached candidate worktree and drives the real terminal
 UI through PTYs. Candidate Python is never imported into the trusted verifier
-interpreter; it runs only in child processes. The trusted parent owns the
-randomized challenge nonce, fixtures, thresholds, metrics, digests, and verdict
-logic.
+interpreter; it runs only in child processes launched by the configured
+execution backend. The trusted parent owns the randomized challenge nonce,
+fixtures, thresholds, metrics, digests, and verdict logic.
 
 This verifier is still not a production sandbox. It uses temporary HOME/state
 paths, a scrubbed environment from the runner, wall-clock timeouts, bounded

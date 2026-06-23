@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -11,7 +13,7 @@ from .db import connect
 from .payments import FakePaymentGateway
 from .util import utc_now
 from .execution import openshell_status
-from .verification import ProtectedVerifierRunner
+from .verification import ProtectedVerifierRunner, default_verifier_dir
 
 
 DEFAULT_PROJECT_ID = "project_motoko"
@@ -149,6 +151,7 @@ def run_motoko_suite(
 ) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="agent-bounty-suite-") as tmp:
         tmp_path = Path(tmp)
+        malicious = run_malicious_candidate_probe(tmp_path / "malicious")
         baseline = run_motoko_flow(
             db_path=tmp_path / "baseline.sqlite3",
             motoko_repo=motoko_repo,
@@ -190,12 +193,14 @@ def run_motoko_suite(
             "schema": "agent-bounty-motoko-suite-v1",
             "created_at": utc_now(),
             "cases": {
+                "malicious": malicious,
                 "baseline": baseline,
                 "intermediate": intermediate,
                 "final": final,
                 "final_replay": replay,
             },
             "accepted_candidate": final_commit,
+            "malicious_rejected": malicious["accepted"] is False,
             "baseline_rejected": baseline["verification"]["receipt"].get("accepted") is False and baseline["payout"] is None,
             "intermediate_rejected": intermediate["verification"]["receipt"].get("accepted") is False and intermediate["payout"] is None,
             "final_paid_once": final["payout"] is not None
@@ -207,6 +212,79 @@ def run_motoko_suite(
                 for case in (baseline, intermediate, final, replay)
             ),
         }
+
+
+def run_malicious_candidate_probe(root: Path) -> dict[str, Any]:
+    repo = root / "repo"
+    repo.mkdir(parents=True)
+    _run_git(repo, "init")
+    _run_git(repo, "config", "user.email", "demo@example.invalid")
+    _run_git(repo, "config", "user.name", "Demo User")
+    base = _git_commit(
+        repo,
+        "motoko",
+        "#!/usr/bin/env python3\n"
+        "class MotokoTui:\n"
+        "    def __init__(self, conv): self.running = False\n"
+        "    def run(self): return None\n"
+        "def new_conversation(title): return {'title': title}\n",
+    )
+    candidate = _git_commit(
+        repo,
+        "motoko",
+        "#!/usr/bin/env python3\n"
+        "import __main__, json, pathlib\n"
+        "__main__.CONTRACT = {'verifier_id': 'pwned'}\n"
+        "print(json.dumps({'accepted': True, 'forged_by': 'candidate'}))\n"
+        "pathlib.Path('attempted-verifier-write').write_text('candidate was here')\n"
+        "raise SystemExit(0)\n",
+    )
+    verifier_dir = root / "verifier"
+    shutil.copytree(default_verifier_dir(), verifier_dir)
+    contract_path = verifier_dir / "contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["baseline_commit"] = base
+    contract_path.write_text(json.dumps(contract, sort_keys=True) + "\n", encoding="utf-8")
+    result = ProtectedVerifierRunner(verifier_dir=verifier_dir, timeout_seconds=10).run(
+        bounty_id="bounty_malicious_demo",
+        motoko_repo=repo,
+        base_commit=base,
+        candidate_commit=candidate,
+    )
+    failure_reasons = result.result.get("failure_reasons")
+    if not isinstance(failure_reasons, list):
+        failure_reasons = [str(result.result.get("error"))] if result.result.get("error") else []
+    return {
+        "schema": "agent-bounty-malicious-demo-v1",
+        "accepted": result.accepted,
+        "verdict": "accepted" if result.accepted else "rejected",
+        "base_commit": base,
+        "candidate_commit": candidate,
+        "backend": result.backend,
+        "backend_digest": result.backend_digest,
+        "policy_digest": result.policy_digest,
+        "verifier_digest": result.verifier_digest,
+        "trusted_policy_preserved": result.result.get("verifier_id") != "pwned",
+        "failure_reasons": failure_reasons,
+    }
+
+
+def _run_git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _git_commit(repo: Path, filename: str, text: str) -> str:
+    path = repo / filename
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o755)
+    _run_git(repo, "add", filename)
+    _run_git(repo, "commit", "-m", f"commit {filename}")
+    return _run_git(repo, "rev-parse", "HEAD")
 
 
 def cmd_demo_motoko(args: argparse.Namespace) -> int:
@@ -256,7 +334,7 @@ def cmd_demo_motoko_suite(args: argparse.Namespace) -> int:
         verifier_timeout=args.verifier_timeout,
     )
     print_json(result)
-    return 0 if result["baseline_rejected"] and result["intermediate_rejected"] and result["final_paid_once"] and result["reconciliation_ok"] else 1
+    return 0 if result["malicious_rejected"] and result["baseline_rejected"] and result["intermediate_rejected"] and result["final_paid_once"] and result["reconciliation_ok"] else 1
 
 
 def cmd_ledger_show(args: argparse.Namespace) -> int:

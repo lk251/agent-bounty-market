@@ -9,6 +9,7 @@ python -m agent_bounty demo-motoko-suite \
 
 The suite proves:
 
+- synthetic malicious candidate -> rejected, no trusted-policy mutation;
 - bug baseline `f4ebe107...` -> rejected, no payout;
 - idle-only candidate `fdf54095...` -> rejected by verifier v2, no payout;
 - final candidate `4c03e0f...` -> accepted, payout pending, then paid;

@@ -48,8 +48,8 @@ through PTYs, and emits compact JSON.
 Candidate Python is never imported into the trusted verifier interpreter. The
 trusted parent owns fixtures, randomized nonce values, thresholds, statistics,
 digests, and verdict logic. Candidate code runs only as child processes through
-an execution backend, and candidate stdout is treated as observation data rather
-than authoritative verdict JSON.
+the execution backend PTY/process API, and candidate stdout is treated as
+observation data rather than authoritative verdict JSON.
 
 The v2 contract checks idle short and long transcript typing, rejects transcript-
 dependent ordinary input scans, and runs a real background-study typing scenario

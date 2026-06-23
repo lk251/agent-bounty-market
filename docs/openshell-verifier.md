@@ -8,14 +8,20 @@ The market has an execution backend interface with two implementations:
 
 The local backend is intentionally limited. It uses scrubbed environment,
 temporary HOME/state/work directories, a new process group, wall timeout,
-bounded output, process-group kill, and Python resource limits where supported.
-It is not a complete sandbox.
+bounded output, process-group kill, and Python resource limits where supported
+for CPU, address space, file size, open files, and process count. It is not a
+complete sandbox.
 
 Official NVIDIA NemoClaw guidance says `nemoclaw <name> exec` is the preferred
 managed one-off sandbox command, while `openshell sandbox exec` is the raw
 OpenShell execution path. This repo exposes the lower-level `openshell` adapter
 only as a verifier backend boundary; production deployment should decide whether
 to wrap it with NemoClaw registry names or raw OpenShell sandbox names.
+
+The intended OpenShell policy artifact is
+`verifiers/motoko_issue_1_v2/openshell-policy.yaml`. It declares deny-by-default
+network behavior and no candidate-visible credentials. The status command hashes
+that file into `policy_digest`.
 
 Inspect availability:
 
@@ -26,7 +32,7 @@ python -m agent_bounty openshell-status
 Current HB3 result at implementation time:
 
 ```json
-{"available":false,"backend":"openshell","blocker":"openshell executable not found on PATH"}
+{"available":false,"backend":"openshell","backend_digest":"sha256:de5fea9ab2881a2476b81285f4c8beac09541227aa90a08b9f155abb47b861f9","blocker":"openshell executable not found on PATH","policy_digest":"sha256:8cd342225854dda399c88c52ec0a37485dd4f8c376d24414c89a4ec6952e2914","sandbox":"agent-bounty-verifier","schema":"openshell-backend-status-v1"}
 ```
 
 The status output also includes `backend_digest` and `policy_digest` so a

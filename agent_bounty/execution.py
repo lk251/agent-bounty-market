@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import json
 import os
+import pty
 import shutil
 import signal
 import subprocess
 import tempfile
 import time
+import fcntl
+import struct
+import termios
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -60,6 +64,35 @@ class BackendUnavailable(RuntimeError):
     pass
 
 
+class BackendPtySession:
+    def __init__(
+        self,
+        *,
+        master_fd: int,
+        process: subprocess.Popen,
+        tempdir: tempfile.TemporaryDirectory,
+        backend: str,
+        backend_digest: str,
+        policy_digest: str,
+    ):
+        self.master_fd = master_fd
+        self.process = process
+        self._tempdir = tempdir
+        self.backend = backend
+        self.backend_digest = backend_digest
+        self.policy_digest = policy_digest
+
+    def close(self) -> None:
+        if self.process.poll() is None:
+            kill_process_group(self.process)
+        with _suppress_all():
+            os.close(self.master_fd)
+        self._tempdir.cleanup()
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.process.wait(timeout=timeout)
+
+
 class ExecutionBackend:
     name = "abstract"
 
@@ -92,6 +125,18 @@ class ExecutionBackend:
         timeout_seconds: float,
         max_output_bytes: int,
     ) -> BackendResult:
+        raise NotImplementedError
+
+    def start_pty(
+        self,
+        cmd: Sequence[str],
+        *,
+        cwd: Path,
+        env: Mapping[str, str] | None = None,
+        timeout_seconds: float,
+        rows: int = 24,
+        cols: int = 120,
+    ) -> BackendPtySession:
         raise NotImplementedError
 
 
@@ -133,6 +178,9 @@ def _resource_preexec(timeout_seconds: float):
 
             cpu_limit = max(1, int(timeout_seconds) + 2)
             resource.setrlimit(resource.RLIMIT_CPU, (cpu_limit, cpu_limit + 1))
+            if hasattr(resource, "RLIMIT_AS"):
+                memory_limit = 4 * 1024 * 1024 * 1024
+                resource.setrlimit(resource.RLIMIT_AS, (memory_limit, memory_limit))
             resource.setrlimit(resource.RLIMIT_FSIZE, (32 * 1024 * 1024, 32 * 1024 * 1024))
             resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
             if hasattr(resource, "RLIMIT_NPROC"):
@@ -163,7 +211,7 @@ class LocalIsolatedProcessBackend(ExecutionBackend):
             "process": "new-session-process-group",
             "network": "not-sandboxed",
             "stdout_stderr": "bounded",
-            "resource_limits": ["cpu", "file-size", "nofile", "nproc-where-supported"],
+            "resource_limits": ["cpu", "address-space", "file-size", "nofile", "nproc-where-supported"],
             "cleanup": "temporary-home-state-config-workdirs",
             "warning": "local process isolation is not a complete sandbox",
         }
@@ -217,6 +265,59 @@ class LocalIsolatedProcessBackend(ExecutionBackend):
                 policy_digest=self.policy_digest,
             )
 
+    def start_pty(
+        self,
+        cmd: Sequence[str],
+        *,
+        cwd: Path,
+        env: Mapping[str, str] | None = None,
+        timeout_seconds: float,
+        rows: int = 24,
+        cols: int = 120,
+    ) -> BackendPtySession:
+        tempdir = tempfile.TemporaryDirectory(prefix="agent-bounty-backend-", dir=str(self.temp_root) if self.temp_root else None)
+        tmp_path = Path(tempdir.name)
+        run_env = self.scrub_env(env)
+        run_env.setdefault("HOME", str(tmp_path / "home"))
+        run_env.setdefault("AGENT_BOUNTY_WORK", str(tmp_path / "work"))
+        Path(run_env["HOME"]).mkdir(parents=True, exist_ok=True)
+        Path(run_env["AGENT_BOUNTY_WORK"]).mkdir(parents=True, exist_ok=True)
+        master_fd, slave_fd = pty.openpty()
+        set_winsz(slave_fd, rows, cols)
+        try:
+            proc = subprocess.Popen(
+                list(cmd),
+                cwd=str(cwd),
+                env=run_env,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                close_fds=True,
+                start_new_session=True,
+                preexec_fn=_resource_preexec(timeout_seconds) if os.name == "posix" else None,
+            )
+        except Exception:
+            with _suppress_all():
+                os.close(master_fd)
+            with _suppress_all():
+                os.close(slave_fd)
+            tempdir.cleanup()
+            raise
+        with _suppress_all():
+            os.close(slave_fd)
+        return BackendPtySession(
+            master_fd=master_fd,
+            process=proc,
+            tempdir=tempdir,
+            backend=self.name,
+            backend_digest=self.backend_digest,
+            policy_digest=self.policy_digest,
+        )
+
+
+def set_winsz(fd: int, rows: int, cols: int) -> None:
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
 
 def kill_process_group(proc: subprocess.Popen) -> None:
     if proc.poll() is not None:
@@ -244,7 +345,7 @@ class OpenShellBackend(ExecutionBackend):
 
     def __init__(self, *, sandbox_name: str = "agent-bounty-verifier", policy_file: Path | None = None):
         self.sandbox_name = sandbox_name
-        self.policy_file = policy_file
+        self.policy_file = policy_file if policy_file is not None else default_openshell_policy_file()
 
     @property
     def policy(self) -> dict[str, object]:
@@ -298,13 +399,64 @@ class OpenShellBackend(ExecutionBackend):
         for key, value in self.scrub_env(env).items():
             openshell_cmd.append(f"{key}={value}")
         openshell_cmd.extend(["bash", "-lc", " ".join(_shell_quote(part) for part in cmd)])
-        return LocalIsolatedProcessBackend().run(
+        local = LocalIsolatedProcessBackend().run(
             openshell_cmd,
             cwd=cwd,
             env={},
             timeout_seconds=timeout_seconds,
             max_output_bytes=max_output_bytes,
         )
+        return BackendResult(
+            stdout=local.stdout,
+            stderr=local.stderr,
+            returncode=local.returncode,
+            timed_out=local.timed_out,
+            started_at=local.started_at,
+            finished_at=local.finished_at,
+            elapsed_ms=local.elapsed_ms,
+            backend=self.name,
+            backend_digest=self.backend_digest,
+            policy_digest=self.policy_digest,
+        )
+
+    def start_pty(
+        self,
+        cmd: Sequence[str],
+        *,
+        cwd: Path,
+        env: Mapping[str, str] | None = None,
+        timeout_seconds: float,
+        rows: int = 24,
+        cols: int = 120,
+    ) -> BackendPtySession:
+        blocker = self.blocker()
+        if blocker:
+            raise BackendUnavailable(blocker)
+        openshell_cmd = [
+            "openshell",
+            "sandbox",
+            "exec",
+            "-n",
+            self.sandbox_name,
+            "--",
+            "env",
+            "-i",
+        ]
+        for key, value in self.scrub_env(env).items():
+            openshell_cmd.append(f"{key}={value}")
+        openshell_cmd.extend(["bash", "-lc", " ".join(_shell_quote(part) for part in cmd)])
+        session = LocalIsolatedProcessBackend().start_pty(
+            openshell_cmd,
+            cwd=cwd,
+            env={},
+            timeout_seconds=timeout_seconds,
+            rows=rows,
+            cols=cols,
+        )
+        session.backend = self.name
+        session.backend_digest = self.backend_digest
+        session.policy_digest = self.policy_digest
+        return session
 
 
 def _shell_quote(value: str) -> str:
@@ -323,3 +475,8 @@ def openshell_status() -> dict[str, object]:
         "sandbox": backend.sandbox_name,
         "blocker": blocker,
     }
+
+
+def default_openshell_policy_file() -> Path | None:
+    path = Path(__file__).resolve().parents[1] / "verifiers" / "motoko_issue_1_v2" / "openshell-policy.yaml"
+    return path if path.exists() else None
