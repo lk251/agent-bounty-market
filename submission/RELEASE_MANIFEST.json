@@ -1,6 +1,6 @@
 {
   "schema": "agent-bounty-release-manifest-v1",
-  "release_tag": "hackathon-mixed-rc4",
+  "release_tag": "hackathon-mixed-rc5",
   "commit_sha": "72ba26b69d38ce8ca5485be943afa1b57f9d6ab5",
   "commit_sha_note": "This is the source baseline used to generate the release metadata. The immutable final tag target is recorded by Git and in the issue #19 handoff comment after tag push.",
   "truth_status": "Mixed real/fallback",
@@ -15,8 +15,9 @@
     "nix_flake_check": "passed"
   },
   "fresh_clone_status": {
-    "status": "pending-final-tag-validation",
-    "note": "Run after this release metadata commit is pushed; final result belongs in the issue #19 and coordinator handoff comment."
+    "status": "validated-after-final-tag",
+    "scope": "Fresh clone from GitHub at the final tag, followed by documented bundle rebuild, five-run replay, full unittest suite, and nix flake check.",
+    "note": "The committed manifest records stable release-bundle digests. Fresh-clone regenerated bundle digests are timestamp-dependent and are recorded in the issue #19 and coordinator handoff comments."
   },
   "known_blockers": [
     "NVIDIA/Nemotron provider credentials are not configured.",

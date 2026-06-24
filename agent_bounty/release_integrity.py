@@ -155,7 +155,7 @@ def _check_final_handoff(root: Path, bundle_manifest: dict[str, Any], bundle: di
         str(bundle_manifest.get("bundle_digest") or ""),
         str(bundle_manifest.get("attestation_digest") or ""),
         str((bundle.get("truth_matrix") or {}).get("digest") or ""),
-        "hackathon-mixed-rc4",
+        "hackathon-mixed-rc5",
     ]
     for item in required:
         if item and item not in text:

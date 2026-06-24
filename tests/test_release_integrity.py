@@ -24,7 +24,7 @@ class ReleaseIntegrityTests(unittest.TestCase):
     def test_release_manifest_schema_and_digests_match_bundle(self):
         manifest = json.loads((REPO_ROOT / "submission" / "RELEASE_MANIFEST.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["schema"], RELEASE_MANIFEST_SCHEMA)
-        self.assertEqual(manifest["release_tag"], "hackathon-mixed-rc4")
+        self.assertEqual(manifest["release_tag"], "hackathon-mixed-rc5")
         self.assertEqual(manifest["truth_status"], "Mixed real/fallback")
         committed_bundle = git_show_text("demo/bundles/winning-run/manifest.json")
         committed_truth = git_show_text("demo/bundles/winning-run/evidence/truth-matrix.json")
