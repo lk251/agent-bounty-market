@@ -53,6 +53,14 @@
 - Project-agent malformed output, extra fields, prompt-injection attempts,
   unallowlisted repositories/classes, missing verifier IDs, overspend, and
   above-threshold spending all fail closed before money moves.
+- Solver agents cannot claim unless the contract is open, repository/task class
+  are allowlisted, expected cost fits operating budget, reward/currency match
+  the contract, margin is non-negative, and no active lease exists.
+- Solver executions record backend identity and path policy. Attempts to modify
+  forbidden verifier/hidden-test paths fail before submission.
+- Accepted solver outcomes update capability and settlement eligibility exactly
+  once. Rejected outcomes record history but grant no earnings or verified
+  capability.
 - Secrets are not required for tests or demo execution.
 
 ## Not Yet Protected
@@ -73,5 +81,7 @@ runs when a host has an approved `openshell` sandbox available.
   webhook endpoint once credentials are available.
 - Exercise the project-agent path against real Hermes/NemoClaw/Nemotron once
   the runtime is installed and a reviewed JSON wrapper is configured.
+- Exercise the solver-agent live-solve path against real Hermes/NemoClaw/OpenShell
+  and a reviewed safe live issue.
 - Replace the current local-process verifier isolation with the
   sponsor-prescribed sandbox once that runtime is available.

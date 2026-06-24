@@ -11,6 +11,8 @@ Agent Bounty Market is a local transaction core with four trust zones:
    for bounty contracts and solver submissions.
 6. **Project-agent buyer**: optional runtime boundary that proposes bounded
    bounties while trusted code enforces spending policy.
+7. **Solver agents**: specialized seller profiles that underwrite, claim,
+   execute, submit, and learn only through protected verification outcomes.
 
 The orchestrator owns bounty state, idempotency, ledger entries, verification
 receipts, and payout decisions. The candidate can supply code, but not the
@@ -102,6 +104,24 @@ The project-agent buyer is deliberately split:
 The default runtime is deterministic for tests. The gated Hermes adapter records
 the exact runtime/model and refuses to run unless a reviewed Hermes wrapper
 command is configured. See `docs/project-agent.md`.
+
+## Solver-Agent Boundary
+
+Solver agents are profile-driven sellers. A profile records specialization,
+supported versions, verified history, budget, scope restrictions, attempts,
+acceptance/rejection counts, cost/time summaries, and last validation. The fake
+runtime evaluates all profiles against open funded contracts; trusted code
+enforces claim policy before an exclusive lease is acquired.
+
+Execution is recorded through the strongest configured backend. The current demo
+uses deterministic Motoko replay and labels the backend as
+`local-isolated-process-fallback`; OpenShell/NemoClaw is reported as blocked
+until configured. PR evidence packages bind contract digest, solver profile,
+base/candidate SHAs, changed files, command/output digests, limitations, and
+verification result. Capability/economics update exactly once and only after the
+protected verifier result.
+
+See `docs/solver-agent.md`.
 
 ## Payment Boundary
 

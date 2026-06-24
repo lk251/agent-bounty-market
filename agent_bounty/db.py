@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -24,10 +24,10 @@ def init_db(conn: sqlite3.Connection) -> None:
             value TEXT NOT NULL
         );
 
-        INSERT INTO meta(key, value) VALUES ('schema_version', '8')
+        INSERT INTO meta(key, value) VALUES ('schema_version', '9')
         ON CONFLICT(key) DO UPDATE SET
             value = CASE
-                WHEN CAST(value AS INTEGER) < 8 THEN '8'
+                WHEN CAST(value AS INTEGER) < 9 THEN '9'
                 ELSE value END;
 
         CREATE TABLE IF NOT EXISTS projects (
@@ -441,6 +441,111 @@ def init_db(conn: sqlite3.Connection) -> None:
             updated_at TEXT NOT NULL,
             UNIQUE(candidate_id, proposal_digest)
         );
+
+        CREATE TABLE IF NOT EXISTS solver_agent_profiles (
+            id TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            profile_version TEXT NOT NULL,
+            specialization_json TEXT NOT NULL,
+            operating_budget_cents INTEGER NOT NULL CHECK(operating_budget_cents >= 0),
+            allowed_repositories_json TEXT NOT NULL,
+            allowed_issue_classes_json TEXT NOT NULL,
+            scope_restrictions_json TEXT NOT NULL,
+            attempted_count INTEGER NOT NULL DEFAULT 0,
+            accepted_count INTEGER NOT NULL DEFAULT 0,
+            rejected_count INTEGER NOT NULL DEFAULT 0,
+            median_cost_cents INTEGER,
+            median_completion_seconds INTEGER,
+            last_validation_at TEXT,
+            profile_digest TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS solver_agent_skills (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            digest TEXT NOT NULL,
+            path TEXT NOT NULL,
+            content_digest TEXT NOT NULL,
+            metadata_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(name, version, digest)
+        );
+
+        CREATE TABLE IF NOT EXISTS solver_agent_evaluations (
+            id TEXT PRIMARY KEY,
+            solver_id TEXT NOT NULL REFERENCES solver_agent_profiles(id),
+            bounty_id TEXT NOT NULL REFERENCES bounties(id),
+            runtime_kind TEXT NOT NULL,
+            runtime_name TEXT NOT NULL,
+            model TEXT NOT NULL,
+            decision_json TEXT NOT NULL,
+            decision_digest TEXT NOT NULL,
+            trusted_verdict TEXT NOT NULL,
+            policy_reasons_json TEXT NOT NULL,
+            safe_trace_json TEXT NOT NULL,
+            safe_trace_digest TEXT NOT NULL,
+            skill_versions_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL UNIQUE,
+            UNIQUE(solver_id, bounty_id, decision_digest)
+        );
+
+        CREATE TABLE IF NOT EXISTS solver_agent_executions (
+            id TEXT PRIMARY KEY,
+            solver_id TEXT NOT NULL REFERENCES solver_agent_profiles(id),
+            bounty_id TEXT NOT NULL REFERENCES bounties(id),
+            mode TEXT NOT NULL,
+            backend TEXT NOT NULL,
+            backend_digest TEXT NOT NULL,
+            base_commit TEXT NOT NULL,
+            candidate_commit TEXT,
+            worktree_digest TEXT,
+            changed_files_json TEXT NOT NULL,
+            commands_json TEXT NOT NULL,
+            safe_output_digest TEXT NOT NULL,
+            status TEXT NOT NULL,
+            limitations_json TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            idempotency_key TEXT NOT NULL UNIQUE
+        );
+
+        CREATE TABLE IF NOT EXISTS solver_agent_submissions (
+            id TEXT PRIMARY KEY,
+            solver_id TEXT NOT NULL REFERENCES solver_agent_profiles(id),
+            bounty_id TEXT NOT NULL REFERENCES bounties(id),
+            execution_id TEXT REFERENCES solver_agent_executions(id),
+            submission_id TEXT REFERENCES submissions(id),
+            receipt_id TEXT REFERENCES verification_receipts(id),
+            repo_full_name TEXT NOT NULL,
+            pr_number INTEGER,
+            pr_body_digest TEXT NOT NULL,
+            evidence_json TEXT NOT NULL,
+            status TEXT NOT NULL,
+            settlement_eligible INTEGER NOT NULL DEFAULT 0 CHECK(settlement_eligible IN (0, 1)),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL UNIQUE
+        );
+
+        CREATE TABLE IF NOT EXISTS solver_agent_capability_events (
+            id TEXT PRIMARY KEY,
+            solver_id TEXT NOT NULL REFERENCES solver_agent_profiles(id),
+            bounty_id TEXT NOT NULL REFERENCES bounties(id),
+            receipt_id TEXT REFERENCES verification_receipts(id),
+            outcome TEXT NOT NULL,
+            task_family TEXT NOT NULL,
+            skill_versions_json TEXT NOT NULL,
+            reward_cents INTEGER NOT NULL DEFAULT 0,
+            estimated_cost_cents INTEGER NOT NULL DEFAULT 0,
+            gross_margin_cents INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL UNIQUE
+        );
         """
     )
     _ensure_column(conn, "verification_receipts", "project_id", "TEXT")
@@ -484,6 +589,11 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_project_agent_candidates_project ON project_agent_candidates(project_id, allowlisted, issue_class)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_project_agent_runs_project ON project_agent_runs(project_id, started_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_project_agent_decisions_project ON project_agent_decisions(project_id, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_solver_agent_profiles_digest ON solver_agent_profiles(profile_digest)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_solver_agent_evaluations_bounty ON solver_agent_evaluations(bounty_id, trusted_verdict)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_solver_agent_executions_bounty ON solver_agent_executions(bounty_id, status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_solver_agent_submissions_bounty ON solver_agent_submissions(bounty_id, status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_solver_agent_capabilities_solver ON solver_agent_capability_events(solver_id, outcome)")
     conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))
     conn.commit()
 

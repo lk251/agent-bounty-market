@@ -105,3 +105,58 @@ requires AGENT_BOUNTY_RUN_HERMES_PROJECT_AGENT=1,
 AGENT_BOUNTY_HERMES_EVALUATE_COMMAND, and an installed Hermes CLI or
 AGENT_BOUNTY_HERMES_CLI.
 ```
+
+## Issue #3: Specialized Solver Agents
+
+Status: implementation in progress; real Hermes/OpenShell/NemoClaw live solve is
+externally blocked, deterministic Motoko replay path is implemented.
+
+Implemented so far:
+
+- schema v9 solver-agent tables for profiles, skills, evaluations, executions,
+  submissions, and capability events;
+- four versioned solver skills under `skills/solver-agent/`;
+- three durable demo profiles: Python terminal/TUI, TypeScript/frontend, and
+  CUDA/PyTorch performance;
+- fake solver runtime with truthful model/runtime identity;
+- solver decision schema validation;
+- trusted claim policy for open contracts, repo/class allowlists, operating
+  budget, margin, canonical reward, and active lease;
+- lease-generation claim idempotency for expiry/reclaim;
+- deterministic Motoko issue #1 replay execution;
+- PR evidence package with contract digest, solver profile, base/candidate SHA,
+  changed files, commands, safe output digest, limitations, estimated cost, and
+  verification receipt;
+- protected verifier submission path;
+- capability/economic update exactly once after accepted verification;
+- rejected capability path with no earnings;
+- live-local-fallback record that is clearly blocked/not a real live solve;
+- solver-agent status, register, discover, evaluate, claim, execute, submit, and
+  demo commands;
+- deterministic tests for malformed output, capability mismatch, negative
+  margin, budget, claim replay/race, lease expiry/reclaim, path policy, PR-head
+  binding, credential trace safety, deterministic replay, rejection accounting,
+  skill promotion gating, runtime blockers, live fallback, and full demo.
+
+Validation run so far:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/solver_agent.py agent_bounty/cli.py agent_bounty/db.py
+nix develop --command python3 -m agent_bounty solver-agent status
+nix develop --command python3 -m agent_bounty demo-solver-motoko --db "$tmpdir/solver.sqlite3" --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
+nix develop --command python3 -m unittest tests.test_solver_agent
+```
+
+Observed results:
+
+- solver-agent status: fake runtime available; Hermes and OpenShell/NemoClaw
+  blocked;
+- solver demo: `ok=true`;
+- focused solver tests: 11 passed.
+
+Current external blockers:
+
+```text
+No real Hermes solver wrapper, no configured OpenShell/NemoClaw backend, and no
+reviewed safe live issue for a real live solve.
+```

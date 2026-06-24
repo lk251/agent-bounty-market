@@ -218,3 +218,22 @@ python -m agent_bounty project-agent status
 
 By default this reports `fake-project-agent-runtime-v1` for tests/demos and an
 explicit blocker for real Hermes execution. See `docs/project-agent.md`.
+
+## Solver Agents
+
+The solver-agent path is the seller side of the market. Specialized profiles
+discover funded contracts, underwrite capability and economics, claim a lease,
+execute through a bounded backend, submit evidence, and update capability
+history only after protected verification.
+
+Run the deterministic Motoko replay demo:
+
+```bash
+python -m agent_bounty demo-solver-motoko \
+  --db .demo/solver.sqlite3 \
+  --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
+```
+
+The default demo truthfully reports the fake solver runtime and local isolated
+fallback backend. Real Hermes/OpenShell/NemoClaw execution remains gated. See
+`docs/solver-agent.md`.

@@ -44,6 +44,19 @@ from .project_agent import (
     scan_project_candidates,
     setup_demo_project,
 )
+from .solver_agent import (
+    FakeSolverAgentRuntime,
+    SolverAgentError,
+    claim_approved_solver,
+    evaluate_solver_agents,
+    execute_deterministic_motoko_replay,
+    open_funded_contracts,
+    record_live_solve_fallback,
+    register_default_solver_profiles,
+    run_demo_solver_motoko,
+    solver_agent_status_report,
+    submit_solver_replay,
+)
 from .stripe_sandbox import (
     OfficialStripeClient,
     PINNED_STRIPE_PACKAGE,
@@ -916,6 +929,91 @@ def cmd_demo_project_agent_motoko(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def cmd_solver_agent_status(_args: argparse.Namespace) -> int:
+    print_json(solver_agent_status_report())
+    return 0
+
+
+def cmd_solver_agent_register(args: argparse.Namespace) -> int:
+    try:
+        market = open_market(args.db)
+        result = register_default_solver_profiles(market)
+    except (SolverAgentError, MarketError) as exc:
+        print_json({"schema": "solver-agent-profile-registration-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "solver-agent-profile-registration-v1", "ok": True, **result})
+    return 0
+
+
+def cmd_solver_agent_discover(args: argparse.Namespace) -> int:
+    try:
+        market = open_market(args.db)
+        result = {"schema": "solver-agent-discovery-v1", "open_contracts": open_funded_contracts(market)}
+    except (SolverAgentError, MarketError) as exc:
+        print_json({"schema": "solver-agent-discovery-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"ok": True, **result})
+    return 0
+
+
+def cmd_solver_agent_evaluate(args: argparse.Namespace) -> int:
+    try:
+        market = open_market(args.db)
+        result = evaluate_solver_agents(market, runtime=FakeSolverAgentRuntime())
+    except (SolverAgentError, MarketError) as exc:
+        print_json({"schema": "solver-agent-evaluation-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "solver-agent-evaluation-v1", "ok": True, **result})
+    return 0
+
+
+def cmd_solver_agent_claim(args: argparse.Namespace) -> int:
+    try:
+        market = open_market(args.db)
+        result = claim_approved_solver(market, lease_expires_at=args.lease_expires_at)
+    except (SolverAgentError, MarketError) as exc:
+        print_json({"schema": "solver-agent-claim-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "solver-agent-claim-v1", "ok": True, **result})
+    return 0
+
+
+def cmd_solver_agent_execute(args: argparse.Namespace) -> int:
+    try:
+        market = open_market(args.db)
+        if args.mode == "deterministic-replay":
+            result = execute_deterministic_motoko_replay(market, solver_id=args.solver_id, bounty_id=args.bounty_id)
+        else:
+            result = record_live_solve_fallback(market, solver_id=args.solver_id, bounty_id=args.bounty_id)
+    except (SolverAgentError, MarketError) as exc:
+        print_json({"schema": "solver-agent-execution-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "solver-agent-execution-v1", "ok": True, **result})
+    return 0
+
+
+def cmd_solver_agent_submit(args: argparse.Namespace) -> int:
+    try:
+        market = open_market(args.db, verifier_timeout=args.verifier_timeout)
+        result = submit_solver_replay(market, motoko_repo=Path(args.motoko_repo) if args.motoko_repo else None, repo_full_name=args.repo, pr_number=args.pr_number)
+    except (SolverAgentError, MarketError) as exc:
+        print_json({"schema": "solver-agent-submission-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "solver-agent-submission-v1", "ok": True, **result})
+    return 0
+
+
+def cmd_demo_solver_motoko(args: argparse.Namespace) -> int:
+    try:
+        market = open_market(args.db, verifier_timeout=args.verifier_timeout)
+        result = run_demo_solver_motoko(market, motoko_repo=Path(args.motoko_repo) if args.motoko_repo else None)
+    except (SolverAgentError, ProjectAgentError, MarketError, GitHubIntegrationError) as exc:
+        print_json({"schema": "solver-agent-demo-motoko-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def open_trusted_market(db_path: str | Path, *, verifier_timeout: float = 60.0) -> AgentBountyMarket:
     conn = connect(db_path)
     return AgentBountyMarket(conn, FakePaymentGateway(), ProtectedVerifierRunner(timeout_seconds=verifier_timeout))
@@ -1552,6 +1650,50 @@ def build_parser() -> argparse.ArgumentParser:
     demo_project_agent.add_argument("--repo", default="lk251/motoko")
     demo_project_agent.add_argument("--runtime", choices=["fake", "hermes"], default="fake")
     demo_project_agent.set_defaults(func=cmd_demo_project_agent_motoko)
+
+    solver_agent = sub.add_parser("solver-agent", help="discover, evaluate, claim, execute, and submit funded bounties")
+    solver_agent_sub = solver_agent.add_subparsers(dest="solver_agent_command", required=True)
+
+    solver_status = solver_agent_sub.add_parser("status", help="show solver-agent runtime and skill readiness")
+    solver_status.set_defaults(func=cmd_solver_agent_status)
+
+    solver_register = solver_agent_sub.add_parser("register-profiles", help="register default specialized solver profiles")
+    solver_register.add_argument("--db", required=True)
+    solver_register.set_defaults(func=cmd_solver_agent_register)
+
+    solver_discover = solver_agent_sub.add_parser("discover", help="show open funded contracts")
+    solver_discover.add_argument("--db", required=True)
+    solver_discover.set_defaults(func=cmd_solver_agent_discover)
+
+    solver_eval = solver_agent_sub.add_parser("evaluate", help="evaluate solver profiles against open funded contracts")
+    solver_eval.add_argument("--db", required=True)
+    solver_eval.set_defaults(func=cmd_solver_agent_evaluate)
+
+    solver_claim = solver_agent_sub.add_parser("claim", help="claim the first trusted approved solver evaluation")
+    solver_claim.add_argument("--db", required=True)
+    solver_claim.add_argument("--lease-expires-at", default="2026-06-30T18:00:00Z")
+    solver_claim.set_defaults(func=cmd_solver_agent_claim)
+
+    solver_execute = solver_agent_sub.add_parser("execute", help="record deterministic replay execution or live fallback")
+    solver_execute.add_argument("--db", required=True)
+    solver_execute.add_argument("--solver-id", default="solver_python_terminal_tui")
+    solver_execute.add_argument("--bounty-id", default=DEFAULT_BOUNTY_ID)
+    solver_execute.add_argument("--mode", choices=["deterministic-replay", "live-fallback"], default="deterministic-replay")
+    solver_execute.set_defaults(func=cmd_solver_agent_execute)
+
+    solver_submit = solver_agent_sub.add_parser("submit", help="submit deterministic Motoko replay and run protected verifier")
+    solver_submit.add_argument("--db", required=True)
+    solver_submit.add_argument("--motoko-repo")
+    solver_submit.add_argument("--repo", default="lk251/motoko")
+    solver_submit.add_argument("--pr-number", type=int, default=101)
+    solver_submit.add_argument("--verifier-timeout", type=float, default=60.0)
+    solver_submit.set_defaults(func=cmd_solver_agent_submit)
+
+    demo_solver = sub.add_parser("demo-solver-motoko", help="run specialized solver-agent Motoko replay demo")
+    demo_solver.add_argument("--db", required=True)
+    demo_solver.add_argument("--motoko-repo")
+    demo_solver.add_argument("--verifier-timeout", type=float, default=60.0)
+    demo_solver.set_defaults(func=cmd_demo_solver_motoko)
 
     status = sub.add_parser("stripe-status", help="show safe Stripe sandbox configuration status")
     status.set_defaults(func=cmd_stripe_status)
