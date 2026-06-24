@@ -72,6 +72,17 @@ python -m agent_bounty demo-github-motoko \
   --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
 ```
 
+Real GitHub lifecycle command:
+
+```bash
+python -m agent_bounty demo-github-motoko-live \
+  --db .demo/github-live.sqlite3 \
+  --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
+```
+
+See `docs/github-live.md` for the live configuration gates and current blocker
+semantics.
+
 ## Current External Blocker
 
 The fake/client/event-contract implementation and Motoko verifier demo are

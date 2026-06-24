@@ -481,3 +481,83 @@ Truth status:
   evidence rows.
 
 Next issue: #10 after issue #9 handoff comment and push.
+
+## Issue #10: Real GitHub Issue / Claim / PR / Receipt Lifecycle
+
+UTC start: 2026-06-24T15:53:00Z
+UTC final validation: 2026-06-24T16:02:23Z
+
+Status: partial, external blocker for real authenticated GitHub lifecycle.
+The real authenticated GitHub lifecycle is externally blocked because this
+program does not have GitHub write configuration in its environment.
+
+Implemented so far:
+
+- read issue #10 and confirmed there are no comments;
+- audited local auth and remotes:
+  `gh` is unavailable, `agent-bounty-market` pushes to
+  `git@github-motoko:lk251/agent-bounty-market.git`, and the Motoko issue
+  worktree has a `github` remote for `lk251/motoko`;
+- inspected `lk251/motoko#1`, found no recent Motoko PRs through the connector,
+  and confirmed `agent-bounty-market#7` is an unrelated demo-rehearsal PR;
+- updated existing GitHub contract publication to preserve existing human issue
+  text, replace old `agent-bounty-contract-v1` blocks, and reuse the previous
+  contract timestamp when the same bounty/base is updated;
+- added REST client and fake-client `create_pull_request` support;
+- added `agent_bounty.github_live` with `demo-github-motoko-live`, safe refusal
+  bundles, optional candidate branch push, real issue contract publication,
+  real structured claim publication, draft PR creation, REST PR import fallback,
+  protected verifier execution, and commit-status result publication;
+- added GitHub live configuration placeholders to `.env.example`;
+- documented the live boundary in `docs/github-live.md`.
+
+Exact external blocker observed:
+
+```text
+gh is not installed, and github-status reports missing
+AGENT_BOUNTY_GITHUB_INTEGRATION=1, AGENT_BOUNTY_GITHUB_TOKEN or GH_TOKEN,
+AGENT_BOUNTY_GITHUB_REPOSITORY, and AGENT_BOUNTY_GITHUB_WEBHOOK_SECRET.
+```
+
+Safe command evidence:
+
+```text
+demo-github-motoko-live bundle digest:
+sha256:0b295d84be158d79f788ac86b25491cec676cb8e6ea836f722e89886c48fc63a
+
+demo-github-motoko-live truth labels:
+ok=false
+real_github=false
+real_webhook=false
+```
+
+Validation run:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/github_integration.py agent_bounty/github_live.py agent_bounty/cli.py tests/test_github_integration.py
+nix develop --command python3 -m unittest tests.test_github_integration
+nix develop --command python3 -m compileall agent_bounty tests verifiers
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+git diff --check --cached
+git diff --check
+```
+
+Observed results:
+
+- GitHub integration tests: 8 passed;
+- compileall passed;
+- full test suite: 113 passed, 2 skipped;
+- `nix flake check`: all checks passed;
+- diff whitespace checks: clean.
+
+Truth status:
+
+- the real Motoko issue was inspected through the connector, but this repo's
+  GitHub integration code did not authenticate or write real GitHub objects;
+- no real issue contract update, claim comment, draft PR, commit status, or
+  webhook delivery is claimed;
+- `demo-github-motoko-live` produces a sanitized blocker bundle until the
+  program receives reviewed GitHub credentials/configuration.
+
+Next issue: #11 after issue #10 handoff comment and push.

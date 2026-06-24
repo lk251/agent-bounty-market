@@ -49,6 +49,7 @@ from .github_integration import (
     record_github_webhook_delivery,
     sign_github_payload,
 )
+from .github_live import run_demo_github_motoko_live
 from .hermes_integration import (
     HermesIntegrationError,
     hermes_status_report,
@@ -521,6 +522,28 @@ def cmd_github_status(_args: argparse.Namespace) -> int:
     result = github_status_report()
     print_json(result)
     return 0 if result["ok"] else 1
+
+
+def cmd_demo_github_motoko_live(args: argparse.Namespace) -> int:
+    try:
+        result = run_demo_github_motoko_live(
+            db_path=Path(args.db),
+            motoko_repo=Path(args.motoko_repo),
+            bundle_dir=Path(args.bundle) if args.bundle else None,
+            base_commit=args.base_commit,
+            candidate_commit=args.final_commit,
+            reward_cents=args.reward_cents,
+            verifier_timeout=args.verifier_timeout,
+            push_branch=args.push_branch,
+            push_remote=args.push_remote,
+            head_branch=args.head_branch,
+            base_branch=args.base_branch,
+        )
+    except (GitHubIntegrationError, MarketError) as exc:
+        print_json({"schema": "agent-bounty-github-live-demo-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
 
 
 def cmd_github_publish_bounty(args: argparse.Namespace) -> int:
@@ -1890,6 +1913,20 @@ def build_parser() -> argparse.ArgumentParser:
     demo_github.add_argument("--reward-cents", type=int, default=2500)
     demo_github.add_argument("--verifier-timeout", type=float, default=60.0)
     demo_github.set_defaults(func=cmd_demo_github_motoko)
+
+    demo_github_live = sub.add_parser("demo-github-motoko-live", help="run or truthfully block the real GitHub Motoko issue/claim/PR/result lifecycle")
+    demo_github_live.add_argument("--db", default=".demo/github-live.sqlite3")
+    demo_github_live.add_argument("--motoko-repo", required=True)
+    demo_github_live.add_argument("--bundle", default=".demo/bundles/github-live")
+    demo_github_live.add_argument("--base-commit", default=DEFAULT_BASE_COMMIT)
+    demo_github_live.add_argument("--final-commit", default=DEFAULT_FINAL_COMMIT)
+    demo_github_live.add_argument("--base-branch", default="master")
+    demo_github_live.add_argument("--head-branch", default="bounty/issue-1-tui-input-latency")
+    demo_github_live.add_argument("--push-branch", action="store_true", help="push the final candidate SHA to the configured Motoko GitHub remote before opening a PR")
+    demo_github_live.add_argument("--push-remote", default="github")
+    demo_github_live.add_argument("--reward-cents", type=int, default=2500)
+    demo_github_live.add_argument("--verifier-timeout", type=float, default=60.0)
+    demo_github_live.set_defaults(func=cmd_demo_github_motoko_live)
 
     project_agent = sub.add_parser("project-agent", help="scan, evaluate, and publish project-agent bounties")
     project_agent_sub = project_agent.add_subparsers(dest="project_agent_command", required=True)

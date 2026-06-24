@@ -142,6 +142,9 @@ class GitHubRestClient:
     def get_pull_request(self, repo_full_name: str, pr_number: int) -> dict[str, Any]:
         return self._request("GET", f"/repos/{repo_full_name}/pulls/{pr_number}")
 
+    def create_pull_request(self, repo_full_name: str, *, title: str, body: str, head: str, base: str, draft: bool = True) -> dict[str, Any]:
+        return self._request("POST", f"/repos/{repo_full_name}/pulls", {"title": title, "body": body, "head": head, "base": base, "draft": draft})
+
     def create_commit_status(self, repo_full_name: str, sha: str, *, state: str, context: str, description: str, target_url: str | None = None) -> dict[str, Any]:
         payload = {"state": state, "context": context, "description": description}
         if target_url:
@@ -239,6 +242,21 @@ class FakeGitHubClient:
     def get_pull_request(self, repo_full_name: str, pr_number: int) -> dict[str, Any]:
         return dict(self.pull_requests[(repo_full_name, int(pr_number))])
 
+    def create_pull_request(self, repo_full_name: str, *, title: str, body: str, head: str, base: str, draft: bool = True) -> dict[str, Any]:
+        number = max([key[1] for key in self.pull_requests if key[0] == repo_full_name] or [0]) + 1
+        marker = parse_submission_marker(body)
+        return self.create_fake_pull_request(
+            repo_full_name,
+            number=number,
+            title=title,
+            body=body,
+            base_ref=base,
+            base_sha=str(marker.get("base_commit") if marker else "base"),
+            head_ref=head,
+            head_sha=str(marker.get("candidate_commit") if marker else "candidate"),
+            draft=draft,
+        )
+
     def create_commit_status(self, repo_full_name: str, sha: str, *, state: str, context: str, description: str, target_url: str | None = None) -> dict[str, Any]:
         status = {
             "id": len(self.statuses) + 1,
@@ -318,6 +336,11 @@ def build_contract_payload(
 
 def render_contract_issue_body(human_body: str, contract: dict[str, Any]) -> str:
     return human_body.rstrip() + "\n\n<!-- agent-bounty-contract-v1 " + stable_json(contract) + " -->\n"
+
+
+def render_contract_issue_body_preserving(existing_body: str, contract: dict[str, Any]) -> str:
+    body = CONTRACT_RE.sub("", existing_body or "").rstrip()
+    return render_contract_issue_body(body, contract)
 
 
 def parse_contract_from_issue_body(body: str, *, expected_digest: str | None = None) -> dict[str, Any]:
@@ -652,6 +675,16 @@ def github_publish_bounty_contract(
     bounty = market.conn.execute("SELECT * FROM bounties WHERE id = ?", (bounty_id,)).fetchone()
     if not bounty:
         raise GitHubIntegrationError(f"unknown bounty {bounty_id}")
+    existing_issue = client.get_issue(repo_full_name, int(issue_number)) if issue_number else None
+    existing_body = str(existing_issue.get("body") or "") if existing_issue else human_body
+    existing_created_at = None
+    if issue_number:
+        try:
+            existing_contract = parse_contract_from_issue_body(existing_body)
+            if existing_contract.get("bounty_id") == bounty_id and existing_contract.get("base_commit") == bounty["base_commit"]:
+                existing_created_at = existing_contract.get("created_at")
+        except GitHubIntegrationError:
+            existing_created_at = None
     contract = build_contract_payload(
         project_id=bounty["project_id"],
         bounty_id=bounty_id,
@@ -669,10 +702,11 @@ def github_publish_bounty_contract(
         forbidden_paths=["verifiers/", ".github/workflows/"],
         required_checks=["agent-bounty/protected-verifier"],
         submission_deadline="2026-06-30T18:00:00Z",
+        created_at=existing_created_at,
     )
-    body = render_contract_issue_body(human_body, contract)
+    body = render_contract_issue_body_preserving(existing_body, contract) if issue_number else render_contract_issue_body(human_body, contract)
     params = {"repo_full_name": repo_full_name, "issue_number": issue_number, "title": title or bounty["title"], "body_digest": sha256_text(body)}
-    key = idempotency_key or f"github-publish-contract:{repo_full_name}:{bounty_id}:{issue_number or 'new'}"
+    key = idempotency_key or f"github-publish-contract:{repo_full_name}:{bounty_id}:{issue_number or 'new'}:{sha256_text(body)[-16:]}"
     with market.conn:
         operation_id, replayed = begin_github_operation(market.conn, kind="issue_contract_publish", idempotency_key=key, request_parameters_digest=request_digest(params))
     if replayed:
@@ -685,7 +719,7 @@ def github_publish_bounty_contract(
         if contract["issue_number"] != number:
             contract["issue_number"] = number
             contract["contract_digest"] = contract_digest(contract)
-            body = render_contract_issue_body(human_body, contract)
+            body = render_contract_issue_body_preserving(existing_body, contract) if issue_number else render_contract_issue_body(human_body, contract)
             issue = client.update_issue(repo_full_name, number, body=body)
         saved = save_issue_contract(market.conn, bounty_id=bounty_id, repo_full_name=repo_full_name, issue_number=number, issue_url=issue.get("html_url"), issue_body=body, contract=contract)
         with market.conn:

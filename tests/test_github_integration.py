@@ -9,6 +9,7 @@ from agent_bounty.core import AgentBountyMarket
 from agent_bounty.db import connect
 from agent_bounty.github_integration import (
     FakeGitHubClient,
+    GitHubConfig,
     GitHubIntegrationError,
     build_claim_comment,
     build_submission_marker,
@@ -19,6 +20,7 @@ from agent_bounty.github_integration import (
     record_github_webhook_delivery,
     sign_github_payload,
 )
+from agent_bounty.github_live import run_demo_github_motoko_live
 from agent_bounty.payments import FakePaymentGateway
 from agent_bounty.util import stable_json
 from agent_bounty.verification import ProtectedVerifierRunner
@@ -77,6 +79,63 @@ class GitHubIntegrationTests(unittest.TestCase):
             tampered = body.replace('"amount":2500', '"amount":2600')
             with self.assertRaises(GitHubIntegrationError):
                 parse_contract_from_issue_body(tampered)
+
+    def test_existing_issue_contract_update_preserves_human_body_and_digest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier_dir = accepted_verifier(Path(tmp))
+            holder, market = make_github_market(verifier_dir)
+            self.addCleanup(holder.cleanup)
+            _project_id, bounty_id, _solver_id = bootstrap_bounty(market)
+            client = FakeGitHubClient()
+            issue = client.create_issue(REPO, title="Human issue", body="Human description\n\n<!-- old-system note -->\n", labels=[])
+            first = github_publish_bounty_contract(
+                market,
+                client=client,
+                repo_full_name=REPO,
+                bounty_id=bounty_id,
+                human_body="replacement should not be used",
+                issue_number=int(issue["number"]),
+            )
+            body = client.get_issue(REPO, int(issue["number"]))["body"]
+            self.assertIn("Human description", body)
+            self.assertNotIn("replacement should not be used", body)
+            self.assertEqual(body.count("<!-- agent-bounty-contract-v1"), 1)
+            second = github_publish_bounty_contract(
+                market,
+                client=client,
+                repo_full_name=REPO,
+                bounty_id=bounty_id,
+                human_body="replacement should still not be used",
+                issue_number=int(issue["number"]),
+            )
+            updated_body = client.get_issue(REPO, int(issue["number"]))["body"]
+            self.assertEqual(updated_body.count("<!-- agent-bounty-contract-v1"), 1)
+            self.assertEqual(first["contract_digest"], second["contract_digest"])
+
+    def test_live_demo_refuses_without_app_auth_and_writes_safe_bundle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_demo_github_motoko_live(
+                db_path=Path(tmp) / "github-live.sqlite3",
+                motoko_repo=Path(tmp) / "motoko",
+                bundle_dir=Path(tmp) / "bundle",
+                base_commit="base",
+                candidate_commit="candidate",
+                reward_cents=2500,
+                verifier_timeout=1.0,
+                config=GitHubConfig(
+                    enabled=False,
+                    token=None,
+                    repository=None,
+                    webhook_secret=None,
+                    expected_installation_id=None,
+                    transport="development-token",
+                ),
+            )
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["real_github"])
+            self.assertIn("AGENT_BOUNTY_GITHUB_TOKEN", " ".join(result["blockers"]))
+            payload = (Path(tmp) / "bundle" / "github-live-demo.json").read_text(encoding="utf-8")
+            self.assertNotIn("ghp_", payload)
 
     def test_valid_invalid_and_duplicate_webhook_delivery(self):
         with tempfile.TemporaryDirectory() as tmp:
