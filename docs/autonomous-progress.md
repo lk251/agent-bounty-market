@@ -1045,7 +1045,8 @@ Implemented:
 - added focused release-integrity tests for manifest schema/digests, required
   bundle files, checklist truth wording, command references, handoff digest
   consistency, and private-path rejection;
-- created ignored backup bundle at `.demo/release-backups/hackathon-mixed-rc2`.
+- created ignored backup bundle at `.demo/release-backups/hackathon-mixed-rc2`
+  before the fresh-clone test-order fix; final superseding tag is rc3.
 
 Safe bundle evidence after rebuild:
 
@@ -1090,7 +1091,7 @@ Observed results:
 Final boundary actions:
 
 - commit and push issue #19 changes;
-- create and push `hackathon-mixed-rc2`;
+- create and push `hackathon-mixed-rc3`;
 - run a fresh-clone validation from GitHub at the pushed state;
 - comment on #19 and coordinator #20 with the final tag, commit, clone result,
   digests, commands, submission files, and remaining blockers;

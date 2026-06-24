@@ -32,7 +32,7 @@ SAFE_STRIPE_FILES = {
 }
 
 
-def release_audit_report(root: Path | None = None, bundle_dir: Path | None = None) -> dict[str, Any]:
+def release_audit_report(root: Path | None = None, bundle_dir: Path | None = None, *, strict_release_metadata: bool = True) -> dict[str, Any]:
     root_path = (root or Path.cwd()).resolve()
     bundle_path = (bundle_dir or default_winning_bundle_dir()).resolve()
     if not bundle_path.is_absolute():
@@ -61,8 +61,9 @@ def release_audit_report(root: Path | None = None, bundle_dir: Path | None = Non
         bundle = json.loads(bundle_json_path.read_text(encoding="utf-8"))
 
     _check_bundle_claims(bundle_path, manifest, bundle, errors)
-    _check_release_manifest(root_path, manifest, bundle, errors)
-    _check_final_handoff(root_path, manifest, bundle, errors)
+    if strict_release_metadata:
+        _check_release_manifest(root_path, manifest, bundle, errors)
+        _check_final_handoff(root_path, manifest, bundle, errors)
 
     return {
         "schema": RELEASE_AUDIT_SCHEMA,
@@ -74,6 +75,7 @@ def release_audit_report(root: Path | None = None, bundle_dir: Path | None = Non
         "mode": manifest.get("mode"),
         "candidate_sha": ((bundle.get("summary") or {}).get("candidate_sha")),
         "validation_ok": bool(validation and validation.get("ok")),
+        "strict_release_metadata": strict_release_metadata,
         "errors": errors,
     }
 
@@ -153,7 +155,7 @@ def _check_final_handoff(root: Path, bundle_manifest: dict[str, Any], bundle: di
         str(bundle_manifest.get("bundle_digest") or ""),
         str(bundle_manifest.get("attestation_digest") or ""),
         str((bundle.get("truth_matrix") or {}).get("digest") or ""),
-        "hackathon-mixed-rc2",
+        "hackathon-mixed-rc3",
     ]
     for item in required:
         if item and item not in text:
