@@ -1,6 +1,6 @@
 {
   "schema": "agent-bounty-release-manifest-v1",
-  "release_tag": "hackathon-mixed-rc3",
+  "release_tag": "hackathon-mixed-rc4",
   "commit_sha": "72ba26b69d38ce8ca5485be943afa1b57f9d6ab5",
   "commit_sha_note": "This is the source baseline used to generate the release metadata. The immutable final tag target is recorded by Git and in the issue #19 handoff comment after tag push.",
   "truth_status": "Mixed real/fallback",

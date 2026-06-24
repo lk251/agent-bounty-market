@@ -1,6 +1,6 @@
 # Release Checklist
 
-Release tag: `hackathon-mixed-rc3`
+Release tag: `hackathon-mixed-rc4`
 
 Truth status: `Mixed real/fallback`.
 
@@ -34,7 +34,7 @@ git diff --check
 Create a local ignored backup after validation:
 
 ```bash
-nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/release-backups/hackathon-mixed-rc3.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle .demo/release-backups/hackathon-mixed-rc3
+nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/release-backups/hackathon-mixed-rc4.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle .demo/release-backups/hackathon-mixed-rc4
 ```
 
 The backup lives under `.demo/`, which is ignored. Regenerate it from the

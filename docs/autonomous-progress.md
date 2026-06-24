@@ -1046,7 +1046,8 @@ Implemented:
   bundle files, checklist truth wording, command references, handoff digest
   consistency, and private-path rejection;
 - created ignored backup bundle at `.demo/release-backups/hackathon-mixed-rc2`
-  before the fresh-clone test-order fix; final superseding tag is rc3.
+  before the fresh-clone test-order fix; rc3 was then superseded by rc4 after
+  the documented build-then-test order exposed a dirty-bundle test boundary.
 
 Safe bundle evidence after rebuild:
 
@@ -1091,7 +1092,7 @@ Observed results:
 Final boundary actions:
 
 - commit and push issue #19 changes;
-- create and push `hackathon-mixed-rc3`;
+- create and push `hackathon-mixed-rc4`;
 - run a fresh-clone validation from GitHub at the pushed state;
 - comment on #19 and coordinator #20 with the final tag, commit, clone result,
   digests, commands, submission files, and remaining blockers;
