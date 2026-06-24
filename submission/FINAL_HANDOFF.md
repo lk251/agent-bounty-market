@@ -3,7 +3,7 @@
 Release candidate tag: `hackathon-mixed-rc1`
 
 This release candidate is a truthful mixed real/fallback demo package. It does
-not claim a full live sponsor-integrated run. It packages the strongest
+not claim a complete sponsor-integrated live run. It packages the strongest
 available evidence into `demo/bundles/winning-run` with a machine-readable truth
 matrix, digest manifest, static dashboard, and hashed attestation.
 
@@ -57,6 +57,9 @@ Live setup:
 - runbook: `submission/LIVE_SETUP_RUNBOOK.md`
 - live preflight shares the wizard blocker list:
   `python -m agent_bounty demo-preflight --mode live`
+- red-team gate: `python -m agent_bounty submission-check`
+- judge Q&A: `submission/JUDGE_QA.md`
+- sponsor matrix: `submission/SPONSOR_INTEGRATION.md`
 
 ## Truth Matrix
 
@@ -124,6 +127,7 @@ Final validation command set:
 nix develop --command python3 -m py_compile agent_bounty/demo_presentation.py agent_bounty/cli.py tests/test_demo_presentation.py
 nix develop --command python3 -m unittest tests.test_demo_presentation
 nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
+nix develop --command python3 -m agent_bounty submission-check
 nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
 nix develop --command python3 -m agent_bounty demo-serve --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8787 --check
 nix develop --command python3 -m agent_bounty demo-preflight --mode replay
@@ -160,10 +164,12 @@ Use `submission/RECORDING_RUNBOOK.md`. Serve
 - [x] Truth matrix included in bundle and evidence directory.
 - [x] Static dashboard generated from persisted records.
 - [x] Repeated replay rehearsal implemented and tested.
+- [x] Submission red-team checker added.
+- [x] Judge Q&A, short scripts, and sponsor matrix added.
 - [x] Fake/test IDs in real rows are rejected.
 - [x] Currency/receipt consistency drift is rejected.
 - [x] Secret-like bundle contents are rejected.
 - [x] Prior real Stripe sandbox evidence is referenced.
 - [x] Full tests pass.
 - [x] Nix flake check passes.
-- [ ] Full live sponsor-integrated run captured.
+- [ ] Complete sponsor-integrated live run captured.

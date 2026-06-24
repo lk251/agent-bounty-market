@@ -11,6 +11,8 @@ nix develop --command python3 -m agent_bounty demo-build-winning-run \
   --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency \
   --bundle demo/bundles/winning-run
 
+nix develop --command python3 -m agent_bounty submission-check
+
 nix develop --command python3 -m agent_bounty demo-rehearse \
   --mode replay \
   --bundle demo/bundles/winning-run \

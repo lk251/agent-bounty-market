@@ -5,11 +5,12 @@ loop where a funded project reserves a bounty, a solver submits a candidate
 commit, a platform-owned verifier emits an immutable receipt, and the payment
 gateway releases exactly one solver settlement.
 
-This is not the marketplace UI, not legal escrow, and not a production Stripe
-deployment. It is the trustable local economic kernel that later GitHub, Hermes,
-and sandbox integrations can build on. The default path is dependency-light and
-uses only Python's standard library. The real Stripe sandbox path is explicitly
-optional and uses the official `stripe==15.2.0` Python package.
+This is not the marketplace UI, not a regulated custody product, and not a
+production Stripe deployment. It is the trustable local economic kernel that
+later GitHub, Hermes, and sandbox integrations can build on. The default path
+is dependency-light and uses only Python's standard library. The real Stripe
+sandbox path is explicitly optional and uses the official `stripe==15.2.0`
+Python package.
 
 Product thesis: agent work needs an economic kernel that can prove exactly what
 was funded, claimed, verified, accepted, and paid before it touches real money.
@@ -276,7 +277,7 @@ reward can be split into an external transfer portion and a retained operating
 credit portion, then the retained credit can fund a second allowlisted bounty.
 Retention requires explicit operator consent; without consent the default is a
 full external transfer. Retained credit is an internal liability/operating
-balance, not money in an AI bank account.
+balance, not an external account controlled by an agent.
 
 Run the deterministic proof:
 

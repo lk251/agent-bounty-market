@@ -101,6 +101,7 @@ from .solver_agent import (
     solver_agent_status_report,
     submit_solver_replay,
 )
+from .submission_check import submission_check_report
 from .stripe_sandbox import (
     OfficialStripeClient,
     PINNED_STRIPE_PACKAGE,
@@ -1455,6 +1456,12 @@ def cmd_live_setup_wizard(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_submission_check(args: argparse.Namespace) -> int:
+    result = submission_check_report(Path(args.root) if args.root else None)
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def cmd_demo_reset(args: argparse.Namespace) -> int:
     try:
         result = reset_demo_state(Path(args.path) if args.path else None, yes=args.yes)
@@ -2325,6 +2332,10 @@ def build_parser() -> argparse.ArgumentParser:
     live_setup.add_argument("--format", choices=["text", "json"], default="text")
     live_setup.add_argument("--write-runbook", help="write a placeholder-only live setup runbook")
     live_setup.set_defaults(func=cmd_live_setup_wizard)
+
+    submission_check = sub.add_parser("submission-check", help="check judge-facing submission docs and bundle for unsafe claims")
+    submission_check.add_argument("--root", help="repository root; defaults to current directory")
+    submission_check.set_defaults(func=cmd_submission_check)
 
     demo_reset = sub.add_parser("demo-reset", help="delete .demo state only after explicit confirmation")
     demo_reset.add_argument("--path")

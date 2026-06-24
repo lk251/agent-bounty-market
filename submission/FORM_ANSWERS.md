@@ -36,7 +36,7 @@ lets high-performing solvers compound into future work, still bounded by policy.
 
 ## Main Limitations
 
-This is not legal escrow or a production marketplace. The winning bundle is a
-validated mixed real/fallback release candidate. The documented real Stripe
+This is not a regulated custody product or a production marketplace. The
+winning bundle is a validated `Mixed real/fallback` release candidate. The documented real Stripe
 sandbox run covers full transfer; the reviewed split-retain-spend path still
 needs loaded sandbox credentials to create a fresh real split Connect Transfer.

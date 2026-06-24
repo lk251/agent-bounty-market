@@ -25,12 +25,14 @@ verified, accepted, and settled.
 
 ## Sponsor Integration Table
 
-| Sponsor area | Current status |
-| --- | --- |
-| Stripe sandbox | Prior real full-transfer sandbox evidence is documented; reviewed split-transfer adapter exists; fresh split run is blocked until Stripe sandbox env is loaded. |
-| GitHub | Fake client and durable contract/webhook/publication spine implemented; real credentials/webhook remain gated. |
-| Hermes agents/skills | Hermes executable is installed and verified; project/solver skill/profile/runtime interfaces exist; real Nemotron-backed wrapper remains gated. |
-| NVIDIA/OpenShell/NemoClaw | Adapter/status boundary implemented; Docker/OpenShell runtime is not available in this environment. |
+The complete row-by-row matrix is in `submission/SPONSOR_INTEGRATION.md`.
+
+| Sponsor area | Implemented evidence | Current mode |
+| --- | --- | --- |
+| Stripe sandbox | Prior recorded-real full-transfer evidence plus reviewed split-transfer adapter | Mixed real/fallback; fresh split transfer blocked until sandbox env is loaded |
+| GitHub | Contract, claim, PR marker, webhook, fake client, and publication journal | Fallback; real credentials/webhook remain gated |
+| Hermes agents/skills | Hermes executable evidence, skills, wrappers, project/solver decision schemas | Mixed real/fallback; Nemotron-backed wrappers remain gated |
+| NVIDIA/OpenShell/NemoClaw | Status probes, policy/manifest digests, backend boundary | Blocked; Docker/OpenShell runtime unavailable here |
 
 ## Judging Argument
 
@@ -59,6 +61,6 @@ nix flake check
 
 See `submission/LIMITATIONS.md`. The short version: the winning bundle is a
 validated `Mixed real/fallback` release candidate. It includes real Hermes
-executable evidence and prior recorded-real Stripe evidence, but the full live
-sponsor-integrated path is still blocked by external runtime and credential
+executable evidence and prior recorded-real Stripe evidence, but the complete
+sponsor-integrated live path is still blocked by external runtime and credential
 setup.

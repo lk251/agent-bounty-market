@@ -5,4 +5,6 @@ agents decide whether to claim it, a protected verifier accepts the exact SHA,
 settlement happens once, and retained operating credit can fund the next useful
 task.
 
-Built with truthful live/replay/local modes and replay-safe evidence.
+Built with truthful `Mixed real/fallback` mode labeling, replay-safe evidence,
+and visible blockers for sponsor paths that still need live credentials or
+runtime.

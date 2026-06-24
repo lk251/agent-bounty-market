@@ -949,3 +949,76 @@ Observed results:
 - diff whitespace check: clean.
 
 Next issue: #18 after issue #17 handoff comment, closure, and pull.
+
+## Issue #18: Submission Red-Team And Judge Q&A
+
+UTC start: 2026-06-24T21:38:00Z
+
+Status: completed; the judge-facing submission package now has an executable
+red-team gate, clearer sponsor boundaries, short scripts, and explicit
+skepticism handling.
+
+Implemented:
+
+- added `agent_bounty.submission_check`, a dependency-free scanner for
+  submission docs, README, and `demo/bundles/winning-run`;
+- added `python -m agent_bounty submission-check`;
+- added required docs:
+  `submission/JUDGE_QA.md`, `submission/DEMO_SCRIPT_90S.md`,
+  `submission/DEMO_SCRIPT_3MIN.md`, and
+  `submission/SPONSOR_INTEGRATION.md`;
+- hardened `submission/SUBMISSION.md`, `FORM_ANSWERS.md`, `LIMITATIONS.md`,
+  `FINAL_HANDOFF.md`, `RECORDING_RUNBOOK.md`, `TWEET.md`, and README wording
+  to preserve the `Mixed real/fallback` truth boundary;
+- removed judge-facing custody/account metaphors and all-live implications;
+- added tests for current-doc pass, forbidden phrase failure, missing
+  limitations/truth boundary, secret-like text, sponsor rows, and script mode
+  boundaries;
+- rebuilt `demo/bundles/winning-run`.
+
+Safe bundle evidence after rebuild:
+
+```text
+bundle: demo/bundles/winning-run
+mode badge: Mixed real/fallback
+truth overall: mixed-real-fallback
+bundle digest: sha256:66ba7a86d6880b37c64912a113978d27da61a44aa6718e86ac9e0bb39821440e
+attestation digest: sha256:121b1d91a7ebcd462958480fe49581d639853858e5245e3e0d74ad1931b60c7a
+truth matrix digest: sha256:3c6cb234c9f5b2d92cf388e74b239f5c901b39a7f15a8fd113f4c83d59d85047
+```
+
+Submission checker evidence:
+
+```text
+submission-check: ok=true
+checked files: README.md, submission/*.md, demo/bundles/winning-run text artifacts
+required docs: LIMITATIONS, JUDGE_QA, DEMO_SCRIPT_90S, DEMO_SCRIPT_3MIN, SPONSOR_INTEGRATION
+required sponsor rows: Stripe, GitHub, Hermes, NVIDIA/OpenShell
+errors: []
+```
+
+Validation run:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/submission_check.py agent_bounty/cli.py tests/test_submission_check.py
+nix develop --command python3 -m unittest tests.test_submission_check
+nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
+nix develop --command python3 -m agent_bounty submission-check
+nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+git diff --cached --check
+```
+
+Observed results:
+
+- focused submission tests: 6 passed;
+- winning bundle build: `ok=true`, `mode=mixed`,
+  `truth_overall=mixed-real-fallback`;
+- submission-check: `ok=true`, no errors;
+- replay rehearsal: 5/5 validations passed, p95 1 ms;
+- full test suite: 151 passed, 2 skipped;
+- `nix flake check`: all checks passed;
+- diff whitespace check: clean.
+
+Next issue: #19 after issue #18 handoff comment, closure, and pull.
