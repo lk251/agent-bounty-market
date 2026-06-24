@@ -1,6 +1,6 @@
 # Final Handoff
 
-Release candidate tag: `hackathon-mixed-rc1`
+Release candidate tag: `hackathon-mixed-rc2`
 
 This release candidate is a truthful mixed real/fallback demo package. It does
 not claim a complete sponsor-integrated live run. It packages the strongest
@@ -19,6 +19,10 @@ nix develop --command python3 -m agent_bounty demo-build-winning-run \
   --db .demo/winning-run.sqlite3 \
   --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency \
   --bundle demo/bundles/winning-run
+
+nix develop --command python3 -m agent_bounty submission-check
+
+nix develop --command python3 -m agent_bounty release-audit
 
 nix develop --command python3 -m agent_bounty demo-rehearse \
   --mode replay \
@@ -58,8 +62,23 @@ Live setup:
 - live preflight shares the wizard blocker list:
   `python -m agent_bounty demo-preflight --mode live`
 - red-team gate: `python -m agent_bounty submission-check`
+- release gate: `python -m agent_bounty release-audit`
 - judge Q&A: `submission/JUDGE_QA.md`
 - sponsor matrix: `submission/SPONSOR_INTEGRATION.md`
+- release checklist: `submission/RELEASE_CHECKLIST.md`
+- release manifest: `submission/RELEASE_MANIFEST.json`
+
+Backup bundle:
+
+```bash
+nix develop --command python3 -m agent_bounty demo-build-winning-run \
+  --db .demo/release-backups/hackathon-mixed-rc2.sqlite3 \
+  --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency \
+  --bundle .demo/release-backups/hackathon-mixed-rc2
+```
+
+The backup path is intentionally under ignored `.demo/` state. Regenerate it
+from the command above instead of committing generated databases.
 
 ## Truth Matrix
 
@@ -124,14 +143,13 @@ Currency: EUR
 Final validation command set:
 
 ```bash
-nix develop --command python3 -m py_compile agent_bounty/demo_presentation.py agent_bounty/cli.py tests/test_demo_presentation.py
-nix develop --command python3 -m unittest tests.test_demo_presentation
+nix develop --command python3 -m py_compile agent_bounty/demo_presentation.py agent_bounty/release_integrity.py agent_bounty/cli.py tests/test_release_integrity.py
+nix develop --command python3 -m unittest tests.test_release_integrity
 nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
 nix develop --command python3 -m agent_bounty submission-check
+nix develop --command python3 -m agent_bounty release-audit
 nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
 nix develop --command python3 -m agent_bounty demo-serve --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8787 --check
-nix develop --command python3 -m agent_bounty demo-preflight --mode replay
-nix develop --command python3 -m agent_bounty demo-live
 nix develop --command python3 -m compileall agent_bounty tests verifiers
 nix develop --command python3 -m unittest discover -s tests
 nix flake check
@@ -141,14 +159,16 @@ git diff --check
 Observed before final commit:
 
 ```text
-focused presentation tests: 8 passed
+focused release-integrity tests: 7 passed
 winning bundle validation: ok=true, mode=mixed, truth=mixed-real-fallback
+submission-check: ok=true, errors=[]
+release-audit: ok=true, errors=[]
 replay rehearsal: 5/5 validations passed
 serve check: ok=true, url=http://127.0.0.1:8787/dashboard.html
-bundle digest: sha256:b6622dd716817709fac19037ad299dd97a2f89046d965c880a7c850b3806dd75
-attestation digest: sha256:6fe21f8d57bd70460000bf4b4de8be0232289dae03c367985abd0a4da98ced9a
-truth matrix digest: sha256:417aca2874fbb8f1ca53c68adacf732f5faef67743fa5751e4825b21003caebf
-full suite: 125 tests passed, 2 skipped
+bundle digest: sha256:a6d39511063f4d9a06761fc4094596ed6e106e243cc5b458604a3135be48d8f7
+attestation digest: sha256:284e1146759735b28d6810f855fc6daabc4311c1cfd4d8a8dcc4b2f181982b18
+truth matrix digest: sha256:33b6045045206db1123d602f339ac1b8ba8bd17dd7d540953d65bfe00b207eec
+full suite: 158 tests passed, 2 skipped
 nix flake check: all checks passed
 ```
 
@@ -165,6 +185,9 @@ Use `submission/RECORDING_RUNBOOK.md`. Serve
 - [x] Static dashboard generated from persisted records.
 - [x] Repeated replay rehearsal implemented and tested.
 - [x] Submission red-team checker added.
+- [x] Release audit checker added.
+- [x] Release manifest and checklist added.
+- [x] Private local paths scrubbed from generated bundle artifacts.
 - [x] Judge Q&A, short scripts, and sponsor matrix added.
 - [x] Fake/test IDs in real rows are rejected.
 - [x] Currency/receipt consistency drift is rejected.

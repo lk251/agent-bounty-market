@@ -1,0 +1,62 @@
+{
+  "schema": "agent-bounty-release-manifest-v1",
+  "release_tag": "hackathon-mixed-rc2",
+  "commit_sha": "72ba26b69d38ce8ca5485be943afa1b57f9d6ab5",
+  "commit_sha_note": "This is the source baseline used to generate the release metadata. The immutable final tag target is recorded by Git and in the issue #19 handoff comment after tag push.",
+  "truth_status": "Mixed real/fallback",
+  "bundle_digest": "sha256:a6d39511063f4d9a06761fc4094596ed6e106e243cc5b458604a3135be48d8f7",
+  "attestation_digest": "sha256:284e1146759735b28d6810f855fc6daabc4311c1cfd4d8a8dcc4b2f181982b18",
+  "truth_matrix_digest": "sha256:33b6045045206db1123d602f339ac1b8ba8bd17dd7d540953d65bfe00b207eec",
+  "test_counts": {
+    "focused_release_integrity_tests": "7 passed",
+    "focused_submission_tests": "6 passed",
+    "full_suite": "158 passed, 2 skipped",
+    "replay_rehearsal": "5/5 validations passed",
+    "nix_flake_check": "passed"
+  },
+  "fresh_clone_status": {
+    "status": "pending-final-tag-validation",
+    "note": "Run after this release metadata commit is pushed; final result belongs in the issue #19 and coordinator handoff comment."
+  },
+  "known_blockers": [
+    "NVIDIA/Nemotron provider credentials are not configured.",
+    "Docker/OpenShell/NemoClaw runtime is not available in this environment.",
+    "Real GitHub integration token, repository, and webhook secret are not configured.",
+    "Fresh split Stripe Connect Transfer is blocked until sandbox env and CLI webhook secret are loaded."
+  ],
+  "recording_command": "nix develop --command python3 -m agent_bounty demo-serve --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8787",
+  "validation_commands": [
+    "nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run",
+    "nix develop --command python3 -m agent_bounty submission-check",
+    "nix develop --command python3 -m agent_bounty release-audit",
+    "nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5",
+    "nix develop --command python3 -m unittest discover -s tests",
+    "nix flake check"
+  ],
+  "submission_files": [
+    "README.md",
+    "submission/SUBMISSION.md",
+    "submission/FORM_ANSWERS.md",
+    "submission/TWEET.md",
+    "submission/LIMITATIONS.md",
+    "submission/JUDGE_QA.md",
+    "submission/DEMO_SCRIPT.md",
+    "submission/DEMO_SCRIPT_90S.md",
+    "submission/DEMO_SCRIPT_3MIN.md",
+    "submission/SHOT_LIST.md",
+    "submission/SPONSOR_INTEGRATION.md",
+    "submission/RECORDING_RUNBOOK.md",
+    "submission/FINAL_HANDOFF.md",
+    "submission/RELEASE_CHECKLIST.md",
+    "submission/RELEASE_MANIFEST.json",
+    "demo/bundles/winning-run/README.md",
+    "demo/bundles/winning-run/manifest.json",
+    "demo/bundles/winning-run/bundle.json",
+    "demo/bundles/winning-run/attestation.json",
+    "demo/bundles/winning-run/dashboard.html",
+    "demo/bundles/winning-run/recording-timeline.md",
+    "demo/bundles/winning-run/evidence/database-counts.json",
+    "demo/bundles/winning-run/evidence/demo-summary.json",
+    "demo/bundles/winning-run/evidence/truth-matrix.json"
+  ]
+}

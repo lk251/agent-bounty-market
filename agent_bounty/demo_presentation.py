@@ -47,6 +47,10 @@ SECRET_PATTERNS = (
     "github_pat_",
     "NVIDIA_API_KEY=",
 )
+PRIVATE_PATH_MARKERS = (
+    "/home/",
+    "/Users/",
+)
 REQUIRED_DASHBOARD_TEXT = (
     "Project buys work",
     "Agents choose",
@@ -435,6 +439,7 @@ def build_bundle(
             "private_prompts_included": False,
         },
     }
+    bundle = _sanitize_bundle_value(bundle)
     bundle["bundle_content_digest"] = sha256_text(stable_json({key: value for key, value in bundle.items() if key != "bundle_content_digest"}))
     return bundle
 
@@ -591,16 +596,36 @@ def build_truth_matrix() -> dict[str, Any]:
 
 
 def _truth_row(component_id: str, label: str, status: str, evidence: dict[str, Any], blocker: str | None, source_issue: int, source_commit: str) -> dict[str, Any]:
+    safe_evidence = _sanitize_bundle_value(evidence)
     return {
         "component_id": component_id,
         "label": label,
         "status": status,
-        "safe_evidence": evidence,
-        "safe_evidence_digest": sha256_text(stable_json(evidence)),
+        "safe_evidence": safe_evidence,
+        "safe_evidence_digest": sha256_text(stable_json(safe_evidence)),
         "blocker": blocker,
         "source_issue": source_issue,
         "source_commit": source_commit,
     }
+
+
+def _sanitize_bundle_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _sanitize_bundle_value(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_bundle_value(child) for child in value]
+    if not isinstance(value, str):
+        return value
+    replacements = [
+        (str(repo_root()), "<agent-bounty-market>"),
+        (str(default_motoko_repo()), "<motoko-fixture>"),
+        (str(Path.home()), "<home>"),
+    ]
+    text = value
+    for original, replacement in sorted(replacements, key=lambda item: len(item[0]), reverse=True):
+        if original:
+            text = text.replace(original, replacement)
+    return text
 
 
 def _first_blocker(blockers: Any) -> str | None:
@@ -832,6 +857,7 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
     mismatches.extend(_validate_dashboard(bundle_dir / "dashboard.html"))
     mismatches.extend(_validate_recording_timeline(bundle_dir / "recording-timeline.md"))
     mismatches.extend(_secret_scan_bundle(bundle_dir))
+    mismatches.extend(_private_path_scan_bundle(bundle_dir))
     return {
         "schema": BUNDLE_VALIDATION_SCHEMA,
         "ok": not mismatches,
@@ -1022,6 +1048,21 @@ def _secret_scan_bundle(bundle_dir: Path) -> list[str]:
         for pattern in SECRET_PATTERNS:
             if pattern in text:
                 mismatches.append(f"secret-like pattern {pattern} found in {path.relative_to(bundle_dir)}")
+    return mismatches
+
+
+def _private_path_scan_bundle(bundle_dir: Path) -> list[str]:
+    mismatches: list[str] = []
+    for path in sorted(bundle_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        for marker in PRIVATE_PATH_MARKERS:
+            if marker in text:
+                mismatches.append(f"private path marker {marker} found in {path.relative_to(bundle_dir)}")
     return mismatches
 
 

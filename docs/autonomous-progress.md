@@ -1022,3 +1022,76 @@ Observed results:
 - diff whitespace check: clean.
 
 Next issue: #19 after issue #18 handoff comment, closure, and pull.
+
+## Issue #19: Fresh-Clone Release Integrity And Final Handoff
+
+UTC start: 2026-06-24T21:50:00Z
+
+Status: completed pending final push/tag/fresh-clone comment; the main checkout
+has a reproducible rc2 release bundle, release audit, release checklist, and
+manifest.
+
+Implemented:
+
+- scrubbed generated release bundle artifacts so local private paths such as
+  `/home/...` are replaced with placeholders before digesting;
+- extended bundle validation to reject future private-path markers;
+- added `agent_bounty.release_integrity` and
+  `python -m agent_bounty release-audit`;
+- added `submission/RELEASE_CHECKLIST.md` and
+  `submission/RELEASE_MANIFEST.json`;
+- updated README and `submission/FINAL_HANDOFF.md` with rc2 commands,
+  release-audit, backup bundle instructions, and current digests;
+- added focused release-integrity tests for manifest schema/digests, required
+  bundle files, checklist truth wording, command references, handoff digest
+  consistency, and private-path rejection;
+- created ignored backup bundle at `.demo/release-backups/hackathon-mixed-rc2`.
+
+Safe bundle evidence after rebuild:
+
+```text
+bundle: demo/bundles/winning-run
+mode badge: Mixed real/fallback
+truth overall: mixed-real-fallback
+bundle digest: sha256:a6d39511063f4d9a06761fc4094596ed6e106e243cc5b458604a3135be48d8f7
+attestation digest: sha256:284e1146759735b28d6810f855fc6daabc4311c1cfd4d8a8dcc4b2f181982b18
+truth matrix digest: sha256:33b6045045206db1123d602f339ac1b8ba8bd17dd7d540953d65bfe00b207eec
+private path scan: clean
+```
+
+Validation run:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/demo_presentation.py agent_bounty/release_integrity.py agent_bounty/cli.py tests/test_release_integrity.py
+nix develop --command python3 -m unittest tests.test_release_integrity
+nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
+nix develop --command python3 -m agent_bounty submission-check
+nix develop --command python3 -m agent_bounty release-audit
+nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
+nix develop --command python3 -m agent_bounty demo-serve --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8787 --check
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+git diff --cached --check
+```
+
+Observed results:
+
+- focused release-integrity tests: 7 passed;
+- winning bundle build: `ok=true`, `mode=mixed`,
+  `truth_overall=mixed-real-fallback`;
+- submission-check: `ok=true`, no errors;
+- release-audit: `ok=true`, no errors;
+- replay rehearsal: 5/5 validations passed, p95 1 ms;
+- serve check: `ok=true`, URL `http://127.0.0.1:8787/dashboard.html`;
+- full test suite: 158 passed, 2 skipped;
+- `nix flake check`: all checks passed;
+- diff whitespace check: clean.
+
+Final boundary actions:
+
+- commit and push issue #19 changes;
+- create and push `hackathon-mixed-rc2`;
+- run a fresh-clone validation from GitHub at the pushed state;
+- comment on #19 and coordinator #20 with the final tag, commit, clone result,
+  digests, commands, submission files, and remaining blockers;
+- close #19 when the final comment is posted.

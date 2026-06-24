@@ -73,6 +73,7 @@ from .hermes_integration import (
 from .live_setup import live_setup_wizard_report, render_live_setup_text, write_live_setup_runbook
 from .nvidia_runtime import nvidia_runtime_status_report, run_nvidia_sandbox_demo
 from .payments import FakePaymentGateway, StripePaymentGateway
+from .release_integrity import release_audit_report
 from .project_agent import (
     FakeProjectAgentRuntime,
     HermesCliRuntime,
@@ -1462,6 +1463,12 @@ def cmd_submission_check(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def cmd_release_audit(args: argparse.Namespace) -> int:
+    result = release_audit_report(Path(args.root) if args.root else None, Path(args.bundle) if args.bundle else None)
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def cmd_demo_reset(args: argparse.Namespace) -> int:
     try:
         result = reset_demo_state(Path(args.path) if args.path else None, yes=args.yes)
@@ -2336,6 +2343,11 @@ def build_parser() -> argparse.ArgumentParser:
     submission_check = sub.add_parser("submission-check", help="check judge-facing submission docs and bundle for unsafe claims")
     submission_check.add_argument("--root", help="repository root; defaults to current directory")
     submission_check.set_defaults(func=cmd_submission_check)
+
+    release_audit = sub.add_parser("release-audit", help="audit release bundle, manifest, and handoff integrity")
+    release_audit.add_argument("--root", help="repository root; defaults to current directory")
+    release_audit.add_argument("--bundle", help="bundle directory; defaults to demo/bundles/winning-run")
+    release_audit.set_defaults(func=cmd_release_audit)
 
     demo_reset = sub.add_parser("demo-reset", help="delete .demo state only after explicit confirmation")
     demo_reset.add_argument("--path")
