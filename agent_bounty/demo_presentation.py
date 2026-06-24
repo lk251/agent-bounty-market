@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import html
 import json
-import os
 import shutil
 import socket
 import subprocess
@@ -17,6 +16,7 @@ from .economic_loop import REAL_STRIPE_EVIDENCE, economic_loop_status_report, ru
 from .execution import openshell_status
 from .github_integration import github_status_report
 from .hermes_integration import hermes_status_report
+from .live_setup import live_setup_wizard_report, stripe_setup_status_report
 from .nvidia_runtime import nvidia_runtime_status_report
 from .payments import FakePaymentGateway
 from .project_agent import project_agent_status_report
@@ -129,21 +129,12 @@ def demo_preflight_report(*, mode: str = "local", db_path: Path | None = None, m
     openshell = openshell_status()
     stripe_package = stripe_package_version()
     blockers: list[str] = []
+    live_setup = None
     if not motoko_repo.exists():
         blockers.append(f"Motoko fixture repo missing: {motoko_repo}")
     if mode == "live":
-        if github.get("ok") is not True:
-            blockers.extend([f"github: {item}" for item in github.get("blockers", [])])
-        if not project_agent.get("hermes_runtime", {}).get("available"):
-            blockers.extend([f"project-agent Hermes: {item}" for item in project_agent.get("hermes_runtime", {}).get("blockers", [])])
-        if not solver_agent.get("hermes_runtime", {}).get("available"):
-            blockers.extend([f"solver-agent Hermes: {item}" for item in solver_agent.get("hermes_runtime", {}).get("blockers", [])])
-        if not solver_agent.get("openshell_nemoclaw", {}).get("available"):
-            blockers.append(f"solver OpenShell/NemoClaw: {solver_agent.get('openshell_nemoclaw', {}).get('blocker')}")
-        if not openshell.get("available"):
-            blockers.append(f"OpenShell verifier backend: {openshell.get('blocker')}")
-        stripe_blockers = _stripe_live_blockers()
-        blockers.extend([f"stripe: {item}" for item in stripe_blockers])
+        live_setup = live_setup_wizard_report()
+        blockers.extend(live_setup["preflight_blockers"])
     secret_files = _tracked_or_unignored_secret_files(root)
     if secret_files:
         blockers.extend([f"secret file is tracked or unignored: {path}" for path in secret_files])
@@ -175,6 +166,7 @@ def demo_preflight_report(*, mode: str = "local", db_path: Path | None = None, m
             "cli_version": stripe_cli_version(),
             "blockers": _stripe_live_blockers(),
         },
+        "live_setup": live_setup,
         "project_agent": project_agent,
         "solver_agent": solver_agent,
         "openshell": openshell,
@@ -190,20 +182,7 @@ def demo_preflight_report(*, mode: str = "local", db_path: Path | None = None, m
 
 
 def _stripe_live_blockers() -> list[str]:
-    blockers: list[str] = []
-    if os.environ.get("AGENT_BOUNTY_STRIPE_SANDBOX") != "1":
-        blockers.append("set AGENT_BOUNTY_STRIPE_SANDBOX=1")
-    if not os.environ.get("STRIPE_TEST_SECRET_KEY"):
-        blockers.append("set STRIPE_TEST_SECRET_KEY")
-    if not os.environ.get("STRIPE_TEST_WEBHOOK_SECRET"):
-        blockers.append("set STRIPE_TEST_WEBHOOK_SECRET")
-    if not os.environ.get("STRIPE_TEST_CONNECTED_ACCOUNT_ID"):
-        blockers.append("set STRIPE_TEST_CONNECTED_ACCOUNT_ID")
-    if stripe_package_version() is None:
-        blockers.append("install optional stripe==15.2.0 package")
-    if stripe_cli_version() is None:
-        blockers.append("install/authenticate Stripe CLI")
-    return blockers
+    return list(stripe_setup_status_report().get("blockers", []))
 
 
 def _tracked_or_unignored_secret_files(root: Path) -> list[str]:

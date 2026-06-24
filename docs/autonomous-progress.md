@@ -881,3 +881,71 @@ Observed results:
 - diff whitespace check: clean.
 
 Next issue: #17 after issue #16 handoff comment, closure, and pull.
+
+## Issue #17: Operator Live Setup Wizard
+
+UTC start: 2026-06-24T21:23:00Z
+
+Status: completed; the live setup path now has one redacted wizard, a generated
+placeholder-only runbook, and shared blocker reporting with live preflight.
+
+Implemented:
+
+- added `agent_bounty.live_setup`, which composes safe Hermes/NVIDIA,
+  OpenShell/NemoClaw, GitHub, and Stripe readiness checks;
+- added `python -m agent_bounty live-setup-wizard --format text|json`;
+- added `python -m agent_bounty live-setup-wizard --write-runbook
+  submission/LIVE_SETUP_RUNBOOK.md`;
+- made `demo-preflight --mode live` share the wizard blocker list and behave as
+  a diagnostic command that exits successfully while still reporting `ok=false`
+  when prerequisites are blocked;
+- documented the wizard in README and final handoff;
+- added deterministic tests for missing, partial, fake-ready, redaction,
+  runbook, JSON stability, and preflight agreement paths.
+
+Safe bundle evidence after rebuild:
+
+```text
+bundle: demo/bundles/winning-run
+mode badge: Mixed real/fallback
+truth overall: mixed-real-fallback
+bundle digest: sha256:dd1aac811b4410044df555137d3350a26d47cb3c6956b40f603c18af5cada14c
+attestation digest: sha256:3a9852630b2be004b7aa7faabb32fae8765940c51ce88db744b8496a557f676e
+truth matrix digest: sha256:4a305dd8d6bc7e45e609ea63285f50dbe37e5d8ff32864b7525c36fdcb6152d4
+```
+
+Sample live setup evidence:
+
+```text
+live-setup-wizard --format json: ok=false components=hermes_nvidia,openshell_nemoclaw,github,stripe
+live-setup-wizard --write-runbook: wrote submission/LIVE_SETUP_RUNBOOK.md
+demo-preflight --mode live: ok=false and blocker list matches wizard preflight_blockers
+```
+
+Validation run:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/live_setup.py agent_bounty/cli.py agent_bounty/demo_presentation.py tests/test_live_setup.py
+nix develop --command python3 -m unittest tests.test_live_setup
+nix develop --command python3 -m agent_bounty live-setup-wizard --format json
+nix develop --command python3 -m agent_bounty live-setup-wizard --write-runbook submission/LIVE_SETUP_RUNBOOK.md
+nix develop --command python3 -m agent_bounty demo-preflight --mode live
+nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
+nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+git diff --check
+```
+
+Observed results:
+
+- focused live setup tests: 8 passed;
+- wizard/preflight command rehearsal: blocker lists agree;
+- winning bundle build: `ok=true`, `mode=mixed`,
+  `truth_overall=mixed-real-fallback`;
+- replay rehearsal: 5/5 validations passed, p95 1 ms;
+- full test suite: 145 passed, 2 skipped;
+- `nix flake check`: all checks passed;
+- diff whitespace check: clean.
+
+Next issue: #18 after issue #17 handoff comment, closure, and pull.

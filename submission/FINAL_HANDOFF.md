@@ -51,6 +51,13 @@ Fragment upgrades:
 - commands: `fragment validate`, `fragment import`, `fragment list`, and
   `fragment build-winning`
 
+Live setup:
+
+- command: `python -m agent_bounty live-setup-wizard --format json`
+- runbook: `submission/LIVE_SETUP_RUNBOOK.md`
+- live preflight shares the wizard blocker list:
+  `python -m agent_bounty demo-preflight --mode live`
+
 ## Truth Matrix
 
 Current truth status:

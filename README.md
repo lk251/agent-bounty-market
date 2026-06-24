@@ -294,6 +294,8 @@ The command reports fake versus real truth explicitly. See
 The judge-facing demo harness has honest live, replay, and local modes:
 
 ```bash
+python -m agent_bounty live-setup-wizard --format json
+python -m agent_bounty live-setup-wizard --write-runbook submission/LIVE_SETUP_RUNBOOK.md
 python -m agent_bounty demo-preflight --mode local
 python -m agent_bounty demo-rehearse --mode local
 python -m agent_bounty demo-replay --bundle .demo/bundles/local-rehearsal
@@ -303,4 +305,6 @@ python -m agent_bounty demo-live
 `demo-local` and `demo-rehearse --mode local` write a sanitized bundle and a
 static `dashboard.html` backed by persisted SQLite records. `demo-live` refuses
 to run unless real GitHub, Hermes/NVIDIA/OpenShell, and Stripe prerequisites are
-configured. See `docs/demo-presentation.md` and `submission/`.
+configured. `live-setup-wizard` turns those blockers into redacted setup checks
+and writes `submission/LIVE_SETUP_RUNBOOK.md` with placeholders only. See
+`docs/demo-presentation.md` and `submission/`.

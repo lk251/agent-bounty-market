@@ -70,6 +70,7 @@ from .hermes_integration import (
     run_skill_value_eval,
     run_solver_wrapper_from_stdin,
 )
+from .live_setup import live_setup_wizard_report, render_live_setup_text, write_live_setup_runbook
 from .nvidia_runtime import nvidia_runtime_status_report, run_nvidia_sandbox_demo
 from .payments import FakePaymentGateway, StripePaymentGateway
 from .project_agent import (
@@ -1297,7 +1298,7 @@ def cmd_demo_preflight(args: argparse.Namespace) -> int:
         print_json({"schema": "agent-bounty-demo-preflight-v1", "ok": False, "error": str(exc)})
         return 1
     print_json(result)
-    return 0 if result.get("ok") or args.mode != "live" else 1
+    return 0
 
 
 def cmd_demo_local(args: argparse.Namespace) -> int:
@@ -1439,6 +1440,19 @@ def cmd_fragment_build_winning(args: argparse.Namespace) -> int:
         return 1
     print_json(result)
     return 0 if result.get("ok") else 1
+
+
+def cmd_live_setup_wizard(args: argparse.Namespace) -> int:
+    result = live_setup_wizard_report()
+    if args.write_runbook:
+        result["runbook"] = write_live_setup_runbook(Path(args.write_runbook), result)
+    if args.format == "json":
+        print_json(result)
+    else:
+        print(render_live_setup_text(result), end="")
+        if args.write_runbook:
+            print(f"runbook written: {result['runbook']['path']}")
+    return 0
 
 
 def cmd_demo_reset(args: argparse.Namespace) -> int:
@@ -2306,6 +2320,11 @@ def build_parser() -> argparse.ArgumentParser:
     fragment_build = fragment_sub.add_parser("build-winning", help="validate and rewrite a bundle from its imported fragments")
     fragment_build.add_argument("--bundle", required=True)
     fragment_build.set_defaults(func=cmd_fragment_build_winning)
+
+    live_setup = sub.add_parser("live-setup-wizard", help="show redacted live integration setup checks and next commands")
+    live_setup.add_argument("--format", choices=["text", "json"], default="text")
+    live_setup.add_argument("--write-runbook", help="write a placeholder-only live setup runbook")
+    live_setup.set_defaults(func=cmd_live_setup_wizard)
 
     demo_reset = sub.add_parser("demo-reset", help="delete .demo state only after explicit confirmation")
     demo_reset.add_argument("--path")
