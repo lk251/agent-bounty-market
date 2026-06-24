@@ -12,6 +12,23 @@ from typing import Any
 
 from .core import AgentBountyMarket, MarketError
 from .db import connect
+from .github_integration import (
+    FakeGitHubClient,
+    GitHubConfig,
+    GitHubIntegrationError,
+    GitHubRestClient,
+    build_claim_comment,
+    build_submission_marker,
+    github_import_bounty_contract,
+    github_publish_bounty_contract,
+    github_publish_claim_comment,
+    github_publish_verification_result,
+    github_show_contract,
+    github_status_report,
+    process_github_event_row,
+    record_github_webhook_delivery,
+    sign_github_payload,
+)
 from .payments import FakePaymentGateway, StripePaymentGateway
 from .stripe_sandbox import (
     OfficialStripeClient,
@@ -24,7 +41,7 @@ from .stripe_sandbox import (
     stripe_cli_version,
     stripe_package_version,
 )
-from .util import require_currency, utc_now
+from .util import require_currency, stable_json, utc_now
 from .execution import openshell_status
 from .verification import ProtectedVerifierRunner, default_verifier_dir
 
@@ -413,6 +430,385 @@ def cmd_openshell_status(_args: argparse.Namespace) -> int:
     status = openshell_status()
     print_json(status)
     return 0 if status["available"] else 2
+
+
+def make_github_client() -> tuple[GitHubConfig, GitHubRestClient]:
+    config = GitHubConfig.from_env()
+    return config, GitHubRestClient(config)
+
+
+def cmd_github_status(_args: argparse.Namespace) -> int:
+    result = github_status_report()
+    print_json(result)
+    return 0 if result["ok"] else 1
+
+
+def cmd_github_publish_bounty(args: argparse.Namespace) -> int:
+    try:
+        _config, client = make_github_client()
+        market = open_market(args.db)
+        result = github_publish_bounty_contract(
+            market,
+            client=client,
+            repo_full_name=args.repo,
+            bounty_id=args.bounty_id,
+            issue_number=args.issue_number,
+            title=args.title,
+            human_body=args.body,
+            idempotency_key=args.idempotency_key,
+        )
+    except (GitHubIntegrationError, MarketError) as exc:
+        print_json({"schema": "agent-bounty-github-publish-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "agent-bounty-github-publish-v1", "ok": True, **result})
+    return 0
+
+
+def cmd_github_import_bounty(args: argparse.Namespace) -> int:
+    try:
+        market = open_market(args.db)
+        if args.issue_body_file:
+            body = Path(args.issue_body_file).read_text(encoding="utf-8")
+            issue_url = args.issue_url
+        else:
+            _config, client = make_github_client()
+            issue = client.get_issue(args.repo, args.issue_number)
+            body = str(issue.get("body") or "")
+            issue_url = args.issue_url or issue.get("html_url")
+        result = github_import_bounty_contract(
+            market,
+            repo_full_name=args.repo,
+            issue_number=args.issue_number,
+            issue_body=body,
+            issue_url=issue_url,
+            expected_digest=args.expected_digest,
+        )
+    except (GitHubIntegrationError, MarketError) as exc:
+        print_json({"schema": "agent-bounty-github-import-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "agent-bounty-github-import-v1", "ok": True, **result})
+    return 0
+
+
+def cmd_github_show_contract(args: argparse.Namespace) -> int:
+    try:
+        body = Path(args.issue_body_file).read_text(encoding="utf-8")
+        result = github_show_contract(body, expected_digest=args.expected_digest)
+    except GitHubIntegrationError as exc:
+        print_json({"schema": "agent-bounty-github-contract-report-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json(result)
+    return 0
+
+
+def cmd_github_publish_claim(args: argparse.Namespace) -> int:
+    try:
+        _config, client = make_github_client()
+        market = open_market(args.db)
+        result = github_publish_claim_comment(
+            market,
+            client=client,
+            repo_full_name=args.repo,
+            issue_number=args.issue_number,
+            bounty_id=args.bounty_id,
+            solver_id=args.solver_id,
+            lease_expires_at=args.lease_expires_at,
+            contract_digest_value=args.contract_digest,
+            idempotency_key=args.idempotency_key,
+        )
+    except (GitHubIntegrationError, MarketError) as exc:
+        print_json({"schema": "agent-bounty-github-claim-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "agent-bounty-github-claim-v1", "ok": True, **result})
+    return 0
+
+
+def cmd_github_publish_result(args: argparse.Namespace) -> int:
+    try:
+        _config, client = make_github_client()
+        market = open_market(args.db, verifier_timeout=args.verifier_timeout)
+        result = github_publish_verification_result(
+            market,
+            client=client,
+            repo_full_name=args.repo,
+            bounty_id=args.bounty_id,
+            receipt_id=args.receipt_id,
+            pr_number=args.pr_number,
+            idempotency_key=args.idempotency_key,
+        )
+    except (GitHubIntegrationError, MarketError) as exc:
+        print_json({"schema": "agent-bounty-github-result-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "agent-bounty-github-result-v1", "ok": True, **result})
+    return 0
+
+
+def cmd_github_webhook_serve(args: argparse.Namespace) -> int:
+    config = GitHubConfig.from_env()
+    if not config.webhook_secret:
+        print_json({"schema": "agent-bounty-github-webhook-server-v1", "ok": False, "error": f"set AGENT_BOUNTY_GITHUB_WEBHOOK_SECRET"})
+        return 1
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802
+            if self.path != "/github/webhook":
+                self.send_response(404)
+                self.end_headers()
+                return
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = self.rfile.read(length)
+            market = open_market(args.db, verifier_timeout=args.verifier_timeout)
+            try:
+                recorded = record_github_webhook_delivery(
+                    market.conn,
+                    payload=payload,
+                    headers=self.headers,
+                    endpoint_secret=config.webhook_secret or "",
+                    expected_repo_full_name=args.repo or config.repository,
+                )
+                result = process_github_event_row(market, delivery_id=recorded["delivery_id"], candidate_repo_path=args.candidate_repo_path)
+            except Exception as exc:
+                body = json.dumps({"ok": False, "error": safe_error_message(exc)}, sort_keys=True).encode("utf-8")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            body = json.dumps({"ok": True, **result}, sort_keys=True).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+            return
+
+    server = http.server.ThreadingHTTPServer((args.host, args.port), Handler)
+    print_json({"schema": "agent-bounty-github-webhook-server-v1", "ok": True, "host": args.host, "port": args.port, "path": "/github/webhook"})
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        return 130
+    return 0
+
+
+def cmd_github_process_events(args: argparse.Namespace) -> int:
+    try:
+        market = open_market(args.db, verifier_timeout=args.verifier_timeout)
+        rows = market.conn.execute(
+            """
+            SELECT delivery_id
+            FROM github_webhook_deliveries
+            WHERE status IN ('recorded', 'failed')
+            ORDER BY received_at, delivery_id
+            LIMIT ?
+            """,
+            (args.limit,),
+        ).fetchall()
+        results = [process_github_event_row(market, delivery_id=row["delivery_id"], candidate_repo_path=args.candidate_repo_path) for row in rows]
+    except (GitHubIntegrationError, MarketError) as exc:
+        print_json({"schema": "agent-bounty-github-process-events-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "agent-bounty-github-process-events-v1", "ok": True, "processed": len(results), "events": results})
+    return 0
+
+
+def _record_fake_github_event(market: AgentBountyMarket, *, secret: str, event_name: str, delivery_id: str, payload: dict[str, Any], repo: str, candidate_repo_path: str | None = None) -> dict[str, Any]:
+    body = stable_json(payload).encode("utf-8")
+    recorded = record_github_webhook_delivery(
+        market.conn,
+        payload=body,
+        headers={
+            "X-GitHub-Delivery": delivery_id,
+            "X-GitHub-Event": event_name,
+            "X-Hub-Signature-256": sign_github_payload(body, secret),
+        },
+        endpoint_secret=secret,
+        expected_repo_full_name=repo,
+    )
+    processed = process_github_event_row(market, delivery_id=delivery_id, candidate_repo_path=candidate_repo_path)
+    return {"recorded": recorded, "processed": processed}
+
+
+def cmd_demo_github_motoko(args: argparse.Namespace) -> int:
+    secret = "github_webhook_secret_for_local_demo"
+    repo = args.repo
+    market = open_market(args.db, verifier_timeout=args.verifier_timeout)
+    client = FakeGitHubClient()
+    market.create_project(project_id=DEFAULT_PROJECT_ID, name="Motoko", currency=DEFAULT_CURRENCY)
+    market.set_budget_policy(
+        project_id=DEFAULT_PROJECT_ID,
+        max_bounty_amount=args.reward_cents,
+        monthly_budget=args.reward_cents,
+        human_approval_threshold=args.reward_cents,
+        allowed_issue_classes=["machine-verifiable-tui-regression"],
+    )
+    funding = market.fund_project(
+        project_id=DEFAULT_PROJECT_ID,
+        amount=args.reward_cents,
+        currency=DEFAULT_CURRENCY,
+        idempotency_key=f"github-demo:fund:{DEFAULT_PROJECT_ID}:{args.reward_cents}",
+    )
+    market.create_bounty(
+        bounty_id=DEFAULT_BOUNTY_ID,
+        project_id=DEFAULT_PROJECT_ID,
+        title="Eliminate idle Motoko TUI typing latency",
+        reward_amount=args.reward_cents,
+        currency=DEFAULT_CURRENCY,
+        base_commit=args.base_commit,
+        issue_ref=f"{repo}#1",
+        verifier_id="motoko_issue_1_tui_latency_v2",
+    )
+    reserve = market.reserve_bounty(
+        bounty_id=DEFAULT_BOUNTY_ID,
+        idempotency_key=f"github-demo:reserve:{DEFAULT_BOUNTY_ID}:{args.reward_cents}",
+    )
+    existing_contract = market.conn.execute(
+        "SELECT * FROM github_issue_contracts WHERE bounty_id = ? ORDER BY updated_at DESC LIMIT 1",
+        (DEFAULT_BOUNTY_ID,),
+    ).fetchone()
+    if existing_contract:
+        issue_number = int(existing_contract["issue_number"])
+        issue_body = json.loads(existing_contract["issue_body_json"])["body"]
+        issue_url = existing_contract["issue_url"]
+        client.issues[(repo, issue_number)] = {
+            "id": issue_number,
+            "number": issue_number,
+            "title": "Eliminate idle Motoko TUI typing latency",
+            "body": issue_body,
+            "html_url": issue_url,
+            "state": "open",
+            "updated_at": utc_now(),
+        }
+        publish = {"replayed": True, "issue_number": issue_number, "issue_url": issue_url, "contract_digest": existing_contract["contract_digest"]}
+    else:
+        publish = github_publish_bounty_contract(
+            market,
+            client=client,
+            repo_full_name=repo,
+            bounty_id=DEFAULT_BOUNTY_ID,
+            human_body="Machine-verifiable bounty for the Motoko issue #1 TUI latency fix.",
+            title="Agent bounty: Motoko issue #1 TUI input latency",
+            idempotency_key=f"github-demo:publish:{DEFAULT_BOUNTY_ID}",
+        )
+        issue_number = int(publish["issue_number"])
+        issue_body = client.get_issue(repo, issue_number)["body"]
+    issue_event = _record_fake_github_event(
+        market,
+        secret=secret,
+        event_name="issues",
+        delivery_id=f"demo-issue-{issue_number}",
+        repo=repo,
+        payload={
+            "action": "edited",
+            "repository": {"full_name": repo, "id": 1},
+            "issue": {"id": issue_number, "number": issue_number, "body": issue_body, "html_url": publish.get("issue_url")},
+        },
+    )
+    claim_body = build_claim_comment(
+        bounty_id=DEFAULT_BOUNTY_ID,
+        solver_id=DEFAULT_SOLVER_ID,
+        lease_expires_at="2026-06-30T18:00:00Z",
+        contract_digest_value=publish["contract_digest"],
+    )
+    client.add_issue_comment(repo, issue_number, claim_body)
+    claim_event = _record_fake_github_event(
+        market,
+        secret=secret,
+        event_name="issue_comment",
+        delivery_id=f"demo-claim-{issue_number}",
+        repo=repo,
+        payload={
+            "action": "created",
+            "repository": {"full_name": repo, "id": 1},
+            "issue": {"id": issue_number, "number": issue_number, "body": issue_body, "html_url": publish.get("issue_url")},
+            "comment": {"id": 1, "body": claim_body, "user": {"login": DEFAULT_SOLVER_ID, "id": 2}},
+        },
+    )
+    submission_marker = build_submission_marker(
+        bounty_id=DEFAULT_BOUNTY_ID,
+        solver_id=DEFAULT_SOLVER_ID,
+        contract_digest_value=publish["contract_digest"],
+        issue_number=issue_number,
+        base_commit=args.base_commit,
+        candidate_commit=args.final_commit,
+    )
+    pr = client.create_fake_pull_request(
+        repo,
+        number=args.pr_number,
+        title="Fix Motoko TUI input latency",
+        body=submission_marker,
+        base_ref="master",
+        base_sha=args.base_commit,
+        head_ref="bounty/issue-1-tui-input-latency",
+        head_sha=args.final_commit,
+        head_repo_full_name=repo,
+        user_login=DEFAULT_SOLVER_ID,
+    )
+    pr_event = _record_fake_github_event(
+        market,
+        secret=secret,
+        event_name="pull_request",
+        delivery_id=f"demo-pr-{args.pr_number}-{args.final_commit}",
+        repo=repo,
+        candidate_repo_path=str(Path(args.motoko_repo)),
+        payload={"action": "opened", "repository": {"full_name": repo, "id": 1}, "pull_request": pr},
+    )
+    submission_row = market.conn.execute(
+        "SELECT * FROM submissions WHERE bounty_id = ? AND solver_id = ? AND candidate_commit = ? ORDER BY created_at DESC LIMIT 1",
+        (DEFAULT_BOUNTY_ID, DEFAULT_SOLVER_ID, args.final_commit),
+    ).fetchone()
+    if not submission_row:
+        raise SystemExit("demo failed to record a GitHub submission")
+    verification = market.run_verification(
+        submission_id=submission_row["id"],
+        idempotency_key=f"github-demo:verify:{DEFAULT_BOUNTY_ID}:{args.final_commit}",
+    )
+    result_publication = github_publish_verification_result(
+        market,
+        client=client,
+        repo_full_name=repo,
+        bounty_id=DEFAULT_BOUNTY_ID,
+        receipt_id=verification.get("receipt_id"),
+        pr_number=args.pr_number,
+        idempotency_key=f"github-demo:result:{DEFAULT_BOUNTY_ID}:{args.final_commit}",
+    )
+    replay_publication = github_publish_verification_result(
+        market,
+        client=client,
+        repo_full_name=repo,
+        bounty_id=DEFAULT_BOUNTY_ID,
+        receipt_id=verification.get("receipt_id"),
+        pr_number=args.pr_number,
+        idempotency_key=f"github-demo:result:{DEFAULT_BOUNTY_ID}:{args.final_commit}",
+    )
+    summary = market.bounty_summary(DEFAULT_BOUNTY_ID)
+    reconciliation = market.reconciliation(project_id=DEFAULT_PROJECT_ID, solver_id=DEFAULT_SOLVER_ID)
+    result = {
+        "schema": "agent-bounty-demo-github-motoko-v1",
+        "ok": reconciliation["ok"] and bool((verification.get("receipt") or {}).get("accepted")),
+        "mode": "fake-github-local-verifier",
+        "repo": repo,
+        "issue_number": issue_number,
+        "pr_number": args.pr_number,
+        "contract_digest": publish["contract_digest"],
+        "candidate_sha": args.final_commit,
+        "funding": funding,
+        "reserve": reserve,
+        "publish": publish,
+        "issue_event": issue_event,
+        "claim_event": claim_event,
+        "pr_event": pr_event,
+        "verification": verification,
+        "result_publication": result_publication,
+        "replay_publication": replay_publication,
+        "bounty": summary,
+        "reconciliation": reconciliation,
+    }
+    print_json(result)
+    return 0 if result["ok"] and replay_publication.get("replayed") else 1
 
 
 def open_trusted_market(db_path: str | Path, *, verifier_timeout: float = 60.0) -> AgentBountyMarket:
@@ -938,6 +1334,81 @@ def build_parser() -> argparse.ArgumentParser:
 
     openshell = sub.add_parser("openshell-status", help="inspect OpenShell verifier backend availability")
     openshell.set_defaults(func=cmd_openshell_status)
+
+    github_status = sub.add_parser("github-status", help="show safe GitHub integration configuration status")
+    github_status.set_defaults(func=cmd_github_status)
+
+    github_publish = sub.add_parser("github-publish-bounty", help="publish a versioned bounty contract to a GitHub issue")
+    github_publish.add_argument("--db", required=True)
+    github_publish.add_argument("--repo", required=True)
+    github_publish.add_argument("--bounty-id", required=True)
+    github_publish.add_argument("--issue-number", type=int)
+    github_publish.add_argument("--title")
+    github_publish.add_argument("--body", default="Machine-verifiable agent bounty.")
+    github_publish.add_argument("--idempotency-key")
+    github_publish.set_defaults(func=cmd_github_publish_bounty)
+
+    github_import = sub.add_parser("github-import-bounty", help="import and validate a GitHub issue bounty contract")
+    github_import.add_argument("--db", required=True)
+    github_import.add_argument("--repo", required=True)
+    github_import.add_argument("--issue-number", type=int, required=True)
+    github_import.add_argument("--issue-body-file")
+    github_import.add_argument("--issue-url")
+    github_import.add_argument("--expected-digest")
+    github_import.set_defaults(func=cmd_github_import_bounty)
+
+    github_show = sub.add_parser("github-show-contract", help="parse a GitHub issue bounty contract from a local issue body file")
+    github_show.add_argument("--issue-body-file", required=True)
+    github_show.add_argument("--expected-digest")
+    github_show.set_defaults(func=cmd_github_show_contract)
+
+    github_claim = sub.add_parser("github-publish-claim", help="publish a structured GitHub claim comment")
+    github_claim.add_argument("--db", required=True)
+    github_claim.add_argument("--repo", required=True)
+    github_claim.add_argument("--issue-number", type=int, required=True)
+    github_claim.add_argument("--bounty-id", required=True)
+    github_claim.add_argument("--solver-id", required=True)
+    github_claim.add_argument("--lease-expires-at", required=True)
+    github_claim.add_argument("--contract-digest")
+    github_claim.add_argument("--idempotency-key")
+    github_claim.set_defaults(func=cmd_github_publish_claim)
+
+    github_result = sub.add_parser("github-publish-result", help="publish a protected verifier result to GitHub")
+    github_result.add_argument("--db", required=True)
+    github_result.add_argument("--repo", required=True)
+    github_result.add_argument("--bounty-id", required=True)
+    github_result.add_argument("--receipt-id")
+    github_result.add_argument("--pr-number", type=int)
+    github_result.add_argument("--idempotency-key")
+    github_result.add_argument("--verifier-timeout", type=float, default=60.0)
+    github_result.set_defaults(func=cmd_github_publish_result)
+
+    github_webhook = sub.add_parser("github-webhook-serve", help="serve a local signed GitHub webhook endpoint")
+    github_webhook.add_argument("--db", required=True)
+    github_webhook.add_argument("--host", default="127.0.0.1")
+    github_webhook.add_argument("--port", type=int, default=4343)
+    github_webhook.add_argument("--repo")
+    github_webhook.add_argument("--candidate-repo-path")
+    github_webhook.add_argument("--verifier-timeout", type=float, default=60.0)
+    github_webhook.set_defaults(func=cmd_github_webhook_serve)
+
+    github_process = sub.add_parser("github-process-events", help="process recorded GitHub webhook rows after restart")
+    github_process.add_argument("--db", required=True)
+    github_process.add_argument("--limit", type=int, default=100)
+    github_process.add_argument("--candidate-repo-path")
+    github_process.add_argument("--verifier-timeout", type=float, default=60.0)
+    github_process.set_defaults(func=cmd_github_process_events)
+
+    demo_github = sub.add_parser("demo-github-motoko", help="run the fake GitHub Motoko contract/claim/PR/verifier/result lifecycle")
+    demo_github.add_argument("--db", required=True)
+    demo_github.add_argument("--motoko-repo", required=True)
+    demo_github.add_argument("--repo", default="lk251/motoko")
+    demo_github.add_argument("--pr-number", type=int, default=1)
+    demo_github.add_argument("--base-commit", default=DEFAULT_BASE_COMMIT)
+    demo_github.add_argument("--final-commit", default=DEFAULT_FINAL_COMMIT)
+    demo_github.add_argument("--reward-cents", type=int, default=2500)
+    demo_github.add_argument("--verifier-timeout", type=float, default=60.0)
+    demo_github.set_defaults(func=cmd_demo_github_motoko)
 
     status = sub.add_parser("stripe-status", help="show safe Stripe sandbox configuration status")
     status.set_defaults(func=cmd_stripe_status)

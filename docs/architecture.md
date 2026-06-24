@@ -7,6 +7,8 @@ Agent Bounty Market is a local transaction core with four trust zones:
 3. **Untrusted candidate**: solver checkout, branch, and commit under test.
 4. **Payment gateway**: fake deterministic gateway by default; explicit
    Stripe sandbox boundary when configured.
+5. **GitHub coordination surface**: optional issue/comment/PR/status transport
+   for bounty contracts and solver submissions.
 
 The orchestrator owns bounty state, idempotency, ledger entries, verification
 receipts, and payout decisions. The candidate can supply code, but not the
@@ -67,6 +69,22 @@ same receipt. A `running` row without a receipt is treated as incomplete work
 and retried instead of being returned as a completed replay. Verifier errors and
 timeouts are recorded without producing payout-eligible receipts, and the bounty
 leaves `verifying` so it can be retried.
+
+## GitHub Boundary
+
+The GitHub-native path is a transport around the same trusted kernel. Hidden
+issue/comment/PR markers bind bounty contracts, claims, and submissions to
+stable JSON digests. Webhook ingestion verifies `X-Hub-Signature-256`, stores a
+unique delivery row before processing, rejects same-ID changed-payload replays,
+checks repository scope, and can resume unprocessed rows after restart.
+
+Candidate-owned GitHub checks and statuses are never authoritative. The trusted
+orchestrator publishes accepted/rejected verifier results through its own
+durable publication journal. Real GitHub network calls are gated by environment
+credentials; local tests use `FakeGitHubClient`.
+
+See `docs/github-native.md` for commands and the current real-integration
+blocker.
 
 ## Payment Boundary
 

@@ -39,6 +39,14 @@
 - Public `transfer.created` events are audit-only. `transfer.reversed` records
   manual-review state. There is no public `transfer.failed` handling in the real
   path.
+- GitHub webhook ingestion rejects invalid `X-Hub-Signature-256` payloads before
+  writing domain state, records unique deliveries before processing, rejects
+  same-ID changed-payload replays, and scopes events to the configured repo.
+- GitHub issue contracts, claim comments, and PR submission markers are
+  digest-bound structured JSON. Ambiguous, duplicated, malformed, edited, or
+  stale markers fail closed.
+- Candidate-owned GitHub CI is non-authoritative. It is recorded for context but
+  cannot create a verification receipt or settlement eligibility.
 - Secrets are not required for tests or demo execution.
 
 ## Not Yet Protected
@@ -55,6 +63,7 @@ runs when a host has an approved `openshell` sandbox available.
 
 - Run untrusted candidate work in the sponsor-prescribed OpenShell/NemoClaw
   sandbox once that runtime is installed and configured for this verifier.
-- Add GitHub App signature verification and repository installation scoping.
+- Exercise the GitHub path against a real GitHub App or fine-grained token and
+  webhook endpoint once credentials are available.
 - Replace the current local-process verifier isolation with the
   sponsor-prescribed sandbox once that runtime is available.

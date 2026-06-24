@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -24,7 +24,11 @@ def init_db(conn: sqlite3.Connection) -> None:
             value TEXT NOT NULL
         );
 
-        INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '6');
+        INSERT INTO meta(key, value) VALUES ('schema_version', '7')
+        ON CONFLICT(key) DO UPDATE SET
+            value = CASE
+                WHEN CAST(value AS INTEGER) < 7 THEN '7'
+                ELSE value END;
 
         CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
@@ -256,6 +260,104 @@ def init_db(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS github_repositories (
+            id TEXT PRIMARY KEY,
+            full_name TEXT NOT NULL UNIQUE,
+            installation_id TEXT,
+            default_branch TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS github_operations (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL UNIQUE,
+            request_parameters_digest TEXT NOT NULL,
+            status TEXT NOT NULL,
+            github_object_type TEXT,
+            github_object_id TEXT,
+            github_url TEXT,
+            safe_error_code TEXT,
+            safe_error_message TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS github_webhook_deliveries (
+            delivery_id TEXT PRIMARY KEY,
+            event_name TEXT NOT NULL,
+            action TEXT,
+            repo_full_name TEXT,
+            object_id TEXT,
+            payload_sha256 TEXT NOT NULL,
+            signature_valid INTEGER NOT NULL CHECK(signature_valid IN (0, 1)),
+            safe_payload_json TEXT NOT NULL,
+            received_at TEXT NOT NULL,
+            processed_at TEXT,
+            status TEXT NOT NULL,
+            action_result TEXT,
+            error TEXT,
+            processing_attempts INTEGER NOT NULL DEFAULT 0,
+            next_attempt_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS github_issue_contracts (
+            id TEXT PRIMARY KEY,
+            bounty_id TEXT NOT NULL REFERENCES bounties(id),
+            repo_full_name TEXT NOT NULL,
+            issue_number INTEGER NOT NULL,
+            issue_url TEXT,
+            contract_schema TEXT NOT NULL,
+            contract_digest TEXT NOT NULL,
+            issue_body_digest TEXT NOT NULL,
+            issue_body_json TEXT NOT NULL,
+            contract_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(repo_full_name, issue_number, contract_digest)
+        );
+
+        CREATE TABLE IF NOT EXISTS github_pull_requests (
+            id TEXT PRIMARY KEY,
+            repo_full_name TEXT NOT NULL,
+            pr_number INTEGER NOT NULL,
+            issue_number INTEGER,
+            bounty_id TEXT REFERENCES bounties(id),
+            solver_id TEXT,
+            base_repo TEXT,
+            base_ref TEXT,
+            base_sha TEXT,
+            head_repo TEXT,
+            head_ref TEXT,
+            head_sha TEXT,
+            state TEXT,
+            draft INTEGER NOT NULL DEFAULT 0 CHECK(draft IN (0, 1)),
+            body_digest TEXT,
+            submission_id TEXT REFERENCES submissions(id),
+            verification_eligible INTEGER NOT NULL DEFAULT 0 CHECK(verification_eligible IN (0, 1)),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(repo_full_name, pr_number)
+        );
+
+        CREATE TABLE IF NOT EXISTS github_publications (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            repo_full_name TEXT NOT NULL,
+            issue_number INTEGER,
+            pr_number INTEGER,
+            sha TEXT,
+            receipt_id TEXT REFERENCES verification_receipts(id),
+            status TEXT NOT NULL,
+            github_object_id TEXT,
+            github_url TEXT,
+            idempotency_key TEXT NOT NULL UNIQUE,
+            request_parameters_digest TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
         """
     )
     _ensure_column(conn, "verification_receipts", "project_id", "TEXT")
@@ -291,6 +393,11 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_funding_requests_checkout ON funding_requests(checkout_session_id) WHERE checkout_session_id IS NOT NULL")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_funding_requests_payment_intent ON funding_requests(payment_intent_id) WHERE payment_intent_id IS NOT NULL")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_stripe_operations_object ON stripe_operations(stripe_object_type, stripe_object_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_github_deliveries_status ON github_webhook_deliveries(status, received_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_github_contracts_bounty ON github_issue_contracts(bounty_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_github_contracts_digest ON github_issue_contracts(contract_digest)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_github_prs_bounty ON github_pull_requests(bounty_id, solver_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_github_publications_receipt ON github_publications(receipt_id)")
     conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))
     conn.commit()
 

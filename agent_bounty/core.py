@@ -610,6 +610,35 @@ class AgentBountyMarket:
             self._transition_bounty(bounty_id, BountyState.CLAIMED, reason="solver_claimed", idempotency_key=f"state:{idempotency_key}:claimed")
         return {"claim_id": claim_id, "replayed": False}
 
+    def expire_claim(self, *, bounty_id: str, idempotency_key: str) -> dict[str, Any]:
+        bounty = self._bounty(bounty_id)
+        active = self.conn.execute(
+            "SELECT * FROM claims WHERE bounty_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1",
+            (bounty_id,),
+        ).fetchone()
+        if not active:
+            expired = self.conn.execute(
+                "SELECT * FROM claims WHERE bounty_id = ? AND status = 'expired' ORDER BY created_at DESC LIMIT 1",
+                (bounty_id,),
+            ).fetchone()
+            if expired and bounty["state"] == BountyState.OPEN.value:
+                return {"bounty_id": bounty_id, "claim_id": expired["id"], "state": BountyState.OPEN.value, "replayed": True}
+            raise MarketError("cannot expire claim without an active claim")
+        if bounty["state"] != BountyState.CLAIMED.value:
+            raise MarketError(f"cannot expire claim from state {bounty['state']}")
+        with self.conn:
+            self.conn.execute(
+                "UPDATE claims SET status = 'expired' WHERE id = ?",
+                (active["id"],),
+            )
+            self._transition_bounty(
+                bounty_id,
+                BountyState.OPEN,
+                reason="claim_expired",
+                idempotency_key=f"state:{idempotency_key}:claim_expired_open",
+            )
+        return {"bounty_id": bounty_id, "claim_id": active["id"], "state": BountyState.OPEN.value, "replayed": False}
+
     def submit_candidate(
         self,
         *,

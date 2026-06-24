@@ -171,3 +171,27 @@ processing it, run:
 ```bash
 python -m agent_bounty stripe-process-events --db .demo/stripe.sqlite3
 ```
+
+## GitHub Native Spine
+
+The GitHub path is optional and gated. It publishes digest-bound bounty
+contracts to issues, ingests signed issue/comment/PR webhooks, records claims
+and submissions, and publishes trusted verifier results back to GitHub. GitHub
+candidate CI is never authoritative for payment.
+
+Run the local fake-GitHub Motoko lifecycle with the real protected verifier:
+
+```bash
+python -m agent_bounty demo-github-motoko \
+  --db .demo/github.sqlite3 \
+  --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
+```
+
+Check real integration readiness without printing secrets:
+
+```bash
+python -m agent_bounty github-status
+```
+
+See `docs/github-native.md` for commands, replay semantics, and current
+credential/webhook blockers.
