@@ -29,6 +29,7 @@ from .economic_loop import (
     default_solver_operating_policy,
     economic_loop_status_report,
     run_demo_economic_loop,
+    run_demo_economic_loop_live,
     save_solver_operating_policy,
     spend_retained_credit_to_project,
 )
@@ -1227,6 +1228,54 @@ def cmd_demo_economic_loop(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def cmd_demo_economic_loop_live(args: argparse.Namespace) -> int:
+    config = StripeSandboxConfig.from_env()
+    client: OfficialStripeClient | None = None
+    if not config.enabled or not config.secret_key:
+        result = run_demo_economic_loop_live(
+            open_trusted_market(args.db, verifier_timeout=args.verifier_timeout),
+            motoko_repo=Path(args.motoko_repo) if args.motoko_repo else None,
+            config=config,
+            client=None,
+            reward_amount=args.reward_cents,
+            currency=args.currency,
+            external_transfer_amount=args.external_transfer_cents,
+            retained_operating_amount=args.retained_operating_cents,
+            platform_fee_amount=args.platform_fee_cents,
+        )
+        print_json(result)
+        return 1
+    try:
+        client = OfficialStripeClient(config)
+        market = open_trusted_market(args.db, verifier_timeout=args.verifier_timeout)
+        result = run_demo_economic_loop_live(
+            market,
+            motoko_repo=Path(args.motoko_repo) if args.motoko_repo else None,
+            config=config,
+            client=client,
+            reward_amount=args.reward_cents,
+            currency=args.currency,
+            external_transfer_amount=args.external_transfer_cents,
+            retained_operating_amount=args.retained_operating_cents,
+            platform_fee_amount=args.platform_fee_cents,
+        )
+        if result.get("stage") == "complete":
+            result["reconciliation"] = stripe_reconcile_report(
+                market,
+                project_id=DEFAULT_PROJECT_ID,
+                solver_id="solver_python_terminal_tui",
+                bounty_id=DEFAULT_BOUNTY_ID,
+                currency=args.currency,
+                client=client,
+            )
+            result["ok"] = bool(result.get("ok")) and bool(result["reconciliation"]["ledger_reconciled"]) and bool(result["reconciliation"]["remote_reconciled"])
+    except (StripeSandboxError, EconomicLoopError, SolverAgentError, ProjectAgentError, MarketError, GitHubIntegrationError) as exc:
+        print_json({"schema": "agent-bounty-demo-economic-loop-live-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def cmd_demo_preflight(args: argparse.Namespace) -> int:
     try:
         result = demo_preflight_report(
@@ -2078,6 +2127,17 @@ def build_parser() -> argparse.ArgumentParser:
     demo_economic.add_argument("--platform-fee-cents", type=int, default=0)
     demo_economic.add_argument("--verifier-timeout", type=float, default=60.0)
     demo_economic.set_defaults(func=cmd_demo_economic_loop)
+
+    demo_economic_live = sub.add_parser("demo-economic-loop-live", help="run staged real Stripe split settlement plus retained-credit spend")
+    demo_economic_live.add_argument("--db", required=True)
+    demo_economic_live.add_argument("--motoko-repo")
+    demo_economic_live.add_argument("--reward-cents", type=int, default=2500)
+    demo_economic_live.add_argument("--currency", default="EUR")
+    demo_economic_live.add_argument("--external-transfer-cents", type=int, default=2000)
+    demo_economic_live.add_argument("--retained-operating-cents", type=int, default=500)
+    demo_economic_live.add_argument("--platform-fee-cents", type=int, default=0)
+    demo_economic_live.add_argument("--verifier-timeout", type=float, default=60.0)
+    demo_economic_live.set_defaults(func=cmd_demo_economic_loop_live)
 
     demo_preflight = sub.add_parser("demo-preflight", help="check demo readiness without exposing secrets")
     demo_preflight.add_argument("--mode", choices=["local", "replay", "live"], default="local")

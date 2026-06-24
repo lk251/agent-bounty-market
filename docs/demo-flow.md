@@ -75,5 +75,12 @@ The real Stripe sandbox demo is deliberately split across trusted commands:
    With `--remote`, it also retrieves the Checkout Session, PaymentIntent,
    Charge, connected account, and Transfer for safe mismatch reporting.
 
+For the split settlement loop, use `demo-economic-loop-live` instead of
+`stripe-release-transfer`. It stages the same signed funding requirement, then
+settles a 2500-cent accepted reward as 2000 cents external Stripe transfer plus
+500 cents retained operating credit, and spends the retained credit into a
+second bounded bounty. The retained credit is internal ledger state and is not
+included in the Stripe transfer amount.
+
 Use `nix develop` for the pinned official Stripe SDK and Stripe CLI. The default
 demo and CI remain secret-free and use deterministic fake clients.

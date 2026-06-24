@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -15,8 +19,10 @@ from agent_bounty.economic_loop import (
     economic_loop_status_report,
     mark_settlement_transfer_reversed,
     run_demo_economic_loop,
+    run_demo_economic_loop_live,
     save_solver_operating_policy,
     spend_retained_credit_to_project,
+    stripe_split_blockers,
 )
 from agent_bounty.ledger import (
     project_reserved_account,
@@ -26,12 +32,21 @@ from agent_bounty.ledger import (
 )
 from agent_bounty.payments import FakePaymentGateway
 from agent_bounty.solver_agent import PYTHON_SOLVER_ID
+from agent_bounty.stripe_sandbox import FakeStripeClient, StripeSandboxConfig
 from agent_bounty.verification import ProtectedVerifierRunner
 
 from tests.helpers import CANDIDATE, accepted_verifier, rejected_verifier
 
 
 MOTOKO_REPO = Path("/home/mares/repos/motoko-issue-1-tui-input-latency")
+
+
+def signed_payload(event: dict, *, secret: str = "whsec_test") -> tuple[bytes, str]:
+    payload = json.dumps(event, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    timestamp = int(time.time())
+    signed = f"{timestamp}.{payload.decode('utf-8')}".encode("utf-8")
+    signature = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
+    return payload, f"t={timestamp},v1={signature}"
 
 
 def make_market(db_path: Path, verifier_dir: Path) -> AgentBountyMarket:
@@ -93,6 +108,121 @@ class EconomicLoopTests(unittest.TestCase):
             self.assertEqual(market.ledger.balance(solver_paid_account(solver_id)), 2500)
             self.assertEqual(market.ledger.balance(solver_earned_account(solver_id)), 0)
             self.assertFalse(str(result["gateway_transfer_id"]).startswith("tr_"))
+
+    def test_split_stripe_transfer_settles_only_external_portion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier = accepted_verifier(Path(tmp))
+            market = make_market(Path(tmp) / "market.sqlite3", verifier)
+            _project_id, bounty_id, solver_id, _receipt_id = prepare_bounty(market)
+            client = FakeStripeClient()
+
+            result = allocate_accepted_reward(
+                market,
+                bounty_id=bounty_id,
+                external_transfer_amount=2000,
+                retained_operating_amount=500,
+                retention_consent=True,
+                transfer_provider="stripe",
+                stripe_client=client,
+                stripe_connected_account_id="acct_solver_test",
+                idempotency_key="settle:stripe-split",
+            )
+            replay = allocate_accepted_reward(
+                market,
+                bounty_id=bounty_id,
+                external_transfer_amount=2000,
+                retained_operating_amount=500,
+                retention_consent=True,
+                transfer_provider="stripe",
+                stripe_client=client,
+                stripe_connected_account_id="acct_solver_test",
+                idempotency_key="settle:stripe-split",
+            )
+
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["gateway_transfer_id"].startswith("tr_test_"))
+            self.assertTrue(replay["replayed"])
+            self.assertEqual(client.created_transfer_params[0]["params"]["amount"], 2000)
+            self.assertEqual(client.created_transfer_params[0]["params"]["destination"], "acct_solver_test")
+            self.assertEqual(market.ledger.balance(solver_paid_account(solver_id)), 2000)
+            self.assertEqual(market.ledger.balance(solver_operating_available_account(solver_id)), 500)
+
+    def test_split_stripe_transfer_failure_does_not_move_ledger(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier = accepted_verifier(Path(tmp))
+            market = make_market(Path(tmp) / "market.sqlite3", verifier)
+            _project_id, bounty_id, solver_id, _receipt_id = prepare_bounty(market)
+            client = FakeStripeClient()
+            original = client.retrieve_transfer
+
+            def bad_retrieve(transfer_id):
+                transfer = original(transfer_id)
+                transfer["amount"] = 1
+                return transfer
+
+            client.retrieve_transfer = bad_retrieve
+            result = allocate_accepted_reward(
+                market,
+                bounty_id=bounty_id,
+                external_transfer_amount=2000,
+                retained_operating_amount=500,
+                retention_consent=True,
+                transfer_provider="stripe",
+                stripe_client=client,
+                stripe_connected_account_id="acct_solver_test",
+                idempotency_key="settle:stripe-mismatch",
+            )
+
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["transfer_status"], "failed")
+            self.assertEqual(market.ledger.balance(solver_earned_account(solver_id)), 2500)
+            self.assertEqual(market.ledger.balance(solver_paid_account(solver_id)), 0)
+            self.assertEqual(market.ledger.balance(solver_operating_available_account(solver_id)), 0)
+
+    def test_split_stripe_transfer_requires_explicit_client(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier = accepted_verifier(Path(tmp))
+            market = make_market(Path(tmp) / "market.sqlite3", verifier)
+            _project_id, bounty_id, _solver_id, _receipt_id = prepare_bounty(market)
+
+            with self.assertRaises(EconomicLoopError):
+                allocate_accepted_reward(
+                    market,
+                    bounty_id=bounty_id,
+                    external_transfer_amount=2000,
+                    retained_operating_amount=500,
+                    retention_consent=True,
+                    transfer_provider="stripe",
+                    idempotency_key="settle:stripe-no-client",
+                )
+
+    def test_fake_allocation_cannot_replay_as_stripe_allocation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier = accepted_verifier(Path(tmp))
+            market = make_market(Path(tmp) / "market.sqlite3", verifier)
+            _project_id, bounty_id, _solver_id, _receipt_id = prepare_bounty(market)
+            allocate_accepted_reward(
+                market,
+                bounty_id=bounty_id,
+                external_transfer_amount=2000,
+                retained_operating_amount=500,
+                retention_consent=True,
+                transfer_provider="fake",
+                idempotency_key="settle:fake-first",
+            )
+
+            with self.assertRaises(EconomicLoopError):
+                allocate_accepted_reward(
+                    market,
+                    bounty_id=bounty_id,
+                    external_transfer_amount=2000,
+                    retained_operating_amount=500,
+                    retention_consent=True,
+                    transfer_provider="stripe",
+                    stripe_client=FakeStripeClient(),
+                    stripe_connected_account_id="acct_solver_test",
+                    idempotency_key="settle:stripe-after-fake",
+                )
 
     def test_retained_credit_requires_operator_consent_and_split_sums(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -284,7 +414,7 @@ class EconomicLoopTests(unittest.TestCase):
         status = economic_loop_status_report()
         self.assertTrue(status["deterministic_fake_loop_available"])
         self.assertFalse(status["prior_real_stripe_evidence"]["transfer"].startswith("fake"))
-        self.assertIn("real split Stripe transfer is not claimed", status["split_settlement_adapter"])
+        self.assertIn("demo-economic-loop-live", status["split_settlement_adapter"])
 
     def test_full_deterministic_economic_loop_demo(self):
         if not MOTOKO_REPO.exists():
@@ -299,6 +429,67 @@ class EconomicLoopTests(unittest.TestCase):
             self.assertEqual(result["allocation"]["retained_operating_amount"], 500)
             self.assertTrue(result["retained_credit_spend_replay"]["replayed"])
             self.assertTrue(str(result["second_bounty"]["contract_digest"]).startswith("sha256:"))
+
+    def test_live_split_demo_is_staged_from_signed_funding_to_real_transfer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier = accepted_verifier(Path(tmp))
+            market = make_market(Path(tmp) / "market.sqlite3", verifier)
+            client = FakeStripeClient()
+            config = StripeSandboxConfig(
+                enabled=True,
+                secret_key="sk_test_unit",
+                webhook_secret="whsec_test",
+                connected_account_id="acct_solver_test",
+                platform_account_id=None,
+                public_base_url="http://127.0.0.1:4242",
+            )
+
+            waiting = run_demo_economic_loop_live(
+                market,
+                motoko_repo=MOTOKO_REPO,
+                config=config,
+                client=client,
+                currency="USD",
+            )
+            self.assertEqual(waiting["stage"], "waiting_for_signed_webhook")
+
+            payment_intent_id = waiting["payment_intent_id"]
+            event = {
+                "id": "evt_split_live_unit",
+                "object": "event",
+                "type": "payment_intent.succeeded",
+                "livemode": False,
+                "data": {"object": client.payment_intents[payment_intent_id]},
+            }
+            payload, signature = signed_payload(event)
+            credited = market.ingest_official_stripe_webhook(
+                payload=payload,
+                signature_header=signature,
+                endpoint_secret="whsec_test",
+                client=client,
+            )
+            self.assertIn(credited["action"], {"funding_credited", "funding_already_credited"})
+
+            completed = run_demo_economic_loop_live(
+                market,
+                motoko_repo=MOTOKO_REPO,
+                config=config,
+                client=client,
+                currency="USD",
+            )
+
+            self.assertTrue(completed["ok"])
+            self.assertEqual(completed["stage"], "complete")
+            self.assertEqual(completed["allocation"]["external_transfer_amount"], 2000)
+            self.assertEqual(completed["allocation"]["retained_operating_amount"], 500)
+            self.assertTrue(completed["allocation"]["gateway_transfer_id"].startswith("tr_test_"))
+            self.assertEqual(client.created_transfer_params[-1]["params"]["amount"], 2000)
+            self.assertEqual(completed["balances"]["solver_earned"], 0)
+            self.assertEqual(completed["balances"]["solver_operating_available"], 0)
+
+    def test_live_split_demo_reports_safe_configuration_blockers(self):
+        config = StripeSandboxConfig.from_env({})
+        self.assertIn("set AGENT_BOUNTY_STRIPE_SANDBOX=1", stripe_split_blockers(config))
 
 
 if __name__ == "__main__":

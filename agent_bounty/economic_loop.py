@@ -17,8 +17,21 @@ from .ledger import (
     solver_payout_transit_account,
 )
 from .project_agent import DEFAULT_BASE_COMMIT, DEFAULT_REPO
-from .solver_agent import PYTHON_SOLVER_ID, run_demo_solver_motoko
-from .stripe_sandbox import StripeSandboxConfig, safe_error_message
+from .solver_agent import (
+    PYTHON_SOLVER_ID,
+    execute_deterministic_motoko_replay,
+    register_default_solver_profiles,
+    run_demo_solver_motoko,
+    submit_solver_replay,
+)
+from .stripe_sandbox import (
+    StripeClient,
+    StripeSandboxConfig,
+    request_digest,
+    require_id,
+    safe_error_message,
+    transfer_params,
+)
 from .util import require_currency, require_positive_amount, sha256_text, stable_json, utc_now
 
 
@@ -28,6 +41,7 @@ SETTLEMENT_ALLOCATION_SCHEMA = "agent-bounty-settlement-allocation-v1"
 SOLVER_OPERATING_POLICY_SCHEMA = "agent-bounty-solver-operating-policy-v1"
 SOLVER_OPERATING_SPEND_SCHEMA = "agent-bounty-solver-operating-spend-v1"
 ECONOMIC_LOOP_DEMO_SCHEMA = "agent-bounty-demo-economic-loop-v1"
+ECONOMIC_LOOP_LIVE_SCHEMA = "agent-bounty-demo-economic-loop-live-v1"
 
 DEFAULT_FIRST_BOUNTY_ID = "bounty_motoko_issue_1"
 DEFAULT_SECOND_PROJECT_ID = "project_motoko_retained_credit"
@@ -255,6 +269,8 @@ def allocate_accepted_reward(
     platform_fee_amount: int = 0,
     retention_consent: bool = False,
     transfer_provider: str = "fake",
+    stripe_client: StripeClient | None = None,
+    stripe_connected_account_id: str | None = None,
     idempotency_key: str | None = None,
     simulate_transfer_failure: bool = False,
 ) -> dict[str, Any]:
@@ -290,6 +306,7 @@ def allocate_accepted_reward(
             "platform_fee_amount": platform_fee_amount,
             "currency": currency,
             "retention_consent": bool(retention_consent),
+            "transfer_provider": transfer_provider,
         }
         actual = {
             "external_transfer_amount": int(existing["external_transfer_amount"]),
@@ -297,6 +314,7 @@ def allocate_accepted_reward(
             "platform_fee_amount": int(existing["platform_fee_amount"]),
             "currency": existing["currency"],
             "retention_consent": bool(existing["retention_consent"]),
+            "transfer_provider": existing["transfer_provider"],
         }
         if actual != expected:
             raise EconomicLoopError("settlement allocation replayed with different split")
@@ -307,7 +325,10 @@ def allocate_accepted_reward(
     if transfer_provider not in {"fake", "stripe"}:
         raise EconomicLoopError("transfer provider must be fake or stripe")
     if transfer_provider == "stripe":
-        raise EconomicLoopError("split Stripe Connect transfer requires a reviewed real-transfer adapter; use deterministic fake mode here")
+        if stripe_client is None:
+            raise EconomicLoopError("split Stripe Connect transfer requires an explicit Stripe client")
+        if external_transfer_amount <= 0:
+            raise EconomicLoopError("split Stripe Connect transfer requires a positive external transfer amount")
 
     payout_id: str | None = None
     gateway_transfer_id: str | None = None
@@ -336,7 +357,36 @@ def allocate_accepted_reward(
                 "transfer_status": "failed",
                 "error": "simulated external transfer failure before allocation",
             }
-        gateway_transfer_id = f"fake_transfer_{sha256_text(key)[-24:]}"
+        if transfer_provider == "stripe":
+            try:
+                gateway_transfer_id = _create_split_stripe_transfer(
+                    market,
+                    bounty=bounty,
+                    submission=submission,
+                    receipt=receipt,
+                    payout_id=payout_id,
+                    amount=external_transfer_amount,
+                    client=stripe_client,
+                    connected_account_id=stripe_connected_account_id,
+                    idempotency_key=key,
+                )
+            except Exception as exc:
+                with market.conn:
+                    market.conn.execute("UPDATE payouts SET status = 'failed', idempotency_key = ?, updated_at = ? WHERE id = ?", (key, utc_now(), payout_id))
+                    market._transition_bounty(bounty_id, BountyState.PAYOUT_FAILED, reason=f"split_stripe_transfer_failed:{safe_error_message(exc)}", idempotency_key=f"state:{key}:payout_failed")
+                return {
+                    "schema": SETTLEMENT_ALLOCATION_SCHEMA,
+                    "ok": False,
+                    "replayed": False,
+                    "bounty_id": bounty_id,
+                    "solver_id": solver_id,
+                    "payout_id": payout_id,
+                    "transfer_status": "failed",
+                    "transfer_provider": "stripe",
+                    "error": safe_error_message(exc),
+                }
+        else:
+            gateway_transfer_id = f"fake_transfer_{sha256_text(key)[-24:]}"
     else:
         market._transition_bounty(bounty_id, BountyState.PAYOUT_PENDING, reason="internal_only_settlement_started", idempotency_key=f"state:{key}:payout_pending")
 
@@ -500,6 +550,99 @@ def _ensure_split_payout(
             ),
         )
     return payout_id
+
+
+def _create_split_stripe_transfer(
+    market: AgentBountyMarket,
+    *,
+    bounty: Any,
+    submission: Any,
+    receipt: Any,
+    payout_id: str,
+    amount: int,
+    client: StripeClient,
+    connected_account_id: str | None,
+    idempotency_key: str,
+) -> str:
+    solver_id = submission["solver_id"]
+    if connected_account_id:
+        market.attach_stripe_beneficiary(solver_id=solver_id, account_id=connected_account_id, client=client)
+    solver = market.conn.execute("SELECT * FROM solver_identities WHERE id = ?", (solver_id,)).fetchone()
+    account_id = solver["beneficiary_external_id"] if solver else None
+    if not isinstance(account_id, str) or not account_id.startswith("acct_"):
+        raise EconomicLoopError("solver has no validated Stripe connected account")
+    params = transfer_params(
+        project_id=bounty["project_id"],
+        bounty_id=bounty["id"],
+        solver_id=solver_id,
+        payout_id=payout_id,
+        amount=amount,
+        currency=bounty["currency"],
+        destination_account_id=account_id,
+        accepted_receipt_id=receipt["id"],
+        candidate_sha=submission["candidate_commit"],
+        verifier_digest=receipt["verifier_digest"],
+        backend_digest=receipt["backend_digest"],
+        policy_digest=receipt["policy_digest"],
+        source_transaction_id=_source_transaction_for_split_payout(
+            market,
+            project_id=bounty["project_id"],
+            currency=bounty["currency"],
+            amount=amount,
+        ),
+    )
+    operation_id = market._begin_stripe_operation(
+        kind="split_transfer_create",
+        idempotency_key=idempotency_key,
+        request_parameters_digest=request_digest(params),
+    )
+    try:
+        transfer = client.create_transfer(idempotency_key=idempotency_key, params=params)
+        transfer_id = require_id(transfer, prefix="tr_", object_name="Connect Transfer")
+        retrieved = client.retrieve_transfer(transfer_id)
+        market._validate_transfer(retrieved, expected=params)
+    except Exception as exc:
+        with market.conn:
+            market._finish_stripe_operation(
+                operation_id=operation_id,
+                status="failed",
+                safe_error_message=safe_error_message(exc),
+            )
+        raise
+    with market.conn:
+        market._finish_stripe_operation(
+            operation_id=operation_id,
+            status="succeeded",
+            stripe_object_type="transfer",
+            stripe_object_id=transfer_id,
+        )
+        market.conn.execute(
+            """
+            UPDATE payouts
+            SET status = 'pending', gateway_payout_id = ?, stripe_transfer_id = ?,
+                idempotency_key = ?, transfer_group = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (transfer_id, transfer_id, idempotency_key, params["transfer_group"], utc_now(), payout_id),
+        )
+    return transfer_id
+
+
+def _source_transaction_for_split_payout(market: AgentBountyMarket, *, project_id: str, currency: str, amount: int) -> str | None:
+    row = market.conn.execute(
+        """
+        SELECT gateway_source_transaction_id
+        FROM funding_events
+        WHERE project_id = ?
+          AND currency = ?
+          AND amount >= ?
+          AND gateway_source_transaction_id IS NOT NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (project_id, currency, amount),
+    ).fetchone()
+    return row["gateway_source_transaction_id"] if row else None
 
 
 def mark_settlement_transfer_reversed(market: AgentBountyMarket, *, gateway_transfer_id: str, reason: str) -> dict[str, Any]:
@@ -738,7 +881,7 @@ def economic_loop_status_report() -> dict[str, Any]:
     return {
         "schema": ECONOMIC_LOOP_STATUS_SCHEMA,
         "deterministic_fake_loop_available": True,
-        "split_settlement_adapter": "fake by default; real split Stripe transfer is not claimed by this command",
+        "split_settlement_adapter": "fake by default; demo-economic-loop-live creates a real split Connect Transfer only with explicit Stripe sandbox configuration",
         "stripe_sandbox_configured": not blockers,
         "stripe_blockers": blockers,
         "prior_real_stripe_evidence": REAL_STRIPE_EVIDENCE,
@@ -855,4 +998,201 @@ def run_demo_economic_loop(
             "contract_digest": spend["contract_digest"],
         },
         "balances": balances,
+    }
+
+
+def stripe_split_blockers(config: StripeSandboxConfig) -> list[str]:
+    blockers: list[str] = []
+    if not config.enabled:
+        blockers.append("set AGENT_BOUNTY_STRIPE_SANDBOX=1")
+    if not config.secret_key:
+        blockers.append("set STRIPE_TEST_SECRET_KEY")
+    elif not (config.secret_key.startswith("sk_test_") or config.secret_key.startswith("rk_test_")):
+        blockers.append("replace non-test Stripe API key with sk_test_ or rk_test_")
+    if not config.webhook_secret:
+        blockers.append("set STRIPE_TEST_WEBHOOK_SECRET from stripe listen")
+    if not config.connected_account_id:
+        blockers.append("set STRIPE_TEST_CONNECTED_ACCOUNT_ID to a test connected account")
+    return blockers
+
+
+def setup_live_split_bounty(market: AgentBountyMarket, *, reward_amount: int, currency: str) -> dict[str, Any]:
+    currency = require_currency(currency)
+    market.create_project(project_id="project_motoko", name="Motoko", currency=currency)
+    market.set_budget_policy(
+        project_id="project_motoko",
+        max_bounty_amount=reward_amount,
+        monthly_budget=reward_amount,
+        human_approval_threshold=reward_amount,
+        allowed_issue_classes=["machine-verifiable-tui-regression"],
+    )
+    market.create_bounty(
+        bounty_id=DEFAULT_FIRST_BOUNTY_ID,
+        project_id="project_motoko",
+        title="Eliminate idle Motoko TUI typing latency",
+        reward_amount=reward_amount,
+        currency=currency,
+        base_commit=DEFAULT_BASE_COMMIT,
+        issue_ref="lk251/motoko#1",
+        verifier_id="motoko_issue_1_tui_latency_v2",
+    )
+    bounty = market._bounty(DEFAULT_FIRST_BOUNTY_ID)
+    available = market.ledger.balance(project_available_account("project_motoko"), currency)
+    return {"bounty_id": DEFAULT_FIRST_BOUNTY_ID, "state": bounty["state"], "project_available_cents": available, "currency": currency}
+
+
+def run_demo_economic_loop_live(
+    market: AgentBountyMarket,
+    *,
+    motoko_repo: Path | None,
+    config: StripeSandboxConfig,
+    client: StripeClient | None,
+    reward_amount: int = 2500,
+    currency: str = "EUR",
+    external_transfer_amount: int = 2000,
+    retained_operating_amount: int = 500,
+    platform_fee_amount: int = 0,
+) -> dict[str, Any]:
+    blockers = stripe_split_blockers(config)
+    if blockers:
+        return {
+            "schema": ECONOMIC_LOOP_LIVE_SCHEMA,
+            "ok": False,
+            "stage": "blocked_configuration",
+            "blockers": blockers,
+            "real_stripe_transfer_claimed": False,
+        }
+    if client is None:
+        return {
+            "schema": ECONOMIC_LOOP_LIVE_SCHEMA,
+            "ok": False,
+            "stage": "blocked_configuration",
+            "blockers": ["construct an explicit Stripe client from sandbox configuration"],
+            "real_stripe_transfer_claimed": False,
+        }
+    setup = setup_live_split_bounty(market, reward_amount=reward_amount, currency=currency)
+    if setup["state"] == BountyState.AWAITING_FUNDING.value and int(setup["project_available_cents"]) < reward_amount:
+        checkout = market.create_stripe_checkout(
+            project_id="project_motoko",
+            source_kind="owner",
+            amount=reward_amount,
+            currency=currency,
+            success_url=f"{config.public_base_url}/success",
+            cancel_url=f"{config.public_base_url}/cancel",
+            client=client,
+            idempotency_key=f"economic-loop-live:checkout:{reward_amount}:{currency}",
+        )
+        return {
+            "schema": ECONOMIC_LOOP_LIVE_SCHEMA,
+            "ok": False,
+            "stage": "waiting_for_signed_webhook",
+            "setup": setup,
+            "checkout_session_id": checkout["checkout_session_id"],
+            "payment_intent_id": checkout["payment_intent_id"],
+            "checkout_url": checkout["checkout_url"],
+            "next": "complete Checkout, let stripe-webhook-serve process the signed event, then rerun demo-economic-loop-live",
+            "real_stripe_transfer_claimed": False,
+        }
+    reserve = market.reserve_bounty(
+        bounty_id=DEFAULT_FIRST_BOUNTY_ID,
+        idempotency_key=f"economic-loop-live:reserve:{DEFAULT_FIRST_BOUNTY_ID}:{reward_amount}:{currency}",
+    )
+    profiles = register_default_solver_profiles(market)
+    market.create_solver(
+        solver_id=PYTHON_SOLVER_ID,
+        display_name="Python terminal/TUI concurrency specialist",
+        idempotency_key=f"economic-loop-live:solver:{PYTHON_SOLVER_ID}",
+    )
+    beneficiary = market.attach_stripe_beneficiary(
+        solver_id=PYTHON_SOLVER_ID,
+        account_id=str(config.connected_account_id),
+        client=client,
+    )
+    bounty = market._bounty(DEFAULT_FIRST_BOUNTY_ID)
+    claim: dict[str, Any] | None = None
+    if bounty["state"] == BountyState.OPEN.value:
+        claim = market.claim_bounty(
+            bounty_id=DEFAULT_FIRST_BOUNTY_ID,
+            solver_id=PYTHON_SOLVER_ID,
+            lease_expires_at="2026-06-30T18:00:00Z",
+            idempotency_key=f"economic-loop-live:claim:{DEFAULT_FIRST_BOUNTY_ID}:{PYTHON_SOLVER_ID}",
+        )
+    execution = execute_deterministic_motoko_replay(market, solver_id=PYTHON_SOLVER_ID, bounty_id=DEFAULT_FIRST_BOUNTY_ID)
+    submission = submit_solver_replay(market, motoko_repo=motoko_repo)
+    allocation = allocate_accepted_reward(
+        market,
+        bounty_id=DEFAULT_FIRST_BOUNTY_ID,
+        external_transfer_amount=external_transfer_amount,
+        retained_operating_amount=retained_operating_amount,
+        platform_fee_amount=platform_fee_amount,
+        retention_consent=True,
+        transfer_provider="stripe",
+        stripe_client=client,
+        stripe_connected_account_id=config.connected_account_id,
+        idempotency_key="economic-loop-live:split-stripe-transfer",
+    )
+    if not allocation.get("ok"):
+        return {
+            "schema": ECONOMIC_LOOP_LIVE_SCHEMA,
+            "ok": False,
+            "stage": "split_transfer_failed",
+            "setup": setup,
+            "reserve": reserve,
+            "profiles": profiles,
+            "beneficiary": beneficiary,
+            "claim": claim,
+            "execution": execution,
+            "submission": submission,
+            "allocation": allocation,
+            "real_stripe_transfer_claimed": False,
+        }
+    policy = save_solver_operating_policy(
+        market,
+        default_solver_operating_policy(
+            solver_id=PYTHON_SOLVER_ID,
+            allowed_projects=[DEFAULT_SECOND_PROJECT_ID],
+            allowed_repositories=[DEFAULT_REPO],
+            required_verifier_ids=[DEFAULT_SECOND_VERIFIER_ID],
+            max_spend_cents=retained_operating_amount,
+            human_approval_threshold_cents=retained_operating_amount,
+            allowed_currencies=[allocation["currency"]],
+        ),
+    )
+    spend = spend_retained_credit_to_project(
+        market,
+        solver_id=PYTHON_SOLVER_ID,
+        target_project_id=DEFAULT_SECOND_PROJECT_ID,
+        repo_full_name=DEFAULT_REPO,
+        amount=retained_operating_amount,
+        currency=allocation["currency"],
+        title="Follow-up bounty funded from retained solver operating credit",
+        issue_class="machine-verifiable-tui-regression",
+        verifier_id=DEFAULT_SECOND_VERIFIER_ID,
+        base_commit=DEFAULT_BASE_COMMIT,
+        idempotency_key="economic-loop-live:spend-retained:followup",
+    )
+    balances = settlement_balances(market, solver_id=PYTHON_SOLVER_ID, currency=allocation["currency"])
+    ok = (
+        allocation["ok"]
+        and str(allocation.get("gateway_transfer_id", "")).startswith("tr_")
+        and spend["ok"]
+        and balances["solver_earned"] == 0
+        and balances["solver_operating_available"] == 0
+    )
+    return {
+        "schema": ECONOMIC_LOOP_LIVE_SCHEMA,
+        "ok": ok,
+        "stage": "complete" if ok else "review_required",
+        "setup": setup,
+        "reserve": reserve,
+        "profiles": profiles,
+        "beneficiary": beneficiary,
+        "claim": claim,
+        "execution": execution,
+        "submission": submission,
+        "allocation": allocation,
+        "operating_policy": policy,
+        "retained_credit_spend": spend,
+        "balances": balances,
+        "real_stripe_transfer_claimed": str(allocation.get("gateway_transfer_id", "")).startswith("tr_"),
     }

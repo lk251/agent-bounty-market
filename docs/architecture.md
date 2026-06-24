@@ -161,8 +161,12 @@ balance checks, replay idempotency, and digest-bound second-bounty publication.
 
 The deterministic demo uses fake external transfer IDs and says so explicitly.
 Only `tr_...` objects created and retrieved through the reviewed Stripe path are
-real Stripe Connect Transfers. Prior real sandbox full-transfer evidence is
-recorded separately in `docs/chatgpt-pro-stripe-blocker-report.md`.
+real Stripe Connect Transfers. `demo-economic-loop-live` stages the real split
+path: signed Stripe funding first, then accepted receipt, then a Connect
+Transfer for only the external allocation while the retained allocation stays
+inside the trusted operating-credit ledger. Prior real sandbox full-transfer
+evidence is recorded separately in
+`docs/chatgpt-pro-stripe-blocker-report.md`.
 
 See `docs/economic-loop.md`.
 
@@ -184,6 +188,8 @@ The real sandbox mapping is:
   exactly one internal treasury credit;
 - solver beneficiary -> retrieved test Connect account ID stored on the solver;
 - accepted verifier receipt -> one Connect Transfer to the connected account;
+- split accepted verifier receipt -> one Connect Transfer for the external
+  allocation only, with retained operating credit kept internal;
 - Transfer retrieval -> exact amount, currency, destination, transfer group,
   metadata, and `livemode=false` validation before internal settlement is marked
   paid.

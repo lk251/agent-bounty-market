@@ -104,9 +104,8 @@ actually has Docker, OpenShell, an approved sandbox, and policy digests ready.
   configured.
 - Exercise the solver-agent live-solve path against real Hermes/NemoClaw/OpenShell
   and a reviewed safe live issue.
-- Add a reviewed real split-Stripe-transfer adapter if the product requires
-  external settlement of only part of an accepted reward. The current real
-  sandbox evidence covers full-transfer settlement; split-retain-spend is
-  deterministic by default.
+- Exercise the reviewed real split-Stripe-transfer adapter against a fresh live
+  sandbox funding event once Stripe environment variables and the webhook
+  listener are loaded in the operator shell.
 - Replace the current local-process verifier isolation with the
   sponsor-prescribed sandbox once that runtime is available.

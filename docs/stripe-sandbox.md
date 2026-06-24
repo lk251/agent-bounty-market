@@ -81,6 +81,13 @@ python -m agent_bounty stripe-reconcile \
   --solver-id solver_codex_motoko_issue_1 \
   --bounty-id bounty_motoko_issue_1 \
   --remote
+
+python -m agent_bounty demo-economic-loop-live \
+  --db .demo/live-economic.sqlite3 \
+  --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency \
+  --currency eur \
+  --external-transfer-cents 2000 \
+  --retained-operating-cents 500
 ```
 
 ## Semantics
@@ -98,6 +105,12 @@ python -m agent_bounty stripe-reconcile \
 - `demo-economic-loop` is a deterministic split-retain-spend proof by default.
   It records fake external transfer IDs and references prior real sandbox
   evidence, but it does not create a real split Connect Transfer.
+- `demo-economic-loop-live` is the staged real split-transfer path. Before a
+  signed funding webhook is processed, it creates a Checkout Session and returns
+  `waiting_for_signed_webhook`. After the webhook credits the project treasury,
+  rerunning it transfers only the external portion to the connected account,
+  retains the operating-credit portion internally, spends that retained credit
+  into the follow-up bounty, and runs remote reconciliation.
 - A bank payout is not part of this milestone.
 
 Plain `stripe-reconcile` is local and safe without credentials. `--remote`

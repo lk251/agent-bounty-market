@@ -163,10 +163,9 @@ reviewed safe live issue for a real live solve.
 
 ## Issue #4: Real Stripe Settlement and Earn -> Retain -> Spend
 
-Status: implementation in progress; deterministic split-retain-spend loop is
-implemented. Real prior Stripe sandbox evidence exists for full-transfer
-settlement, but a real split-Stripe-transfer adapter is not claimed by the new
-economic-loop command.
+Status: partial; deterministic split-retain-spend loop and reviewed real split
+Stripe adapter are implemented. This checkout cannot complete a fresh live split
+run because the current process has no Stripe sandbox environment loaded.
 
 Implemented so far:
 
@@ -186,8 +185,16 @@ Implemented so far:
   verifier, currency, amount, human threshold, and balance;
 - retained-credit spend into a second digest-bound fake-GitHub bounty contract;
 - retry/replay/reversal handling for deterministic split transfers;
+- real split Stripe Connect Transfer adapter that transfers only the external
+  allocation, validates retrieved transfer amount/currency/destination/group/
+  metadata, and fails closed without moving ledger balances on mismatch;
+- staged `demo-economic-loop-live` command:
+  real funding Checkout first, signed webhook credit second, accepted receipt
+  third, external split transfer fourth, retained-credit spend fifth, then
+  remote reconciliation;
 - `economic-loop status`, `economic-loop allocate`,
-  `economic-loop spend-retained`, and `demo-economic-loop` commands;
+  `economic-loop spend-retained`, `demo-economic-loop`, and
+  `demo-economic-loop-live` commands;
 - `docs/economic-loop.md` plus README, architecture, threat-model, and Stripe
   runbook updates.
 
@@ -197,25 +204,31 @@ Validation run so far:
 nix develop --command python3 -m py_compile agent_bounty/economic_loop.py agent_bounty/cli.py agent_bounty/db.py tests/test_economic_loop.py
 nix develop --command python3 -m unittest tests.test_economic_loop
 nix develop --command python3 -m agent_bounty demo-economic-loop --db "$tmpdir/economic.sqlite3" --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
+nix develop --command python3 -m agent_bounty demo-economic-loop-live --db .demo/live-economic.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
 ```
 
 Observed results:
 
-- focused economic-loop tests: 9 passed;
+- focused economic-loop tests: 15 passed;
 - deterministic `demo-economic-loop`: `ok=true`;
 - allocation split: 2500 reward -> 2000 fake external transfer + 500 retained
   operating credit + 0 platform fee;
 - retained-credit spend: 500 funds second fake-GitHub bounty contract;
 - replay of allocation and spend returns replayed rows without duplicate
-  ledger movement.
+  ledger movement;
+- deterministic fake-Stripe staged live test: first call waits for signed
+  webhook, signed fake Stripe event credits treasury, second call completes a
+  2000-cent `tr_test_...` transfer plus 500-cent retained-credit spend;
+- local unauthenticated `demo-economic-loop-live` returns safe
+  `blocked_configuration` JSON and does not claim a real transfer.
 
 Current external blocker:
 
 ```text
-No reviewed real split Stripe Connect Transfer adapter is implemented. The
-existing safe real sandbox evidence in docs/chatgpt-pro-stripe-blocker-report.md
-covers a full-transfer Stripe loop, while demo-economic-loop truthfully runs
-the split-retain-spend path with deterministic fake external transfer IDs.
+The current process has no loaded Stripe sandbox configuration:
+set AGENT_BOUNTY_STRIPE_SANDBOX=1, STRIPE_TEST_SECRET_KEY,
+STRIPE_TEST_WEBHOOK_SECRET from stripe listen, and
+STRIPE_TEST_CONNECTED_ACCOUNT_ID to run a fresh real split settlement.
 ```
 
 ## Issue #5: Presentation Demo and Submission Package
@@ -223,7 +236,7 @@ the split-retain-spend path with deterministic fake external transfer IDs.
 Status: implementation in progress; dependency-free local/replay presentation
 harness and submission packet are implemented. Full live sponsor-integrated run
 is externally blocked by missing real GitHub/Hermes/OpenShell configuration and
-the missing real split-transfer adapter.
+by no loaded Stripe environment for a fresh live split-settlement run.
 
 Implemented so far:
 
@@ -273,10 +286,10 @@ Current external blockers:
 
 ```text
 No real GitHub credentials/webhook, no real Hermes project/solver wrapper, no
-OpenShell/NemoClaw backend, and no reviewed real split Stripe Connect Transfer
-adapter are configured. The current presentation can truthfully demonstrate the
-complete local loop and replay validated local bundles, but not claim a full
-live sponsor-integrated run.
+OpenShell/NemoClaw backend, and no loaded Stripe sandbox environment in this
+process for a fresh real split-settlement run. The current presentation can
+truthfully demonstrate the complete local loop and replay validated local
+bundles, but not claim a full live sponsor-integrated run.
 ```
 
 ## Issue #8: Real Hermes Agent + NVIDIA Nemotron Decisions
@@ -561,3 +574,90 @@ Truth status:
   program receives reviewed GitHub credentials/configuration.
 
 Next issue: #11 after issue #10 handoff comment and push.
+
+## Issue #11: Real Split Stripe Settlement + Retained-Credit Spend
+
+UTC start: 2026-06-24T16:03:00Z
+UTC final validation: 2026-06-24T16:14:39Z
+
+Status: partial, external blocker for a fresh real Stripe sandbox run. The
+reviewed split-transfer adapter and staged command are implemented, but this
+process has no loaded Stripe sandbox environment, so no fresh real Stripe
+objects were created in this issue pass.
+
+Implemented so far:
+
+- extended split settlement with an explicit `transfer_provider=stripe` path
+  that requires a caller-provided Stripe client and validated connected account;
+- real split path creates and retrieves a Connect Transfer only for the external
+  allocation amount, then records retained operating credit separately in the
+  internal ledger;
+- transfer validation checks amount, currency, destination, transfer group,
+  source transaction when available, receipt metadata, verifier digest, backend
+  digest, and policy digest before marking the allocation paid;
+- Stripe operation journal rows are written for split transfer creation with
+  request digest, idempotency key, success/failure status, and safe error text;
+- failures before allocation do not move `solver_earned`,
+  `solver_paid`, or `solver_operating_available` balances;
+- replay checks now include `transfer_provider`, so a fake split can never
+  satisfy a later real Stripe split request;
+- added staged `demo-economic-loop-live`:
+  missing config -> `blocked_configuration`;
+  no signed funding yet -> Checkout Session plus `waiting_for_signed_webhook`;
+  funded DB -> reserve, accepted receipt, real split transfer, retained-credit
+  spend, and remote reconciliation;
+- updated the economic-loop, Stripe, demo-flow, architecture, threat-model, and
+  progress docs.
+
+Exact external blocker observed:
+
+```text
+demo-economic-loop-live reports missing AGENT_BOUNTY_STRIPE_SANDBOX=1,
+STRIPE_TEST_SECRET_KEY, STRIPE_TEST_WEBHOOK_SECRET from stripe listen, and
+STRIPE_TEST_CONNECTED_ACCOUNT_ID to a test connected account.
+```
+
+Safe command evidence:
+
+```text
+nix develop --command python3 -m agent_bounty demo-economic-loop-live \
+  --db .demo/live-economic.sqlite3 \
+  --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
+
+result:
+ok=false
+stage=blocked_configuration
+real_stripe_transfer_claimed=false
+blockers=4
+```
+
+Validation run:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/economic_loop.py agent_bounty/cli.py tests/test_economic_loop.py
+nix develop --command python3 -m unittest tests.test_economic_loop
+nix develop --command python3 -m compileall agent_bounty tests verifiers
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+git diff --check
+```
+
+Observed results:
+
+- focused economic-loop tests: 15 passed;
+- compileall passed;
+- full test suite: 119 passed, 2 skipped;
+- `nix flake check`: all checks passed;
+- diff whitespace checks: clean.
+
+Truth status:
+
+- no new real Stripe PaymentIntent, Charge, Checkout Session, webhook event, or
+  Connect Transfer is claimed from this issue pass;
+- prior full-transfer real sandbox evidence remains documented separately in
+  `docs/chatgpt-pro-stripe-blocker-report.md`;
+- deterministic tests prove the staged split adapter using the fake Stripe
+  client, including signed funding event -> external `tr_test_...` transfer ->
+  retained-credit spend.
+
+Next issue: #12 after issue #11 handoff comment and push.

@@ -15,10 +15,9 @@ accepted verifier receipt
 
 The default implementation is deterministic and uses fake external transfer
 IDs. It never claims a real Stripe transfer unless a `tr_...` object is created
-by the reviewed Stripe path. Prior real Stripe sandbox evidence is recorded in
-`docs/chatgpt-pro-stripe-blocker-report.md`; the split-retain-spend command is
-a separate deterministic proof unless real split transfer support is explicitly
-added.
+and retrieved by the reviewed Stripe path. Prior real Stripe sandbox evidence is
+recorded in `docs/chatgpt-pro-stripe-blocker-report.md`; the
+`demo-economic-loop-live` command is the staged real split-transfer path.
 
 ## Policy
 
@@ -41,6 +40,25 @@ python -m agent_bounty demo-economic-loop \
   --db .demo/economic-loop.sqlite3 \
   --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
 ```
+
+Run the staged live Stripe split loop:
+
+```bash
+python -m agent_bounty demo-economic-loop-live \
+  --db .demo/live-economic.sqlite3 \
+  --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency \
+  --currency EUR \
+  --external-transfer-cents 2000 \
+  --retained-operating-cents 500
+```
+
+If the database has not yet received a signed Stripe funding webhook, this
+returns a Checkout Session and stops at `waiting_for_signed_webhook`. After
+`stripe-webhook-serve` records and processes the signed payment event, rerun the
+same command. It then reserves the bounty, records an accepted receipt, creates
+a Stripe Connect Transfer only for the external portion, retains the internal
+operating-credit portion, spends that retained credit into a second bounded
+bounty, and runs remote Stripe reconciliation.
 
 Inspect readiness and prior real Stripe evidence:
 
@@ -78,4 +96,7 @@ python -m agent_bounty economic-loop spend-retained \
 - replay of allocation and spend does not duplicate ledger rows;
 - reversal marks the payout and allocation for review;
 - arbitrary repositories and insufficient retained balances fail closed;
-- the second bounty is digest-bound through the same GitHub contract marker.
+- the second bounty is digest-bound through the same GitHub contract marker;
+- the live split path fails closed if the Stripe transfer amount, currency,
+  destination, transfer group, source transaction, or metadata does not match
+  the accepted receipt and settlement policy.
