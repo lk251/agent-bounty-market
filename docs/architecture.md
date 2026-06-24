@@ -121,8 +121,11 @@ The project-agent buyer is deliberately split:
   proposal digests, policy verdicts, and publication IDs are stored.
 
 The default runtime is deterministic for tests. The gated Hermes adapter records
-the exact runtime/model and refuses to run unless a reviewed Hermes wrapper
-command is configured. See `docs/project-agent.md`.
+the exact runtime/model and refuses to run unless a reviewed Hermes project
+wrapper command is configured. Issue #8 adds a live `hermes-status`,
+`hermes-install-skills`, and `demo-hermes-decisions` boundary that reports
+Hermes/NVIDIA/Nemotron readiness without exposing secrets. See
+`docs/project-agent.md` and `docs/hermes-live-integration.md`.
 
 ## Solver-Agent Boundary
 
@@ -140,7 +143,11 @@ base/candidate SHAs, changed files, command/output digests, limitations, and
 verification result. Capability/economics update exactly once and only after the
 protected verifier result.
 
-See `docs/solver-agent.md`.
+Solver fit decisions can use a separate reviewed Hermes solver wrapper. The
+wrapper is advisory only; trusted code still validates capability, margin,
+budget, freshness, and claim exclusivity before any lease is created.
+
+See `docs/solver-agent.md` and `docs/hermes-live-integration.md`.
 
 ## Economic-Loop Boundary
 

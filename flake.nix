@@ -18,7 +18,14 @@
       pythonWithStripe = pkgs.python312.withPackages (_ps: [ stripePythonPackage ]);
     in {
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ pythonWithStripe pkgs.git pkgs.stripe-cli ];
+        packages = [
+          pythonWithStripe
+          pkgs.git
+          pkgs.nodejs_22
+          pkgs.python311
+          pkgs.stripe-cli
+          pkgs.uv
+        ];
       };
 
       checks.${system}.unit = pkgs.runCommand "agent-bounty-market-tests" {

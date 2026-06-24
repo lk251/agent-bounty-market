@@ -49,13 +49,24 @@ Real Hermes execution requires:
 
 ```text
 AGENT_BOUNTY_RUN_HERMES_PROJECT_AGENT=1
-AGENT_BOUNTY_HERMES_EVALUATE_COMMAND=<reviewed wrapper command>
+AGENT_BOUNTY_HERMES_PROJECT_EVALUATE_COMMAND=<reviewed project wrapper command>
 Hermes CLI installed or AGENT_BOUNTY_HERMES_CLI set
 ```
 
 The default status currently reports this as blocked. The demo therefore
 truthfully reports the fake runtime and does not claim Hermes, NemoClaw, or
 Nemotron ran.
+
+Issue #8 adds a dedicated live status and wrapper surface:
+
+```bash
+python -m agent_bounty hermes-status
+python -m agent_bounty hermes-install-skills
+python -m agent_bounty hermes-project-wrapper
+python -m agent_bounty demo-hermes-decisions --db .demo/hermes.sqlite3
+```
+
+See `docs/hermes-live-integration.md`.
 
 ## Skills
 

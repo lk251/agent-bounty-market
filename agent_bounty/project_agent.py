@@ -26,9 +26,11 @@ PROJECT_AGENT_STATUS_SCHEMA = "project-agent-status-v1"
 
 HERMES_RUN_ENV = "AGENT_BOUNTY_RUN_HERMES_PROJECT_AGENT"
 HERMES_COMMAND_ENV = "AGENT_BOUNTY_HERMES_EVALUATE_COMMAND"
+HERMES_PROJECT_COMMAND_ENV = "AGENT_BOUNTY_HERMES_PROJECT_EVALUATE_COMMAND"
 HERMES_CLI_ENV = "AGENT_BOUNTY_HERMES_CLI"
 HERMES_MODEL_ENV = "AGENT_BOUNTY_HERMES_MODEL"
 HERMES_SKILLS_DIR_ENV = "AGENT_BOUNTY_HERMES_SKILLS_DIR"
+NVIDIA_MODEL_ENV = "AGENT_BOUNTY_NVIDIA_MODEL_ID"
 
 DEFAULT_HERMES_MODEL = "nvidia/nemotron-configured-by-hermes"
 DEFAULT_FAKE_MODEL = "deterministic-project-underwriter-v1"
@@ -80,6 +82,23 @@ class ProjectAgentRuntimeResult:
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
+
+
+def default_hermes_cli() -> str:
+    configured = os.environ.get(HERMES_CLI_ENV)
+    if configured:
+        return configured
+    local = Path.home() / ".local" / "bin" / "hermes"
+    if local.exists() and os.access(local, os.X_OK):
+        return str(local)
+    return "hermes"
+
+
+def command_available(command: str) -> bool:
+    if shutil.which(command):
+        return True
+    path = Path(command).expanduser()
+    return path.exists() and os.access(path, os.X_OK)
 
 
 def default_skills_dir() -> Path:
@@ -489,18 +508,18 @@ class HermesCliRuntime:
     runtime_name = "hermes-cli-adapter-v1"
 
     def __init__(self, *, command: str | None = None, model: str | None = None):
-        self.command = command or os.environ.get(HERMES_COMMAND_ENV)
-        self.model = model or os.environ.get(HERMES_MODEL_ENV, DEFAULT_HERMES_MODEL)
+        self.command = command or os.environ.get(HERMES_PROJECT_COMMAND_ENV) or os.environ.get(HERMES_COMMAND_ENV)
+        self.model = model or os.environ.get(NVIDIA_MODEL_ENV) or os.environ.get(HERMES_MODEL_ENV, DEFAULT_HERMES_MODEL)
 
     def blockers(self) -> list[str]:
         blockers: list[str] = []
-        hermes_bin = os.environ.get(HERMES_CLI_ENV, "hermes")
-        if shutil.which(hermes_bin) is None:
+        hermes_bin = default_hermes_cli()
+        if not command_available(hermes_bin):
             blockers.append(f"install Hermes CLI or set {HERMES_CLI_ENV}")
         if os.environ.get(HERMES_RUN_ENV) != "1":
             blockers.append(f"set {HERMES_RUN_ENV}=1 for real Hermes project-agent runs")
         if not self.command:
-            blockers.append(f"set {HERMES_COMMAND_ENV} to a reviewed Hermes wrapper returning JSON")
+            blockers.append(f"set {HERMES_PROJECT_COMMAND_ENV} to a reviewed Hermes project wrapper returning JSON")
         return blockers
 
     def evaluate(self, request: dict[str, Any], *, timeout_seconds: float = 30.0, max_output_bytes: int = 65_536) -> ProjectAgentRuntimeResult:

@@ -49,6 +49,15 @@ from .github_integration import (
     record_github_webhook_delivery,
     sign_github_payload,
 )
+from .hermes_integration import (
+    HermesIntegrationError,
+    hermes_status_report,
+    install_hermes_skills,
+    run_demo_hermes_decisions,
+    run_project_wrapper_from_stdin,
+    run_skill_value_eval,
+    run_solver_wrapper_from_stdin,
+)
 from .payments import FakePaymentGateway, StripePaymentGateway
 from .project_agent import (
     FakeProjectAgentRuntime,
@@ -66,6 +75,7 @@ from .project_agent import (
 )
 from .solver_agent import (
     FakeSolverAgentRuntime,
+    HermesSolverAgentRuntime,
     SolverAgentError,
     claim_approved_solver,
     evaluate_solver_agents,
@@ -979,12 +989,69 @@ def cmd_solver_agent_discover(args: argparse.Namespace) -> int:
 def cmd_solver_agent_evaluate(args: argparse.Namespace) -> int:
     try:
         market = open_market(args.db)
-        result = evaluate_solver_agents(market, runtime=FakeSolverAgentRuntime())
+        runtime = HermesSolverAgentRuntime() if args.runtime == "hermes" else FakeSolverAgentRuntime()
+        result = evaluate_solver_agents(market, runtime=runtime)
     except (SolverAgentError, MarketError) as exc:
         print_json({"schema": "solver-agent-evaluation-v1", "ok": False, "error": str(exc)})
         return 1
     print_json({"schema": "solver-agent-evaluation-v1", "ok": True, **result})
     return 0
+
+
+def cmd_hermes_status(args: argparse.Namespace) -> int:
+    result = hermes_status_report(probe_doctor=args.doctor, discover_models=args.discover_models)
+    print_json(result)
+    return 0 if result.get("ok") else 2
+
+
+def cmd_hermes_install_skills(args: argparse.Namespace) -> int:
+    try:
+        result = install_hermes_skills(dry_run=args.dry_run)
+    except HermesIntegrationError as exc:
+        print_json({"schema": "agent-bounty-hermes-skill-install-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    print_json({"ok": True, **result})
+    return 0
+
+
+def cmd_hermes_skill_eval(args: argparse.Namespace) -> int:
+    print_json(run_skill_value_eval(real_if_ready=args.real_if_ready))
+    return 0
+
+
+def cmd_hermes_project_wrapper(_args: argparse.Namespace) -> int:
+    try:
+        print_json(run_project_wrapper_from_stdin())
+    except (HermesIntegrationError, json.JSONDecodeError) as exc:
+        print_json({"schema": "agent-bounty-hermes-project-wrapper-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    return 0
+
+
+def cmd_hermes_solver_wrapper(_args: argparse.Namespace) -> int:
+    try:
+        print_json(run_solver_wrapper_from_stdin())
+    except (HermesIntegrationError, json.JSONDecodeError) as exc:
+        print_json({"schema": "agent-bounty-hermes-solver-wrapper-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    return 0
+
+
+def cmd_demo_hermes_decisions(args: argparse.Namespace) -> int:
+    try:
+        market = open_market(args.db)
+        result = run_demo_hermes_decisions(
+            market,
+            bundle_dir=Path(args.bundle) if args.bundle else None,
+            require_real=args.require_real,
+        )
+    except (HermesIntegrationError, ProjectAgentError, SolverAgentError, MarketError, GitHubIntegrationError) as exc:
+        print_json({"schema": "agent-bounty-demo-hermes-decisions-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    print_json(result)
+    if args.require_real and not result.get("real_runtime"):
+        return 1
+    return 0 if result.get("ok") else 1
 
 
 def cmd_solver_agent_claim(args: argparse.Namespace) -> int:
@@ -1824,6 +1891,31 @@ def build_parser() -> argparse.ArgumentParser:
     demo_project_agent.add_argument("--runtime", choices=["fake", "hermes"], default="fake")
     demo_project_agent.set_defaults(func=cmd_demo_project_agent_motoko)
 
+    hermes_status = sub.add_parser("hermes-status", help="show safe Hermes/NVIDIA/Nemotron readiness")
+    hermes_status.add_argument("--doctor", action="store_true", help="run hermes doctor when Hermes is available")
+    hermes_status.add_argument("--discover-models", action="store_true", help="query NVIDIA /v1/models when NVIDIA_API_KEY is configured")
+    hermes_status.set_defaults(func=cmd_hermes_status)
+
+    hermes_install_skills = sub.add_parser("hermes-install-skills", help="install project-owned skills into the Hermes skill namespace")
+    hermes_install_skills.add_argument("--dry-run", action="store_true")
+    hermes_install_skills.set_defaults(func=cmd_hermes_install_skills)
+
+    hermes_skill_eval = sub.add_parser("hermes-skill-eval", help="compare no-skill and skill decision fixtures")
+    hermes_skill_eval.add_argument("--real-if-ready", action="store_true", help="use real Hermes only when all readiness gates pass")
+    hermes_skill_eval.set_defaults(func=cmd_hermes_skill_eval)
+
+    hermes_project_wrapper = sub.add_parser("hermes-project-wrapper", help="reviewed JSON wrapper for project-agent Hermes runs")
+    hermes_project_wrapper.set_defaults(func=cmd_hermes_project_wrapper)
+
+    hermes_solver_wrapper = sub.add_parser("hermes-solver-wrapper", help="reviewed JSON wrapper for solver-agent Hermes runs")
+    hermes_solver_wrapper.set_defaults(func=cmd_hermes_solver_wrapper)
+
+    demo_hermes = sub.add_parser("demo-hermes-decisions", help="run project and solver decision demo through real Hermes when ready, otherwise labeled fallback")
+    demo_hermes.add_argument("--db", required=True)
+    demo_hermes.add_argument("--bundle", help="directory for sanitized Hermes decision bundle fragment")
+    demo_hermes.add_argument("--require-real", action="store_true", help="fail instead of using fallback when Hermes is not ready")
+    demo_hermes.set_defaults(func=cmd_demo_hermes_decisions)
+
     solver_agent = sub.add_parser("solver-agent", help="discover, evaluate, claim, execute, and submit funded bounties")
     solver_agent_sub = solver_agent.add_subparsers(dest="solver_agent_command", required=True)
 
@@ -1840,6 +1932,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     solver_eval = solver_agent_sub.add_parser("evaluate", help="evaluate solver profiles against open funded contracts")
     solver_eval.add_argument("--db", required=True)
+    solver_eval.add_argument("--runtime", choices=["fake", "hermes"], default="fake")
     solver_eval.set_defaults(func=cmd_solver_agent_evaluate)
 
     solver_claim = solver_agent_sub.add_parser("claim", help="claim the first trusted approved solver evaluation")

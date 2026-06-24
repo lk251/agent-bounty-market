@@ -278,3 +278,101 @@ adapter are configured. The current presentation can truthfully demonstrate the
 complete local loop and replay validated local bundles, but not claim a full
 live sponsor-integrated run.
 ```
+
+## Issue #8: Real Hermes Agent + NVIDIA Nemotron Decisions
+
+UTC start: 2026-06-24T15:03:00Z
+UTC validation: 2026-06-24T15:41:21Z
+
+Status: partial, external blocker for real NVIDIA/Nemotron credentials/model
+discovery.
+
+Implemented:
+
+- inspected issue #13, issue #8, the live integration queue, project/solver
+  docs, architecture, threat model, and the official Hermes/NVIDIA/NemoClaw
+  sources named by the issue;
+- downloaded and inspected the official Hermes installer before execution;
+- attempted the documented user-owned Hermes install with setup/browser/bundled
+  skills disabled, then completed it through a Nix-provided `uv`, `python3.11`,
+  and `nodejs_22` path after the direct generic-Linux binary path failed on
+  NixOS;
+- added `agent_bounty.hermes_integration` with safe Hermes/NVIDIA/Nemotron
+  status reporting, installer evidence, model-discovery gating, skill manifests,
+  idempotent skill installation, JSON-only project/solver wrapper entrypoints,
+  skill-value fixture reporting, and a sanitized Hermes decision demo bundle;
+- added role-specific wrapper envs:
+  `AGENT_BOUNTY_HERMES_PROJECT_EVALUATE_COMMAND` and
+  `AGENT_BOUNTY_HERMES_SOLVER_EVALUATE_COMMAND`;
+- added a real solver Hermes runtime boundary alongside the existing project
+  Hermes runtime boundary;
+- added CLI commands:
+  `hermes-status`, `hermes-install-skills`, `hermes-skill-eval`,
+  `hermes-project-wrapper`, `hermes-solver-wrapper`, and
+  `demo-hermes-decisions`;
+- installed the project-owned skills idempotently under
+  `/home/mares/.hermes/skills/agent-bounty-market`;
+- verified Hermes CLI:
+  `Hermes Agent v0.17.0 (2026.6.19) · upstream 9259d1e5`;
+- added deterministic wrapper tests proving separate project and solver wrapper
+  commands can drive decisions while trusted policy remains authoritative;
+- added `uv`, `python311`, and `nodejs_22` to the dev shell so the NixOS Hermes
+  installer path is reproducible without sudo or system service changes;
+- documented the live Hermes boundary in `docs/hermes-live-integration.md`.
+
+Safe evidence:
+
+```text
+official installer digest observed:
+sha256:975e525aa420db1ec49b1ba0d6012682edf68224322656a68b87b17655bc38a2
+
+skill manifest digest:
+sha256:7ad94bab5915df4b14223a5adad54b7c867461830a4c9998443f836c71a89ff1
+
+installed skill manifest digest:
+sha256:ac4dba10fc228b886ad88b3a2796fe9665264ea1fbde641efb7d8822f72b7cbe
+
+fallback demo bundle digest:
+sha256:0f6dc3a99635306fb34b2657009c3a7503ac9cf4727dca4d31e629f5e96e0e0b
+```
+
+Exact external blocker:
+
+```text
+NVIDIA_API_KEY is not present. Without it, `hermes-status --discover-models`
+cannot query NVIDIA NIM `/v1/models`, cannot discover a real Nemotron model ID,
+and cannot perform a real Nemotron-backed Hermes project/solver decision run.
+```
+
+Validation run:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/hermes_integration.py agent_bounty/project_agent.py agent_bounty/solver_agent.py
+nix develop --command python3 -m unittest tests.test_project_agent
+nix develop --command python3 -m unittest tests.test_solver_agent
+nix develop --command python3 -m unittest tests.test_hermes_integration
+nix develop --command python3 -m compileall agent_bounty tests verifiers
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+git diff --check --cached
+git diff --check
+```
+
+Observed results:
+
+- project-agent tests: 9 passed;
+- solver-agent tests: 11 passed;
+- Hermes integration tests: 4 passed;
+- full test suite: 105 passed, 2 skipped;
+- `nix flake check`: all checks passed;
+- diff whitespace checks: clean.
+
+Truth status:
+
+- Hermes CLI is installed and inspectable locally;
+- project-owned Hermes skills are installed idempotently;
+- real Hermes/Nemotron decision execution is not claimed;
+- `.demo/bundles/hermes-decisions/hermes-decisions.json` is a sanitized
+  deterministic fallback bundle with the NVIDIA blocker recorded.
+
+Next issue: #9 after issue #8 handoff comment and push.

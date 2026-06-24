@@ -27,8 +27,20 @@ Current blockers:
 
 - install Hermes CLI or set `AGENT_BOUNTY_HERMES_CLI`;
 - set `AGENT_BOUNTY_RUN_HERMES_PROJECT_AGENT=1`;
-- set `AGENT_BOUNTY_HERMES_EVALUATE_COMMAND` to a reviewed solver wrapper;
+- set `AGENT_BOUNTY_HERMES_SOLVER_EVALUATE_COMMAND` to a reviewed solver
+  wrapper;
 - configure OpenShell/NemoClaw execution backend.
+
+Issue #8 adds the role-specific solver wrapper and live decision demo:
+
+```bash
+python -m agent_bounty hermes-status
+python -m agent_bounty hermes-solver-wrapper
+python -m agent_bounty solver-agent evaluate --db .demo/solver.sqlite3 --runtime hermes
+python -m agent_bounty demo-hermes-decisions --db .demo/hermes.sqlite3
+```
+
+See `docs/hermes-live-integration.md`.
 
 ## Profiles
 

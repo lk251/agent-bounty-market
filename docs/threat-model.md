@@ -50,6 +50,10 @@
 - Project-agent output is advisory. It cannot edit trusted policy, cannot see
   payment/GitHub credentials, cannot reserve funds, and cannot publish GitHub
   contracts directly.
+- Hermes project/solver wrappers are role-specific, JSON-only, and advisory.
+  They run with a scrubbed environment and must not receive Stripe keys, GitHub
+  tokens, webhook secrets, SSH material, personal Motoko state, or broad project
+  state.
 - Project-agent malformed output, extra fields, prompt-injection attempts,
   unallowlisted repositories/classes, missing verifier IDs, overspend, and
   above-threshold spending all fail closed before money moves.
@@ -94,7 +98,8 @@ runs when a host has an approved `openshell` sandbox available.
 - Exercise the GitHub path against a real GitHub App or fine-grained token and
   webhook endpoint once credentials are available.
 - Exercise the project-agent path against real Hermes/NemoClaw/Nemotron once
-  the runtime is installed and a reviewed JSON wrapper is configured.
+  the runtime is installed and the reviewed project/solver JSON wrappers are
+  configured.
 - Exercise the solver-agent live-solve path against real Hermes/NemoClaw/OpenShell
   and a reviewed safe live issue.
 - Add a reviewed real split-Stripe-transfer adapter if the product requires

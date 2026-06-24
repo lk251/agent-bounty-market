@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
+import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +24,8 @@ from .project_agent import (
     HERMES_COMMAND_ENV,
     HERMES_MODEL_ENV,
     default_skills_dir,
+    command_available,
+    default_hermes_cli,
     run_demo_project_agent_motoko,
 )
 from .stripe_sandbox import safe_error_message
@@ -30,6 +35,8 @@ from .util import sha256_text, stable_json, utc_now
 SOLVER_DECISION_SCHEMA = "solver-bounty-decision-v1"
 SOLVER_STATUS_SCHEMA = "solver-agent-status-v1"
 SOLVER_PROFILE_VERSION = "0.1.0"
+HERMES_SOLVER_COMMAND_ENV = "AGENT_BOUNTY_HERMES_SOLVER_EVALUATE_COMMAND"
+NVIDIA_MODEL_ENV = "AGENT_BOUNTY_NVIDIA_MODEL_ID"
 
 PYTHON_SOLVER_ID = "solver_python_terminal_tui"
 TYPESCRIPT_SOLVER_ID = "solver_typescript_frontend"
@@ -314,6 +321,112 @@ class FakeSolverAgentRuntime:
         }
 
 
+class HermesSolverAgentRuntime:
+    runtime_kind = "hermes"
+    runtime_name = "hermes-solver-cli-adapter-v1"
+
+    def __init__(self, *, command: str | None = None, model: str | None = None):
+        self.command = command or os.environ.get(HERMES_SOLVER_COMMAND_ENV) or os.environ.get(HERMES_COMMAND_ENV)
+        self.model = model or os.environ.get(NVIDIA_MODEL_ENV) or os.environ.get(HERMES_MODEL_ENV, "nvidia/nemotron-configured-by-hermes")
+
+    def blockers(self) -> list[str]:
+        blockers: list[str] = []
+        hermes_bin = default_hermes_cli()
+        if not command_available(hermes_bin):
+            blockers.append(f"install Hermes CLI or set {HERMES_CLI_ENV}")
+        if os.environ.get(HERMES_RUN_ENV) != "1":
+            blockers.append(f"set {HERMES_RUN_ENV}=1")
+        if not self.command:
+            blockers.append(f"set {HERMES_SOLVER_COMMAND_ENV} to a reviewed Hermes solver wrapper")
+        return blockers
+
+    def evaluate(
+        self,
+        *,
+        profile: dict[str, Any],
+        bounty: dict[str, Any],
+        skills: list[dict[str, Any]],
+        timeout_seconds: float = 30.0,
+        max_output_bytes: int = 65_536,
+    ) -> dict[str, Any]:
+        blockers = self.blockers()
+        if blockers:
+            raise SolverAgentError("; ".join(blockers))
+        assert self.command is not None
+        request = {
+            "schema": "solver-agent-evaluation-request-v1",
+            "profile": {
+                "id": profile["id"],
+                "display_name": profile["display_name"],
+                "profile_version": profile["profile_version"],
+                "specialization": profile["specialization"],
+                "operating_budget_cents": profile["operating_budget_cents"],
+                "allowed_repositories": profile["allowed_repositories"],
+                "allowed_issue_classes": profile["allowed_issue_classes"],
+                "scope_restrictions": profile["scope_restrictions"],
+            },
+            "bounty": {
+                "id": bounty["id"],
+                "state": bounty["state"],
+                "reward_amount": bounty["reward_amount"],
+                "currency": bounty["currency"],
+                "base_commit": bounty["base_commit"],
+                "issue_ref": bounty["issue_ref"],
+                "verifier_id": bounty["verifier_id"],
+                "repo_full_name": bounty.get("repo_full_name"),
+                "contract_digest": bounty.get("contract_digest"),
+            },
+            "skill_versions": skill_versions(skills),
+            "skill_digests": {str(skill["name"]): str(skill["digest"]) for skill in skills},
+            "instructions": [
+                "Return exactly one solver-bounty-decision-v1 object.",
+                "Claim only when the supplied profile fits the supplied bounty.",
+                "Do not change policy, claim a lease, spend money, or request credentials.",
+            ],
+        }
+        start = time.monotonic()
+        env = {
+            "HOME": os.environ.get("HOME", ""),
+            "PATH": os.environ.get("PATH", ""),
+            "HERMES_HOME": os.environ.get("HERMES_HOME", ""),
+            "AGENT_BOUNTY_SOLVER_AGENT": "1",
+            "NVIDIA_API_KEY": os.environ.get("NVIDIA_API_KEY", ""),
+            "NVIDIA_BASE_URL": os.environ.get("NVIDIA_BASE_URL", ""),
+            "AGENT_BOUNTY_NVIDIA_MODEL_ID": os.environ.get("AGENT_BOUNTY_NVIDIA_MODEL_ID", ""),
+            "AGENT_BOUNTY_HERMES_MODEL": os.environ.get("AGENT_BOUNTY_HERMES_MODEL", ""),
+        }
+        env = {key: value for key, value in env.items() if value}
+        proc = subprocess.run(
+            shlex.split(self.command),
+            input=stable_json(request),
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            env=env,
+            check=False,
+        )
+        stdout = proc.stdout[:max_output_bytes]
+        stderr = proc.stderr[:4096]
+        if proc.returncode != 0:
+            raise SolverAgentError(f"Hermes solver runtime failed with {proc.returncode}: {stderr}")
+        try:
+            decision = json.loads(stdout)
+        except json.JSONDecodeError as exc:
+            raise SolverAgentError("Hermes solver runtime returned malformed JSON") from exc
+        decision = parse_solver_decision(decision)
+        decision["model"] = str(decision.get("model") or self.model)
+        self.last_safe_trace = {
+            "runtime": self.runtime_name,
+            "command_digest": sha256_text(self.command),
+            "stdout_digest": sha256_text(stdout),
+            "stderr_digest": sha256_text(stderr),
+            "returncode": proc.returncode,
+            "duration_ms": int((time.monotonic() - start) * 1000),
+            "credential_exposure": False,
+        }
+        return decision
+
+
 def parse_solver_decision(value: Any) -> dict[str, Any]:
     if isinstance(value, str):
         value = json.loads(value)
@@ -399,7 +512,7 @@ def skill_promotion_verdict(*, baseline: dict[str, Any], candidate: dict[str, An
 def evaluate_solver_agents(
     market: AgentBountyMarket,
     *,
-    runtime: FakeSolverAgentRuntime | None = None,
+    runtime: FakeSolverAgentRuntime | HermesSolverAgentRuntime | None = None,
     idempotency_prefix: str = "solver-agent:evaluate",
 ) -> dict[str, Any]:
     runtime = runtime or FakeSolverAgentRuntime()
@@ -426,6 +539,7 @@ def evaluate_solver_agents(
                     "bounty_id": bounty["id"],
                     "credential_exposure": False,
                 }
+                trace.update(getattr(runtime, "last_safe_trace", {}) or {})
                 market.conn.execute(
                     """
                     INSERT INTO solver_agent_evaluations(
@@ -731,19 +845,23 @@ def update_capability_history(
 
 def solver_agent_status_report() -> dict[str, Any]:
     hermes_blockers = []
-    if shutil.which(os.environ.get(HERMES_CLI_ENV, "hermes")) is None:
+    hermes_bin = default_hermes_cli()
+    if not command_available(hermes_bin):
         hermes_blockers.append(f"install Hermes CLI or set {HERMES_CLI_ENV}")
     if os.environ.get(HERMES_RUN_ENV) != "1":
         hermes_blockers.append(f"set {HERMES_RUN_ENV}=1")
-    if not os.environ.get(HERMES_COMMAND_ENV):
-        hermes_blockers.append(f"set {HERMES_COMMAND_ENV} to a reviewed solver wrapper")
+    solver_command = os.environ.get(HERMES_SOLVER_COMMAND_ENV) or os.environ.get(HERMES_COMMAND_ENV)
+    if not solver_command:
+        hermes_blockers.append(f"set {HERMES_SOLVER_COMMAND_ENV} to a reviewed solver wrapper")
     return {
         "schema": SOLVER_STATUS_SCHEMA,
         "fake_runtime_available": True,
         "hermes_runtime": {
             "available": not hermes_blockers,
             "blockers": hermes_blockers,
-            "model": os.environ.get(HERMES_MODEL_ENV, "nvidia/nemotron-configured-by-hermes"),
+            "model": os.environ.get(NVIDIA_MODEL_ENV) or os.environ.get(HERMES_MODEL_ENV, "nvidia/nemotron-configured-by-hermes"),
+            "runtime": "hermes-solver-cli-adapter-v1",
+            "command_configured": bool(solver_command),
         },
         "openshell_nemoclaw": {
             "available": False,
