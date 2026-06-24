@@ -10,6 +10,11 @@ It is designed for three truthful modes:
 - `local`: deterministic fake-provider development run with an unmistakable
   `Local simulation` badge.
 
+The hackathon release candidate uses a checked-in mixed bundle at
+`demo/bundles/winning-run`. It includes a truth matrix with `real`,
+`recorded-real`, `fallback`, and `blocked` rows and displays a
+`Mixed real/fallback` badge.
+
 ## Commands
 
 ```bash
@@ -28,6 +33,17 @@ python -m agent_bounty demo-rehearse --mode local \
 
 python -m agent_bounty demo-replay --bundle .demo/bundles/local-rehearsal
 python -m agent_bounty demo-rehearse --mode replay --bundle .demo/bundles/local-rehearsal
+
+python -m agent_bounty demo-build-winning-run \
+  --db .demo/winning-run.sqlite3 \
+  --bundle demo/bundles/winning-run \
+  --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
+
+python -m agent_bounty demo-rehearse \
+  --mode replay \
+  --bundle demo/bundles/winning-run \
+  --repeat 5
+
 python -m agent_bounty demo-live
 python -m agent_bounty demo-reset --yes
 ```
@@ -42,14 +58,20 @@ Each bundle directory contains:
 - `bundle.json`: sanitized run data, persisted table snapshot, timeline, and
   summary;
 - `dashboard.html`: static event-backed presentation surface.
+- `attestation.json`: hashed attestation, with no private signing key.
+- `evidence/*.json`: compact evidence files for the truth matrix and demo
+  counts.
 
 Validation checks schema, file digests, mode consistency, fake-provider truth,
-and the visible mode badge. A fake bundle cannot be relabeled as live.
+the visible mode badge, truth matrix rows, consistency fields, dashboard
+required text, and secret-like bundle contents. A fake or fallback component
+cannot be relabeled as live without failing validation.
 
 ## Current Truth Boundary
 
-The implemented local rehearsal proves the core operation with fake providers.
-The prior real Stripe full-transfer run remains recorded in
-`docs/chatgpt-pro-stripe-blocker-report.md`, but there is not yet an
-authenticated recorded-real bundle for the full GitHub + Hermes/NVIDIA + Stripe
-split-retain-spend presentation.
+The current winning bundle is mixed. It proves the core operation with
+deterministic fallback providers, includes real local Hermes executable
+evidence, and includes recorded-real prior Stripe sandbox full-transfer
+evidence. It does not claim real Nemotron decisions, real OpenShell/NemoClaw
+execution, real GitHub lifecycle writes, or a fresh real split Stripe Connect
+Transfer.

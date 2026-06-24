@@ -33,7 +33,9 @@ bound to the exact commit."
 
 Show economics card. The accepted reward settles exactly once: external transfer
 portion, retained operating credit, replay-safe ledger, and reconciliation.
-Make the run-mode badge visible: live, recorded replay, or local simulation.
+Make the `Mixed real/fallback` badge visible. Say that prior real Stripe
+sandbox transfer evidence is preserved, while the fresh split transfer is
+blocked until Stripe sandbox env is loaded.
 
 1:45-2:05 — Compounding
 
@@ -45,6 +47,9 @@ and verified outcomes."
 
 One-line pitch: "Agent Bounty Market turns neglected software tasks into
 budgeted, verified, replay-safe work."
+
+Truth note: this recording uses `demo/bundles/winning-run`, a validated mixed
+bundle. Do not call the full sponsor-integrated path live.
 
 ## Short Fallback
 

@@ -17,6 +17,25 @@ This repo keeps that kernel small enough to audit.
 
 ## Demo
 
+Build the truthful mixed real/fallback release-candidate bundle:
+
+```bash
+nix develop --command python3 -m agent_bounty demo-build-winning-run \
+  --db .demo/winning-run.sqlite3 \
+  --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency \
+  --bundle demo/bundles/winning-run
+
+nix develop --command python3 -m agent_bounty demo-rehearse \
+  --mode replay \
+  --bundle demo/bundles/winning-run \
+  --repeat 5
+```
+
+The dashboard lives at `demo/bundles/winning-run/dashboard.html` and must show
+`Mixed real/fallback`. It includes real Hermes executable evidence, prior
+recorded-real Stripe sandbox evidence, deterministic fallback rows, and exact
+blockers for the remaining live paths.
+
 Run the complete Motoko issue #1 proof suite:
 
 ```bash

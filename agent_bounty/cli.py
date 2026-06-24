@@ -20,6 +20,7 @@ from .demo_presentation import (
     replay_bundle,
     reset_demo_state,
     run_local_demo,
+    run_winning_bundle,
 )
 from .economic_loop import (
     DEFAULT_SECOND_PROJECT_ID,
@@ -1305,6 +1306,21 @@ def cmd_demo_local(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def cmd_demo_build_winning_run(args: argparse.Namespace) -> int:
+    try:
+        result = run_winning_bundle(
+            db_path=Path(args.db) if args.db else None,
+            motoko_repo=Path(args.motoko_repo) if args.motoko_repo else None,
+            bundle_dir=Path(args.bundle) if args.bundle else None,
+            fresh=not args.reuse,
+        )
+    except (DemoPresentationError, EconomicLoopError, SolverAgentError, ProjectAgentError, MarketError, GitHubIntegrationError) as exc:
+        print_json({"schema": "agent-bounty-winning-run-build-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def cmd_demo_live(args: argparse.Namespace) -> int:
     result = live_refusal_report(
         db_path=Path(args.db) if args.db else None,
@@ -1331,6 +1347,7 @@ def cmd_demo_rehearse(args: argparse.Namespace) -> int:
             db_path=Path(args.db) if args.db else None,
             motoko_repo=Path(args.motoko_repo) if args.motoko_repo else None,
             bundle_dir=Path(args.bundle) if args.bundle else None,
+            repeats=args.repeat,
         )
     except (DemoPresentationError, EconomicLoopError, SolverAgentError, ProjectAgentError, MarketError, GitHubIntegrationError) as exc:
         print_json({"schema": "agent-bounty-demo-rehearsal-v1", "ok": False, "error": safe_error_message(exc)})
@@ -2152,6 +2169,13 @@ def build_parser() -> argparse.ArgumentParser:
     demo_local.add_argument("--reuse", action="store_true", help="reuse existing DB instead of starting fresh")
     demo_local.set_defaults(func=cmd_demo_local)
 
+    demo_build = sub.add_parser("demo-build-winning-run", help="build the truthful mixed real/fallback winning-run bundle")
+    demo_build.add_argument("--db")
+    demo_build.add_argument("--motoko-repo")
+    demo_build.add_argument("--bundle")
+    demo_build.add_argument("--reuse", action="store_true", help="reuse existing DB instead of starting fresh")
+    demo_build.set_defaults(func=cmd_demo_build_winning_run)
+
     demo_live = sub.add_parser("demo-live", help="preflight and refuse unless all live integrations are configured")
     demo_live.add_argument("--db")
     demo_live.add_argument("--motoko-repo")
@@ -2166,6 +2190,7 @@ def build_parser() -> argparse.ArgumentParser:
     demo_rehearse.add_argument("--db")
     demo_rehearse.add_argument("--motoko-repo")
     demo_rehearse.add_argument("--bundle")
+    demo_rehearse.add_argument("--repeat", type=int, default=1)
     demo_rehearse.set_defaults(func=cmd_demo_rehearse)
 
     demo_reset = sub.add_parser("demo-reset", help="delete .demo state only after explicit confirmation")

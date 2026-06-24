@@ -13,9 +13,11 @@ from typing import Any
 
 from .core import AgentBountyMarket
 from .db import SCHEMA_VERSION, connect
-from .economic_loop import run_demo_economic_loop
+from .economic_loop import REAL_STRIPE_EVIDENCE, economic_loop_status_report, run_demo_economic_loop
 from .execution import openshell_status
 from .github_integration import github_status_report
+from .hermes_integration import hermes_status_report
+from .nvidia_runtime import nvidia_runtime_status_report
 from .payments import FakePaymentGateway
 from .project_agent import project_agent_status_report
 from .solver_agent import solver_agent_status_report
@@ -29,7 +31,28 @@ REHEARSAL_SCHEMA = "agent-bounty-demo-rehearsal-v1"
 BUNDLE_SCHEMA = "agent-bounty-demo-bundle-v1"
 BUNDLE_MANIFEST_SCHEMA = "agent-bounty-demo-bundle-manifest-v1"
 BUNDLE_VALIDATION_SCHEMA = "agent-bounty-demo-bundle-validation-v1"
+TRUTH_MATRIX_SCHEMA = "agent-bounty-truth-matrix-v1"
+ATTESTATION_SCHEMA = "agent-bounty-demo-attestation-v1"
 RESET_SCHEMA = "agent-bounty-demo-reset-v1"
+
+SECRET_PATTERNS = (
+    "sk_test_",
+    "rk_test_",
+    "sk_live_",
+    "rk_live_",
+    "whsec_",
+    "ghp_",
+    "github_pat_",
+    "NVIDIA_API_KEY=",
+)
+REQUIRED_DASHBOARD_TEXT = (
+    "Project buys work",
+    "Agents choose",
+    "GitHub work",
+    "Trust",
+    "Economics compound",
+    "Verified software work became operating capital.",
+)
 
 
 class DemoPresentationError(RuntimeError):
@@ -50,6 +73,10 @@ def default_demo_db(mode: str) -> Path:
 
 def default_bundle_dir(mode: str) -> Path:
     return repo_root() / ".demo" / "bundles" / f"{mode}-run"
+
+
+def default_winning_bundle_dir() -> Path:
+    return repo_root() / "demo" / "bundles" / "winning-run"
 
 
 def _run_git(args: list[str], *, cwd: Path) -> str | None:
@@ -220,6 +247,52 @@ def run_local_demo(
     }
 
 
+def run_winning_bundle(
+    *,
+    db_path: Path | None = None,
+    motoko_repo: Path | None = None,
+    bundle_dir: Path | None = None,
+    fresh: bool = True,
+) -> dict[str, Any]:
+    db_path = db_path or default_demo_db("winning-run")
+    motoko_repo = motoko_repo or default_motoko_repo()
+    bundle_dir = bundle_dir or default_winning_bundle_dir()
+    if not motoko_repo.exists():
+        raise DemoPresentationError(f"Motoko fixture repo missing: {motoko_repo}")
+    if fresh and db_path.exists():
+        _delete_demo_path(db_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    start = time.monotonic()
+    market = AgentBountyMarket(connect(db_path), FakePaymentGateway(), ProtectedVerifierRunner(timeout_seconds=60.0))
+    demo = run_demo_economic_loop(market, motoko_repo=motoko_repo)
+    elapsed_ms = int((time.monotonic() - start) * 1000)
+    snapshot = snapshot_database(market)
+    truth_matrix = build_truth_matrix()
+    bundle = build_bundle(
+        mode="mixed",
+        db_path=db_path,
+        demo_result=demo,
+        snapshot=snapshot,
+        duration_ms=elapsed_ms,
+        truth_matrix=truth_matrix,
+    )
+    manifest = write_bundle(bundle_dir, bundle, overwrite=True)
+    validation = validate_bundle(bundle_dir)
+    return {
+        "schema": "agent-bounty-winning-run-build-v1",
+        "ok": bool(validation["ok"]),
+        "mode": "mixed",
+        "duration_ms": elapsed_ms,
+        "db": str(db_path),
+        "bundle_dir": str(bundle_dir),
+        "bundle_digest": manifest["bundle_digest"],
+        "attestation_digest": manifest.get("attestation_digest"),
+        "dashboard": str(bundle_dir / "dashboard.html"),
+        "truth_overall": truth_matrix["overall_status"],
+        "validation": validation,
+    }
+
+
 def live_refusal_report(*, db_path: Path | None = None, motoko_repo: Path | None = None) -> dict[str, Any]:
     preflight = demo_preflight_report(mode="live", db_path=db_path, motoko_repo=motoko_repo)
     return {
@@ -232,8 +305,9 @@ def live_refusal_report(*, db_path: Path | None = None, motoko_repo: Path | None
     }
 
 
-def rehearse_demo(*, mode: str, db_path: Path | None = None, motoko_repo: Path | None = None, bundle_dir: Path | None = None) -> dict[str, Any]:
+def rehearse_demo(*, mode: str, db_path: Path | None = None, motoko_repo: Path | None = None, bundle_dir: Path | None = None, repeats: int = 1) -> dict[str, Any]:
     mode = mode.lower()
+    repeats = max(1, int(repeats))
     started = time.monotonic()
     if mode == "local":
         result = run_local_demo(db_path=db_path, motoko_repo=motoko_repo, bundle_dir=bundle_dir, fresh=True)
@@ -249,13 +323,24 @@ def rehearse_demo(*, mode: str, db_path: Path | None = None, motoko_repo: Path |
     if mode == "replay":
         if bundle_dir is None:
             bundle_dir = default_bundle_dir("local")
-        validation = validate_bundle(bundle_dir)
+        runs: list[dict[str, Any]] = []
+        validation: dict[str, Any] | None = None
+        for index in range(repeats):
+            stage_start = time.monotonic()
+            validation = validate_bundle(bundle_dir)
+            runs.append({"index": index + 1, "duration_ms": int((time.monotonic() - stage_start) * 1000), "ok": validation["ok"]})
+        assert validation is not None
+        durations = [run["duration_ms"] for run in runs]
         return {
             "schema": REHEARSAL_SCHEMA,
             "ok": validation["ok"],
             "mode": mode,
             "duration_ms": int((time.monotonic() - started) * 1000),
-            "stages": [{"name": "validate-bundle", "duration_ms": int((time.monotonic() - started) * 1000), "ok": validation["ok"]}],
+            "stages": [{"name": "validate-bundle", "duration_ms": run["duration_ms"], "ok": run["ok"], "index": run["index"]} for run in runs],
+            "repeat_count": repeats,
+            "duration_range_ms": [min(durations), max(durations)],
+            "duration_p95_ms": _p95(durations),
+            "dashboard": validation.get("dashboard"),
             "validation": validation,
         }
     if mode == "live":
@@ -300,12 +385,22 @@ def snapshot_database(market: AgentBountyMarket) -> dict[str, list[dict[str, Any
     return snapshot
 
 
-def build_bundle(*, mode: str, db_path: Path, demo_result: dict[str, Any], snapshot: dict[str, list[dict[str, Any]]], duration_ms: int) -> dict[str, Any]:
-    fake_provider = mode == "local" or demo_result.get("provider_truth", {}).get("real_stripe_transfer_claimed") is False
+def build_bundle(
+    *,
+    mode: str,
+    db_path: Path,
+    demo_result: dict[str, Any],
+    snapshot: dict[str, list[dict[str, Any]]],
+    duration_ms: int,
+    truth_matrix: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    fake_provider = mode in {"local", "mixed"} or demo_result.get("provider_truth", {}).get("real_stripe_transfer_claimed") is False
+    summary = summarize_demo(demo_result, snapshot, mode=mode, truth_matrix=truth_matrix)
     bundle = {
         "schema": BUNDLE_SCHEMA,
         "mode": mode,
         "fake_provider": fake_provider,
+        "truth_mode": truth_matrix["overall_status"] if truth_matrix else ("local" if mode == "local" else mode),
         "created_at": utc_now(),
         "duration_ms": int(duration_ms),
         "repository": {
@@ -314,10 +409,13 @@ def build_bundle(*, mode: str, db_path: Path, demo_result: dict[str, Any], snaps
             "market_branch": _run_git(["branch", "--show-current"], cwd=repo_root()),
         },
         "database": {"path": str(db_path), "schema_version": SCHEMA_VERSION},
-        "summary": summarize_demo(demo_result, snapshot),
+        "summary": summary,
+        "consistency": build_consistency(summary, demo_result),
+        "truth_matrix": truth_matrix,
         "timeline": build_timeline(snapshot),
         "demo_result": demo_result,
         "snapshot": snapshot,
+        "evidence": build_evidence_payloads(truth_matrix=truth_matrix, demo_result=demo_result, snapshot=snapshot),
         "redaction": {
             "secrets_included": False,
             "full_webhook_payloads_included": False,
@@ -328,15 +426,28 @@ def build_bundle(*, mode: str, db_path: Path, demo_result: dict[str, Any], snaps
     return bundle
 
 
-def summarize_demo(demo_result: dict[str, Any], snapshot: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+def summarize_demo(
+    demo_result: dict[str, Any],
+    snapshot: dict[str, list[dict[str, Any]]],
+    *,
+    mode: str = "local",
+    truth_matrix: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     allocation = demo_result.get("allocation", {})
     spend = demo_result.get("retained_credit_spend", {})
     first = demo_result.get("first_bounty", {})
+    mode_badge = "Local simulation"
+    if mode == "mixed":
+        mode_badge = "Mixed real/fallback"
+    elif truth_matrix and truth_matrix.get("overall_status") == "recorded-real":
+        mode_badge = "Recorded real run"
     return {
         "pitch": "A project buys verified software work from a specialized agent and settlement happens exactly once.",
-        "ok": bool(demo_result.get("ok")),
+        "ok": bool(demo_result.get("ok")) and mode == "local",
+        "operation_ok": bool(demo_result.get("ok")),
         "project": "lk251/motoko",
         "reward": allocation.get("reward_amount"),
+        "currency": allocation.get("currency"),
         "external_transfer": allocation.get("external_transfer_amount"),
         "external_transfer_id": allocation.get("gateway_transfer_id"),
         "retained_operating_credit": allocation.get("retained_operating_amount"),
@@ -344,10 +455,167 @@ def summarize_demo(demo_result: dict[str, Any], snapshot: dict[str, list[dict[st
         "second_bounty_url": spend.get("github_issue_url"),
         "contract_digest": first.get("contract_digest"),
         "receipt_id": first.get("receipt_id"),
+        "candidate_sha": first.get("candidate_sha"),
         "receipt_count": len(snapshot.get("verification_receipts", [])),
         "ledger_entries": len(snapshot.get("ledger_entries", [])),
-        "mode_badge": "Local simulation" if demo_result.get("provider_truth", {}).get("real_stripe_transfer_claimed") is False else "Recorded real run",
+        "mode_badge": mode_badge,
+        "truth_overall": truth_matrix.get("overall_status") if truth_matrix else mode_badge.lower().replace(" ", "-"),
     }
+
+
+def build_consistency(summary: dict[str, Any], demo_result: dict[str, Any]) -> dict[str, Any]:
+    allocation = demo_result.get("allocation", {})
+    return {
+        "project": summary.get("project"),
+        "bounty_id": allocation.get("bounty_id") or demo_result.get("first_bounty", {}).get("bounty_id"),
+        "candidate_sha": summary.get("candidate_sha"),
+        "currency": allocation.get("currency"),
+        "accepted_receipt_id": allocation.get("accepted_receipt_id") or summary.get("receipt_id"),
+        "allocation_id": allocation.get("allocation_id"),
+    }
+
+
+def build_truth_matrix() -> dict[str, Any]:
+    hermes = hermes_status_report(probe_doctor=False, discover_models=False)
+    nvidia = nvidia_runtime_status_report(discover_models=False, doctor=False)
+    github = github_status_report()
+    project_agent = project_agent_status_report()
+    solver_agent = solver_agent_status_report()
+    economic = economic_loop_status_report()
+    rows = [
+        _truth_row(
+            "hermes_executable",
+            "Hermes executable/version",
+            "real" if hermes.get("hermes", {}).get("version", {}).get("ok") else "blocked",
+            hermes.get("hermes", {}),
+            None if hermes.get("hermes", {}).get("version", {}).get("ok") else _first_blocker(hermes.get("blockers")),
+            8,
+            "dae313d",
+        ),
+        _truth_row(
+            "nemotron_model",
+            "NVIDIA Nemotron model",
+            "real" if hermes.get("provider", {}).get("configured") else "blocked",
+            hermes.get("provider", {}),
+            _first_blocker(hermes.get("blockers")),
+            8,
+            "dae313d",
+        ),
+        _truth_row(
+            "project_agent_decision",
+            "Project-agent decision",
+            "real" if project_agent.get("hermes_runtime", {}).get("available") else "fallback",
+            {"fake_runtime_available": project_agent.get("fake_runtime_available"), "hermes_runtime": project_agent.get("hermes_runtime")},
+            _first_blocker(project_agent.get("hermes_runtime", {}).get("blockers")),
+            8,
+            "dae313d",
+        ),
+        _truth_row(
+            "solver_agent_decision",
+            "Solver-agent decision",
+            "real" if solver_agent.get("hermes_runtime", {}).get("available") else "fallback",
+            {"fake_runtime_available": solver_agent.get("fake_runtime_available"), "hermes_runtime": solver_agent.get("hermes_runtime")},
+            _first_blocker(solver_agent.get("hermes_runtime", {}).get("blockers")),
+            8,
+            "dae313d",
+        ),
+        _truth_row(
+            "openshell_nemoclaw",
+            "OpenShell/NemoClaw execution",
+            "real" if nvidia.get("real_backend_ready") else "blocked",
+            {"openshell": nvidia.get("openshell"), "policy": nvidia.get("policy"), "real_backend_ready": nvidia.get("real_backend_ready")},
+            _first_blocker(nvidia.get("blockers")),
+            9,
+            "ad2d80b",
+        ),
+        _truth_row(
+            "github_lifecycle",
+            "GitHub issue/claim/PR/result",
+            "real" if github.get("ok") else "blocked",
+            github,
+            _first_blocker(github.get("blockers")),
+            10,
+            "14e1d24",
+        ),
+        _truth_row(
+            "stripe_full_transfer_fragment",
+            "Prior Stripe sandbox full-transfer fragment",
+            "recorded-real",
+            REAL_STRIPE_EVIDENCE,
+            None,
+            11,
+            "089836e",
+        ),
+        _truth_row(
+            "stripe_split_transfer",
+            "Fresh split Stripe Connect Transfer",
+            "real" if economic.get("stripe_sandbox_configured") else "blocked",
+            {"split_settlement_adapter": economic.get("split_settlement_adapter"), "stripe_blockers": economic.get("stripe_blockers")},
+            _first_blocker(economic.get("stripe_blockers")),
+            11,
+            "089836e",
+        ),
+        _truth_row(
+            "retained_credit_spend",
+            "Retained credit funds second bounty",
+            "fallback" if not economic.get("stripe_sandbox_configured") else "real",
+            {"deterministic_fake_loop_available": economic.get("deterministic_fake_loop_available")},
+            None if economic.get("stripe_sandbox_configured") else "fresh real split settlement is blocked; deterministic retained-credit spend is shown",
+            11,
+            "089836e",
+        ),
+    ]
+    required = {row["status"] for row in rows}
+    overall = "recorded-real" if required <= {"real", "recorded-real"} else "mixed-real-fallback"
+    return {
+        "schema": TRUTH_MATRIX_SCHEMA,
+        "created_at": utc_now(),
+        "overall_status": overall,
+        "all_required_real": overall == "recorded-real",
+        "rows": rows,
+        "digest": sha256_text(stable_json(rows)),
+    }
+
+
+def _truth_row(component_id: str, label: str, status: str, evidence: dict[str, Any], blocker: str | None, source_issue: int, source_commit: str) -> dict[str, Any]:
+    return {
+        "component_id": component_id,
+        "label": label,
+        "status": status,
+        "safe_evidence": evidence,
+        "safe_evidence_digest": sha256_text(stable_json(evidence)),
+        "blocker": blocker,
+        "source_issue": source_issue,
+        "source_commit": source_commit,
+    }
+
+
+def _first_blocker(blockers: Any) -> str | None:
+    if isinstance(blockers, list) and blockers:
+        return str(blockers[0])
+    if isinstance(blockers, str) and blockers:
+        return blockers
+    return None
+
+
+def build_evidence_payloads(*, truth_matrix: dict[str, Any] | None, demo_result: dict[str, Any], snapshot: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    evidence = {
+        "demo-summary": {
+            "schema": "agent-bounty-demo-summary-evidence-v1",
+            "demo_schema": demo_result.get("schema"),
+            "demo_ok": bool(demo_result.get("ok")),
+            "provider_truth": demo_result.get("provider_truth"),
+            "allocation": demo_result.get("allocation"),
+            "retained_credit_spend": demo_result.get("retained_credit_spend"),
+        },
+        "database-counts": {
+            "schema": "agent-bounty-database-counts-evidence-v1",
+            "tables": {table: len(rows) for table, rows in snapshot.items()},
+        },
+    }
+    if truth_matrix:
+        evidence["truth-matrix"] = truth_matrix
+    return evidence
 
 
 def build_timeline(snapshot: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
@@ -376,21 +644,98 @@ def write_bundle(bundle_dir: Path, bundle: dict[str, Any], *, overwrite: bool = 
     bundle_dir.mkdir(parents=True, exist_ok=True)
     bundle_path = bundle_dir / "bundle.json"
     dashboard_path = bundle_dir / "dashboard.html"
+    readme_path = bundle_dir / "README.md"
+    evidence_dir = bundle_dir / "evidence"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
     bundle_path.write_text(stable_json(bundle) + "\n", encoding="utf-8")
     dashboard_path.write_text(render_dashboard(bundle), encoding="utf-8")
+    readme_path.write_text(render_bundle_readme(bundle), encoding="utf-8")
+    files = {
+        "bundle.json": file_digest(bundle_path),
+        "dashboard.html": file_digest(dashboard_path),
+        "README.md": file_digest(readme_path),
+    }
+    for name, payload in sorted((bundle.get("evidence") or {}).items()):
+        relative = f"evidence/{_safe_filename(name)}.json"
+        path = bundle_dir / relative
+        path.write_text(stable_json(payload) + "\n", encoding="utf-8")
+        files[relative] = file_digest(path)
+    attestation = build_attestation(bundle, files)
+    attestation_path = bundle_dir / "attestation.json"
+    attestation_path.write_text(stable_json(attestation) + "\n", encoding="utf-8")
+    files["attestation.json"] = file_digest(attestation_path)
     manifest = {
         "schema": BUNDLE_MANIFEST_SCHEMA,
         "mode": bundle["mode"],
         "fake_provider": bool(bundle["fake_provider"]),
         "created_at": utc_now(),
         "bundle_digest": file_digest(bundle_path),
-        "files": {
-            "bundle.json": file_digest(bundle_path),
-            "dashboard.html": file_digest(dashboard_path),
-        },
+        "attestation_digest": attestation["attestation_digest"],
+        "files": files,
     }
     (bundle_dir / "manifest.json").write_text(stable_json(manifest) + "\n", encoding="utf-8")
     return manifest
+
+
+def render_bundle_readme(bundle: dict[str, Any]) -> str:
+    summary = bundle.get("summary", {})
+    truth = bundle.get("truth_matrix") or {}
+    statuses: dict[str, int] = {}
+    rows = truth.get("rows", [])
+    if not isinstance(rows, list):
+        rows = []
+    for row in rows:
+        status = str(row.get("status"))
+        statuses[status] = statuses.get(status, 0) + 1
+    status_text = ", ".join(f"{key}: {value}" for key, value in sorted(statuses.items())) or "none"
+    return f"""# Demo Bundle
+
+Mode: `{bundle.get("mode")}`
+
+Badge: `{summary.get("mode_badge")}`
+
+Truth: `{bundle.get("truth_mode")}`
+
+This directory is generated by Agent Bounty Market. Validate it before
+recording:
+
+```bash
+nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle <this-directory> --repeat 5
+```
+
+Truth row counts: {status_text}.
+
+Contents:
+
+- `manifest.json`: file digests and attestation digest.
+- `bundle.json`: sanitized demo data, timeline, consistency fields, and truth
+  matrix.
+- `attestation.json`: hashed attestation only; no signing key was created.
+- `dashboard.html`: static presentation surface.
+- `evidence/*.json`: compact evidence slices.
+"""
+
+
+def build_attestation(bundle: dict[str, Any], files: dict[str, str]) -> dict[str, Any]:
+    payload = {
+        "schema": ATTESTATION_SCHEMA,
+        "created_at": utc_now(),
+        "mode": bundle.get("mode"),
+        "truth_mode": bundle.get("truth_mode"),
+        "bundle_content_digest": bundle.get("bundle_content_digest"),
+        "truth_matrix_digest": (bundle.get("truth_matrix") or {}).get("digest"),
+        "files": files,
+        "signed": False,
+        "signature": None,
+        "note": "Hashed attestation only; no private signing key was created.",
+        "attestation_digest": None,
+    }
+    payload["attestation_digest"] = sha256_text(stable_json(payload))
+    return payload
+
+
+def _safe_filename(name: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in name).strip("-") or "evidence"
 
 
 def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
@@ -418,8 +763,14 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
         mismatches.append("manifest fake_provider does not match bundle")
     if bundle.get("fake_provider") and bundle.get("mode") == "live":
         mismatches.append("fake bundle cannot claim live mode")
-    if bundle.get("fake_provider") and bundle.get("summary", {}).get("mode_badge") != "Local simulation":
-        mismatches.append("fake bundle must display Local simulation badge")
+    expected_badge = _expected_badge(bundle)
+    if bundle.get("summary", {}).get("mode_badge") != expected_badge:
+        mismatches.append(f"bundle must display {expected_badge} badge")
+    mismatches.extend(_validate_attestation(bundle_dir, manifest, bundle))
+    mismatches.extend(_validate_truth_matrix(bundle))
+    mismatches.extend(_validate_consistency(bundle))
+    mismatches.extend(_validate_dashboard(bundle_dir / "dashboard.html"))
+    mismatches.extend(_secret_scan_bundle(bundle_dir))
     return {
         "schema": BUNDLE_VALIDATION_SCHEMA,
         "ok": not mismatches,
@@ -427,9 +778,11 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
         "mode": bundle.get("mode"),
         "fake_provider": bool(bundle.get("fake_provider")),
         "bundle_digest": manifest.get("bundle_digest"),
+        "attestation_digest": manifest.get("attestation_digest"),
         "mismatches": mismatches,
         "dashboard": str(bundle_dir / "dashboard.html"),
         "summary": bundle.get("summary", {}),
+        "truth_matrix": bundle.get("truth_matrix"),
     }
 
 
@@ -437,14 +790,24 @@ def render_dashboard(bundle: dict[str, Any]) -> str:
     summary = bundle.get("summary", {})
     timeline = bundle.get("timeline", [])
     badge = summary.get("mode_badge", "Unknown mode")
-    status = "PASS" if summary.get("ok") else "CHECK"
+    status = "PASS" if summary.get("ok") else "MIXED"
+    rows_by_id = {row.get("component_id"): row for row in (bundle.get("truth_matrix") or {}).get("rows", [])}
+    github = rows_by_id.get("github_lifecycle", {})
+    openshell = rows_by_id.get("openshell_nemoclaw", {})
+    stripe_split = rows_by_id.get("stripe_split_transfer", {})
     cards = [
-        ("Project", [("Repository", summary.get("project")), ("Reward", summary.get("reward")), ("Contract", summary.get("contract_digest"))]),
-        ("Agent Decision", [("Mode", badge), ("Receipt", summary.get("receipt_id")), ("Ledger entries", summary.get("ledger_entries"))]),
-        ("Economics", [("External", summary.get("external_transfer")), ("Transfer ID", summary.get("external_transfer_id")), ("Retained", summary.get("retained_operating_credit"))]),
-        ("Compounding", [("Second bounty", summary.get("second_bounty")), ("URL", summary.get("second_bounty_url")), ("Bundle", bundle.get("bundle_content_digest"))]),
+        ("Project buys work", [("Repository", summary.get("project")), ("Reward", _money(summary.get("reward"), summary.get("currency"))), ("Contract", _short(summary.get("contract_digest")))]),
+        ("Agents choose", [("Project agent", _row_status(rows_by_id.get("project_agent_decision"))), ("Solver agent", _row_status(rows_by_id.get("solver_agent_decision"))), ("Claimed SHA", _short(summary.get("candidate_sha")))]),
+        ("GitHub work", [("Lifecycle", _row_status(github)), ("Issue / PR", _evidence_hint(github)), ("Contract", _short(summary.get("contract_digest")))]),
+        ("Trust", [("OpenShell", _row_status(openshell)), ("Receipt", _short(summary.get("receipt_id"))), ("Ledger entries", summary.get("ledger_entries"))]),
+        ("Economics compound", [("External", _money(summary.get("external_transfer"), summary.get("currency"))), ("Transfer", _short(summary.get("external_transfer_id"))), ("Retained -> next", f"{_money(summary.get('retained_operating_credit'), summary.get('currency'))} / {_short(summary.get('second_bounty'))}")]),
     ]
     card_html = "\n".join(_card(title, rows) for title, rows in cards)
+    warnings = [row for row in (bundle.get("truth_matrix") or {}).get("rows", []) if row.get("status") in {"fallback", "blocked"}]
+    warning_html = "\n".join(
+        f"<li><b>{html.escape(str(row.get('label')))}</b><span>{html.escape(str(row.get('status')))} · {html.escape(str(row.get('blocker') or 'fallback shown truthfully'))}</span></li>"
+        for row in warnings
+    )
     timeline_html = "\n".join(
         f"<li><b>{html.escape(str(item.get('label')))}</b><span>{html.escape(str(item.get('detail') or ''))}</span></li>"
         for item in timeline
@@ -456,19 +819,20 @@ def render_dashboard(bundle: dict[str, Any]) -> str:
 <title>Agent Bounty Demo</title>
 <style>
 body{{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f6f5f2;color:#171717}}
-header{{padding:32px 40px;background:#111;color:#fff;display:flex;justify-content:space-between;gap:24px;align-items:flex-start}}
-h1{{font-size:34px;margin:0 0 10px}} p{{margin:0;max-width:780px;line-height:1.45}}
+header{{padding:26px 34px;background:#111;color:#fff;display:flex;justify-content:space-between;gap:24px;align-items:flex-start}}
+h1{{font-size:32px;margin:0 0 8px}} p{{margin:0;max-width:780px;line-height:1.38}}
 .badge{{border:1px solid #fff;padding:8px 12px;text-transform:uppercase;font-weight:700;letter-spacing:.04em}}
-main{{padding:28px 40px}} .grid{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}}
-.card{{background:#fff;border:1px solid #d8d5cf;border-radius:8px;padding:16px;min-height:150px}}
+main{{padding:22px 34px}} .grid{{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}}
+.card{{background:#fff;border:1px solid #d8d5cf;border-radius:8px;padding:14px;min-height:150px}}
 .card h2{{font-size:16px;margin:0 0 12px}} .row{{border-top:1px solid #ece9e2;padding:8px 0}}
 .key{{display:block;color:#666;font-size:12px;text-transform:uppercase}} .value{{font-family:ui-monospace,Menlo,monospace;word-break:break-word}}
-ol{{background:#fff;border:1px solid #d8d5cf;border-radius:8px;padding:18px 18px 18px 42px}}
+ol{{background:#fff;border:1px solid #d8d5cf;border-radius:8px;padding:16px 16px 16px 38px}}
 li{{margin:10px 0}} li span{{display:block;color:#555;margin-top:2px}}
-@media(max-width:1000px){{.grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}
+.final{{font-size:22px;font-weight:800;margin:18px 0 0}}
+@media(max-width:1200px){{.grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}
 </style>
 <header><div><h1>Agent Bounty Market</h1><p>A project receives a budget, buys a verified improvement from a specialized agent, settles exactly once, and lets retained operating credit fund the next useful bounty.</p></div><div class="badge">{html.escape(str(badge))} · {status}</div></header>
-<main><section class="grid">{card_html}</section><h2>Timeline</h2><ol>{timeline_html}</ol></main>
+<main><section class="grid">{card_html}</section><h2>Fallbacks and blockers</h2><ol>{warning_html}</ol><h2>Timeline</h2><ol>{timeline_html}</ol><p class="final">Verified software work became operating capital.</p></main>
 </html>
 """
 
@@ -492,6 +856,136 @@ def replay_bundle(bundle_dir: Path) -> dict[str, Any]:
     }
 
 
+def _expected_badge(bundle: dict[str, Any]) -> str:
+    mode = bundle.get("mode")
+    if mode == "mixed":
+        return "Mixed real/fallback"
+    if bundle.get("fake_provider"):
+        return "Local simulation"
+    return "Recorded real run"
+
+
+def _validate_attestation(bundle_dir: Path, manifest: dict[str, Any], bundle: dict[str, Any]) -> list[str]:
+    mismatches: list[str] = []
+    path = bundle_dir / "attestation.json"
+    if "attestation.json" not in manifest.get("files", {}):
+        mismatches.append("manifest missing attestation.json")
+        return mismatches
+    if not path.exists():
+        return ["missing attestation.json"]
+    try:
+        attestation = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return ["attestation.json is not valid JSON"]
+    if attestation.get("schema") != ATTESTATION_SCHEMA:
+        mismatches.append("attestation schema mismatch")
+    if attestation.get("bundle_content_digest") != bundle.get("bundle_content_digest"):
+        mismatches.append("attestation bundle digest mismatch")
+    expected = attestation.get("attestation_digest")
+    recalculated_payload = dict(attestation)
+    recalculated_payload["attestation_digest"] = None
+    recalculated = sha256_text(stable_json(recalculated_payload))
+    if expected != recalculated:
+        mismatches.append("attestation digest mismatch")
+    return mismatches
+
+
+def _validate_truth_matrix(bundle: dict[str, Any]) -> list[str]:
+    mismatches: list[str] = []
+    matrix = bundle.get("truth_matrix")
+    if bundle.get("mode") != "mixed":
+        return mismatches
+    if not isinstance(matrix, dict) or matrix.get("schema") != TRUTH_MATRIX_SCHEMA:
+        return ["mixed bundle missing truth matrix"]
+    rows = matrix.get("rows")
+    if not isinstance(rows, list) or not rows:
+        return ["truth matrix has no rows"]
+    if matrix.get("all_required_real") and any(row.get("status") in {"fallback", "blocked"} for row in rows):
+        mismatches.append("truth matrix claims all real while fallback/blocker rows exist")
+    for row in rows:
+        status = row.get("status")
+        if status not in {"real", "recorded-real", "fallback", "blocked"}:
+            mismatches.append(f"truth matrix row {row.get('component_id')} has invalid status")
+        if status in {"real", "recorded-real"} and row.get("blocker"):
+            mismatches.append(f"real row {row.get('component_id')} has blocker")
+        evidence_text = stable_json(row.get("safe_evidence", {}))
+        if status in {"real", "recorded-real"} and any(marker in evidence_text for marker in ("fake_", "tr_test_", "pi_test_", "cs_test_", "ch_test_")):
+            mismatches.append(f"real row {row.get('component_id')} contains fake/test evidence id")
+    return mismatches
+
+
+def _validate_consistency(bundle: dict[str, Any]) -> list[str]:
+    mismatches: list[str] = []
+    consistency = bundle.get("consistency") or {}
+    allocation = (bundle.get("demo_result") or {}).get("allocation") or {}
+    if allocation:
+        if consistency.get("currency") != allocation.get("currency"):
+            mismatches.append("consistency currency does not match allocation")
+        if consistency.get("accepted_receipt_id") != allocation.get("accepted_receipt_id"):
+            mismatches.append("consistency receipt does not match allocation")
+    return mismatches
+
+
+def _validate_dashboard(path: Path) -> list[str]:
+    if not path.exists():
+        return ["dashboard.html missing"]
+    text = path.read_text(encoding="utf-8")
+    return [f"dashboard missing required text: {item}" for item in REQUIRED_DASHBOARD_TEXT if item not in text]
+
+
+def _secret_scan_bundle(bundle_dir: Path) -> list[str]:
+    mismatches: list[str] = []
+    for path in sorted(bundle_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        for pattern in SECRET_PATTERNS:
+            if pattern in text:
+                mismatches.append(f"secret-like pattern {pattern} found in {path.relative_to(bundle_dir)}")
+    return mismatches
+
+
+def _money(amount: Any, currency: Any) -> str:
+    if amount is None:
+        return "unknown"
+    return f"{amount} {currency or ''}".strip()
+
+
+def _short(value: Any, *, keep: int = 18) -> str:
+    text = str(value or "n/a")
+    if len(text) <= keep + 3:
+        return text
+    return text[:keep] + "..."
+
+
+def _row_status(row: dict[str, Any] | None) -> str:
+    if not row:
+        return "not recorded"
+    return str(row.get("status"))
+
+
+def _evidence_hint(row: dict[str, Any] | None) -> str:
+    if not row:
+        return "n/a"
+    evidence = row.get("safe_evidence") or {}
+    if isinstance(evidence, dict):
+        for key in ("repository", "transfer", "payment_intent", "path"):
+            if evidence.get(key):
+                return _short(evidence.get(key))
+    return _short(row.get("safe_evidence_digest"))
+
+
+def _p95(values: list[int]) -> int:
+    if not values:
+        return 0
+    ordered = sorted(values)
+    index = min(len(ordered) - 1, max(0, ((95 * len(ordered) + 99) // 100) - 1))
+    return ordered[index]
+
+
 def reset_demo_state(path: Path | None = None, *, yes: bool = False) -> dict[str, Any]:
     target = path or (repo_root() / ".demo")
     if not yes:
@@ -504,8 +998,10 @@ def _delete_demo_path(path: Path) -> None:
     root = repo_root().resolve()
     resolved = path.resolve()
     demo_root = (root / ".demo").resolve()
-    if resolved != demo_root and demo_root not in resolved.parents:
-        raise DemoPresentationError(f"refusing to delete outside .demo: {path}")
+    bundle_root = (root / "demo" / "bundles").resolve()
+    allowed = resolved == demo_root or demo_root in resolved.parents or resolved == bundle_root or bundle_root in resolved.parents
+    if not allowed:
+        raise DemoPresentationError(f"refusing to delete outside demo state: {path}")
     if not resolved.exists():
         return
     if resolved.is_dir():

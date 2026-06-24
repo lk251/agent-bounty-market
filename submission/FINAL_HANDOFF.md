@@ -1,52 +1,82 @@
 # Final Handoff
 
-Release candidate tag: `hackathon-local-rc1`
+Release candidate tag: `hackathon-mixed-rc1`
 
-This tag points at the final handoff commit for the dependency-light local and
-replayable Agent Bounty Market demo.
+This release candidate is a truthful mixed real/fallback demo package. It does
+not claim a full live sponsor-integrated run. It packages the strongest
+available evidence into `demo/bundles/winning-run` with a machine-readable truth
+matrix, digest manifest, static dashboard, and hashed attestation.
 
 ## Product Pitch
 
 Agent Bounty Market turns neglected software tasks into funded, verified,
 replay-safe work performed by specialized agents.
 
-## Key Commits
-
-- `3bf580c` — Add GitHub bounty event spine
-- `26574dd` — Add project agent bounty buyer
-- `9522baa` — Add specialized solver agents
-- `ed760c0` — Add economic loop settlement path
-- `4994010` — Add presentation demo harness
-
-## Current Demo Commands
+## Winning Bundle
 
 ```bash
-nix develop --command python3 -m agent_bounty demo-preflight --mode local
-nix develop --command python3 -m agent_bounty demo-preflight --mode live
-nix develop --command python3 -m agent_bounty demo-rehearse --mode local
-nix develop --command python3 -m agent_bounty demo-rehearse --mode replay
-nix develop --command python3 -m agent_bounty demo-replay --bundle .demo/bundles/local-run
+nix develop --command python3 -m agent_bounty demo-build-winning-run \
+  --db .demo/winning-run.sqlite3 \
+  --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency \
+  --bundle demo/bundles/winning-run
+
+nix develop --command python3 -m agent_bounty demo-rehearse \
+  --mode replay \
+  --bundle demo/bundles/winning-run \
+  --repeat 5
 ```
 
-The latest local rehearsal generated:
+Bundle files:
 
-```text
-bundle: .demo/bundles/local-run
-dashboard: .demo/bundles/local-run/dashboard.html
-bundle digest: sha256:9717dfba3b6247ee06ad394e430fbf7020c29e64b3b90c0b159dcef4f0846700
-duration: about 15.2 seconds
-mode badge: Local simulation
-```
+- `manifest.json`: file digests and attestation digest.
+- `bundle.json`: sanitized persisted run data, summary, timeline, consistency
+  fields, and truth matrix.
+- `attestation.json`: hashed attestation only; no private signing key was
+  created.
+- `dashboard.html`: static recording surface.
+- `evidence/*.json`: compact evidence slices for truth matrix, demo summary,
+  and database counts.
 
-## Live, Replay, Local Status
+## Truth Matrix
 
-- Live: blocked by missing real GitHub credentials/webhook, real
-  Hermes/NVIDIA wrappers, OpenShell/NemoClaw backend, and reviewed real
-  split-Stripe-transfer adapter.
-- Replay: implemented and passing for sanitized local bundles. No
-  authenticated recorded-real full demo bundle exists yet.
-- Local: implemented and passing. It uses fake providers and visibly labels the
-  dashboard and bundle as `Local simulation`.
+Current truth status:
+
+- `real`: Hermes executable/version is installed and inspectable locally.
+- `recorded-real`: prior Stripe sandbox full-transfer fragment is documented in
+  `docs/chatgpt-pro-stripe-blocker-report.md`.
+- `fallback`: project-agent decision, solver-agent decision, and retained-credit
+  spend use deterministic fallback paths.
+- `blocked`: NVIDIA/Nemotron, OpenShell/NemoClaw, real GitHub lifecycle, and a
+  fresh real split Stripe Connect Transfer are blocked by missing external
+  credentials/runtime/configuration in this process.
+
+The dashboard must show `Mixed real/fallback`. A fallback or fake-provider
+component cannot be relabeled as live without failing validation.
+
+## Current Blockers
+
+1. NVIDIA/Nemotron:
+   - `NVIDIA_API_KEY` is not present.
+   - No real Nemotron-backed Hermes decision run is claimed.
+
+2. OpenShell/NemoClaw:
+   - `docker` and `openshell` are not available on `PATH`.
+   - No real sandbox execution is claimed.
+
+3. GitHub lifecycle:
+   - Missing `AGENT_BOUNTY_GITHUB_INTEGRATION=1`.
+   - Missing `AGENT_BOUNTY_GITHUB_TOKEN` or `GH_TOKEN`.
+   - Missing `AGENT_BOUNTY_GITHUB_REPOSITORY`.
+   - Missing `AGENT_BOUNTY_GITHUB_WEBHOOK_SECRET`.
+   - No real issue update, claim comment, PR, status, or webhook delivery is
+     claimed.
+
+4. Fresh split Stripe settlement:
+   - This process has no loaded Stripe sandbox env:
+     `AGENT_BOUNTY_STRIPE_SANDBOX=1`, `STRIPE_TEST_SECRET_KEY`,
+     `STRIPE_TEST_WEBHOOK_SECRET`, and `STRIPE_TEST_CONNECTED_ACCOUNT_ID`.
+   - The reviewed split adapter exists, but no fresh real split Connect Transfer
+     is claimed from this pass.
 
 ## Safe Stripe Evidence
 
@@ -65,103 +95,51 @@ Transfer audit event: evt_3Tleim2MCkccMoa91tozrj04
 Currency: EUR
 ```
 
-The new split-retain-spend demo does not claim a real Stripe transfer. It uses
-`fake_transfer_...` IDs until a reviewed split Connect Transfer adapter exists.
-
-## Hermes, Model, OpenShell Status
-
-- Project-agent fake runtime: available.
-- Project-agent real Hermes runtime: blocked by missing Hermes CLI or wrapper
-  configuration.
-- Solver-agent fake runtime: available.
-- Solver-agent real Hermes runtime: blocked by missing Hermes CLI or reviewed
-  solver wrapper.
-- OpenShell/NemoClaw: blocked; `openshell` executable is not on PATH.
-- OpenShell policy digest currently reported:
-  `sha256:8cd342225854dda399c88c52ec0a37485dd4f8c376d24414c89a4ec6952e2914`.
-
 ## Validation
 
-Final validation run for issue #5:
+Final validation command set:
 
 ```bash
-nix develop --command python3 -m compileall agent_bounty tests verifiers
+nix develop --command python3 -m py_compile agent_bounty/demo_presentation.py agent_bounty/cli.py tests/test_demo_presentation.py
 nix develop --command python3 -m unittest tests.test_demo_presentation
-nix develop --command python3 -m agent_bounty demo-preflight --mode local
-nix develop --command python3 -m agent_bounty demo-rehearse --mode local
-nix develop --command python3 -m agent_bounty demo-rehearse --mode replay
+nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
+nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
+nix develop --command python3 -m agent_bounty demo-preflight --mode replay
+nix develop --command python3 -m agent_bounty demo-live
+nix develop --command python3 -m compileall agent_bounty tests verifiers
 nix develop --command python3 -m unittest discover -s tests
 nix flake check
-git diff --check --cached
 git diff --check
 ```
 
-Observed:
+Observed before final commit:
 
 ```text
-focused presentation tests: 5 passed
-local preflight: ok=true
-local rehearsal: ok=true
-replay rehearsal: ok=true
-full test suite: 101 passed, 2 skipped
+focused presentation tests: 8 passed
+winning bundle validation: ok=true, mode=mixed, truth=mixed-real-fallback
+replay rehearsal: 5/5 validations passed
+bundle digest: sha256:96973575de01b25c682e121b64e1be1f851fc91d0d71ba9ef0ae43314738ac1a
+attestation digest: sha256:8cca5c2479ddef11c3e0b22d8c186ddb0c99e90cfd486cb5e02425dba54b4fdd
+truth matrix digest: sha256:66cb60b7843ae2a047271a8fc4ce0f324f7f7027a1c87d7acba0973bb36802cf
+full suite: 122 tests passed, 2 skipped
 nix flake check: all checks passed
 ```
 
-## Unresolved Blockers and Operator Actions
+## Recording
 
-1. Real GitHub path:
-   - Configure `AGENT_BOUNTY_GITHUB_INTEGRATION=1`.
-   - Configure `AGENT_BOUNTY_GITHUB_TOKEN` or `GH_TOKEN`.
-   - Configure `AGENT_BOUNTY_GITHUB_REPOSITORY=owner/repo`.
-   - Configure `AGENT_BOUNTY_GITHUB_WEBHOOK_SECRET`.
-
-2. Real Hermes/NVIDIA project-agent path:
-   - Install or point `AGENT_BOUNTY_HERMES_CLI` at Hermes.
-   - Set `AGENT_BOUNTY_RUN_HERMES_PROJECT_AGENT=1`.
-   - Set `AGENT_BOUNTY_HERMES_EVALUATE_COMMAND` to a reviewed JSON wrapper.
-
-3. Real Hermes solver path:
-   - Install or point `AGENT_BOUNTY_HERMES_CLI` at Hermes.
-   - Set `AGENT_BOUNTY_RUN_HERMES_PROJECT_AGENT=1`.
-   - Set `AGENT_BOUNTY_HERMES_EVALUATE_COMMAND` to a reviewed solver wrapper.
-
-4. OpenShell/NemoClaw:
-   - Install/configure the approved `openshell` backend.
-
-5. Real split Stripe settlement:
-   - Add a reviewed adapter that creates a Connect Transfer only for the
-     external portion of a split settlement.
-   - Keep retained operating credit as an internal liability.
-
-## Timed Recording Instructions
-
-1. Open the dashboard generated by:
-
-   ```bash
-   nix develop --command python3 -m agent_bounty demo-rehearse --mode local
-   ```
-
-2. Record `dashboard.html`, not terminal JSON, for the main visual.
-3. Follow `submission/DEMO_SCRIPT.md`.
-4. Keep the mode badge visible. If using the current run, say "local
-   simulation" explicitly.
-5. Use `submission/SHOT_LIST.md` to capture the project, agent, GitHub, trust,
-   economics, and compounding cards.
-6. Keep the final video near two minutes.
+Use `submission/RECORDING_RUNBOOK.md`. Record `demo/bundles/winning-run/dashboard.html`
+with the `Mixed real/fallback` badge visible and say the blockers plainly.
 
 ## Submission Checklist
 
-- [x] Local end-to-end demo works.
-- [x] Replay validation works for sanitized local bundles.
-- [x] Dashboard is generated from persisted event records.
-- [x] Submission script exists.
-- [x] Shot list exists.
-- [x] Submission writeup exists.
-- [x] Tweet draft exists.
-- [x] Form answers exist.
-- [x] Architecture diagram exists.
-- [x] Limitations are explicit.
+- [x] Truthful mixed winning bundle captured.
+- [x] Truth matrix included in bundle and evidence directory.
+- [x] Static dashboard generated from persisted records.
+- [x] Repeated replay rehearsal implemented and tested.
+- [x] Fake/test IDs in real rows are rejected.
+- [x] Currency/receipt consistency drift is rejected.
+- [x] Secret-like bundle contents are rejected.
+- [x] Prior real Stripe sandbox evidence is referenced.
 - [x] Full tests pass.
 - [x] Nix flake check passes.
-- [ ] Authenticated recorded-real full demo bundle captured.
-- [ ] Real GitHub/Hermes/OpenShell/Stripe split path configured.
+- [ ] Full live sponsor-integrated run captured.

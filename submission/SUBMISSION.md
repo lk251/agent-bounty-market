@@ -27,10 +27,10 @@ verified, accepted, and settled.
 
 | Sponsor area | Current status |
 | --- | --- |
-| Stripe sandbox | Real full-transfer sandbox run completed and documented; split-retain-spend demo currently uses deterministic fake transfer IDs. |
+| Stripe sandbox | Prior real full-transfer sandbox evidence is documented; reviewed split-transfer adapter exists; fresh split run is blocked until Stripe sandbox env is loaded. |
 | GitHub | Fake client and durable contract/webhook/publication spine implemented; real credentials/webhook remain gated. |
-| Hermes agents/skills | Project-agent and solver-agent skill/profile/runtime interfaces implemented; real Hermes wrapper remains gated. |
-| NVIDIA/OpenShell/NemoClaw | Adapter/status boundary implemented; sponsor runtime not available in this environment. |
+| Hermes agents/skills | Hermes executable is installed and verified; project/solver skill/profile/runtime interfaces exist; real Nemotron-backed wrapper remains gated. |
+| NVIDIA/OpenShell/NemoClaw | Adapter/status boundary implemented; Docker/OpenShell runtime is not available in this environment. |
 
 ## Judging Argument
 
@@ -48,16 +48,16 @@ and honest live/replay/local mode labeling.
 ## Commands
 
 ```bash
-nix develop --command python3 -m agent_bounty demo-preflight --mode local
-nix develop --command python3 -m agent_bounty demo-rehearse --mode local
-nix develop --command python3 -m agent_bounty demo-replay --bundle .demo/bundles/local-rehearsal
+nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
+nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
 nix develop --command python3 -m unittest discover -s tests
 nix flake check
 ```
 
 ## Current Limitations
 
-See `submission/LIMITATIONS.md`. The short version: the local demo is
-complete, the real Stripe full-transfer evidence is documented, and the full
-real sponsor-integrated recorded bundle is still blocked by external runtime
-and credential setup.
+See `submission/LIMITATIONS.md`. The short version: the winning bundle is a
+validated `Mixed real/fallback` release candidate. It includes real Hermes
+executable evidence and prior recorded-real Stripe evidence, but the full live
+sponsor-integrated path is still blocked by external runtime and credential
+setup.

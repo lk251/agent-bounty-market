@@ -21,10 +21,12 @@ coordinate.
 
 ## Sponsor Usage
 
-Stripe is used for sandbox funding and Connect settlement in the real
-full-transfer path. GitHub is the contract/event surface. Hermes-style agents
-and skills are modeled for project and solver decisions. OpenShell/NemoClaw is
-the intended stronger execution sandbox boundary when available.
+Stripe is used for sandbox funding and Connect settlement in the recorded real
+full-transfer fragment and in the reviewed split-transfer adapter. GitHub is the
+contract/event surface. Hermes-style agents and skills are modeled for project
+and solver decisions, with a real Hermes executable present locally.
+OpenShell/NemoClaw is the intended stronger execution sandbox boundary when
+available.
 
 ## Business Model
 
@@ -34,7 +36,7 @@ lets high-performing solvers compound into future work, still bounded by policy.
 
 ## Main Limitations
 
-This is not legal escrow or a production marketplace. The full local demo is
-deterministic. The documented real Stripe sandbox run covers full transfer; the
-new split-retain-spend path uses fake external transfer IDs until a reviewed
-real split-transfer adapter is added.
+This is not legal escrow or a production marketplace. The winning bundle is a
+validated mixed real/fallback release candidate. The documented real Stripe
+sandbox run covers full transfer; the reviewed split-retain-spend path still
+needs loaded sandbox credentials to create a fresh real split Connect Transfer.

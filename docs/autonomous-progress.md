@@ -256,8 +256,8 @@ Implemented so far:
 - `docs/demo-presentation.md`;
 - submission packet: `DEMO_SCRIPT.md`, `SHOT_LIST.md`, `SUBMISSION.md`,
   `TWEET.md`, `FORM_ANSWERS.md`, `LIMITATIONS.md`, and `ARCHITECTURE.mmd`;
-- placeholder `demo/bundles/winning-run/README.md` for the future
-  authenticated recorded-real bundle.
+- placeholder `demo/bundles/winning-run/README.md` for the future winning
+  bundle, superseded by issue #12's mixed real/fallback bundle.
 
 Validation run so far:
 
@@ -282,14 +282,16 @@ Observed results:
 - full test suite: 101 passed, 2 skipped;
 - `nix flake check`: all checks passed.
 
-Current external blockers:
+Current external blockers, superseded by issue #12's explicit truth matrix:
 
 ```text
 No real GitHub credentials/webhook, no real Hermes project/solver wrapper, no
 OpenShell/NemoClaw backend, and no loaded Stripe sandbox environment in this
 process for a fresh real split-settlement run. The current presentation can
 truthfully demonstrate the complete local loop and replay validated local
-bundles, but not claim a full live sponsor-integrated run.
+bundles, but not claim a full live sponsor-integrated run. Issue #12 later
+packages the strongest available truthful evidence into
+`demo/bundles/winning-run`.
 ```
 
 ## Issue #8: Real Hermes Agent + NVIDIA Nemotron Decisions
@@ -661,3 +663,92 @@ Truth status:
   retained-credit spend.
 
 Next issue: #12 after issue #11 handoff comment and push.
+
+## Issue #12: Authenticated Bundle, Rehearsal, And Submission Freeze
+
+UTC start: 2026-06-24T16:15:00Z
+UTC final validation: 2026-06-24T16:28:00Z
+
+Status: completed as a truthful mixed real/fallback release candidate. The full
+live sponsor-integrated path remains blocked by external credentials/runtime,
+so the final tag must be `hackathon-mixed-rc1`, not a fully-live tag.
+
+Implemented:
+
+- added `demo-build-winning-run`, which creates
+  `demo/bundles/winning-run` from a fresh deterministic database;
+- added mixed-bundle support with a truth matrix using only these statuses:
+  `real`, `recorded-real`, `fallback`, and `blocked`;
+- added digest-bound bundle files:
+  `manifest.json`, `bundle.json`, `README.md`, `dashboard.html`,
+  `attestation.json`, and `evidence/*.json`;
+- added a hashed attestation without creating a private signing key;
+- added dashboard cards for Project buys work, Agents choose, GitHub work,
+  Trust, and Economics compound;
+- added validation for required dashboard text, truth matrix rows, fake/test
+  IDs in real rows, consistency drift, attestation digest drift, and secret-like
+  bundle contents;
+- added repeated replay rehearsal with `--repeat`;
+- updated README, demo presentation docs, submission packet, final handoff, and
+  recording runbook.
+
+Safe bundle evidence:
+
+```text
+bundle: demo/bundles/winning-run
+dashboard: demo/bundles/winning-run/dashboard.html
+mode: mixed
+mode badge: Mixed real/fallback
+truth overall: mixed-real-fallback
+bundle digest: sha256:96973575de01b25c682e121b64e1be1f851fc91d0d71ba9ef0ae43314738ac1a
+attestation digest: sha256:8cca5c2479ddef11c3e0b22d8c186ddb0c99e90cfd486cb5e02425dba54b4fdd
+truth matrix digest: sha256:66cb60b7843ae2a047271a8fc4ce0f324f7f7027a1c87d7acba0973bb36802cf
+candidate sha: 4c03e0fa02a26f1cbadbe593ae687eaa9b333d2c
+```
+
+Truth matrix summary:
+
+- `real`: Hermes executable/version.
+- `recorded-real`: prior Stripe sandbox full-transfer fragment.
+- `fallback`: project-agent decision, solver-agent decision, retained-credit
+  spend.
+- `blocked`: Nemotron model, OpenShell/NemoClaw execution, real GitHub
+  lifecycle, fresh split Stripe Connect Transfer.
+
+Validation run:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/demo_presentation.py agent_bounty/cli.py tests/test_demo_presentation.py
+nix develop --command python3 -m unittest tests.test_demo_presentation
+nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
+nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
+nix develop --command python3 -m agent_bounty demo-preflight --mode replay
+nix develop --command python3 -m agent_bounty demo-live
+nix develop --command python3 -m compileall agent_bounty tests verifiers
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+git diff --check
+```
+
+Observed results:
+
+- focused demo presentation tests: 8 passed;
+- winning bundle build: `ok=true`, `mode=mixed`,
+  `truth_overall=mixed-real-fallback`;
+- replay rehearsal: 5/5 validations passed;
+- replay preflight: `ok=true`;
+- live command: refused as expected with explicit blockers and no success claim;
+- compileall passed;
+- full test suite: 122 passed, 2 skipped;
+- `nix flake check`: all checks passed;
+- diff whitespace check: clean.
+
+Exact remaining external blocker:
+
+```text
+Full live bundle still requires NVIDIA_API_KEY/Nemotron configuration,
+Docker/OpenShell/NemoClaw availability, GitHub integration env, and loaded
+Stripe sandbox env for a fresh split Connect Transfer.
+```
+
+Next issue: #13 final handoff/tag/comment after commit, push, and tag push.

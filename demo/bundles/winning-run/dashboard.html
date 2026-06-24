@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Bounty Demo</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f6f5f2;color:#171717}
+header{padding:26px 34px;background:#111;color:#fff;display:flex;justify-content:space-between;gap:24px;align-items:flex-start}
+h1{font-size:32px;margin:0 0 8px} p{margin:0;max-width:780px;line-height:1.38}
+.badge{border:1px solid #fff;padding:8px 12px;text-transform:uppercase;font-weight:700;letter-spacing:.04em}
+main{padding:22px 34px} .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.card{background:#fff;border:1px solid #d8d5cf;border-radius:8px;padding:14px;min-height:150px}
+.card h2{font-size:16px;margin:0 0 12px} .row{border-top:1px solid #ece9e2;padding:8px 0}
+.key{display:block;color:#666;font-size:12px;text-transform:uppercase} .value{font-family:ui-monospace,Menlo,monospace;word-break:break-word}
+ol{background:#fff;border:1px solid #d8d5cf;border-radius:8px;padding:16px 16px 16px 38px}
+li{margin:10px 0} li span{display:block;color:#555;margin-top:2px}
+.final{font-size:22px;font-weight:800;margin:18px 0 0}
+@media(max-width:1200px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+<header><div><h1>Agent Bounty Market</h1><p>A project receives a budget, buys a verified improvement from a specialized agent, settles exactly once, and lets retained operating credit fund the next useful bounty.</p></div><div class="badge">Mixed real/fallback · MIXED</div></header>
+<main><section class="grid"><article class="card"><h2>Project buys work</h2><div class="row"><span class="key">Repository</span><span class="value">lk251/motoko</span></div>
+<div class="row"><span class="key">Reward</span><span class="value">2500 USD</span></div>
+<div class="row"><span class="key">Contract</span><span class="value">sha256:6ee283ba51e...</span></div></article>
+<article class="card"><h2>Agents choose</h2><div class="row"><span class="key">Project agent</span><span class="value">fallback</span></div>
+<div class="row"><span class="key">Solver agent</span><span class="value">fallback</span></div>
+<div class="row"><span class="key">Claimed SHA</span><span class="value">4c03e0fa02a26f1cba...</span></div></article>
+<article class="card"><h2>GitHub work</h2><div class="row"><span class="key">Lifecycle</span><span class="value">blocked</span></div>
+<div class="row"><span class="key">Issue / PR</span><span class="value">sha256:66d9cf76b7d...</span></div>
+<div class="row"><span class="key">Contract</span><span class="value">sha256:6ee283ba51e...</span></div></article>
+<article class="card"><h2>Trust</h2><div class="row"><span class="key">OpenShell</span><span class="value">blocked</span></div>
+<div class="row"><span class="key">Receipt</span><span class="value">receipt_e15d5d3950...</span></div>
+<div class="row"><span class="key">Ledger entries</span><span class="value">8</span></div></article>
+<article class="card"><h2>Economics compound</h2><div class="row"><span class="key">External</span><span class="value">2000 USD</span></div>
+<div class="row"><span class="key">Transfer</span><span class="value">fake_transfer_70ca...</span></div>
+<div class="row"><span class="key">Retained -&gt; next</span><span class="value">500 USD / bounty_retained_cr...</span></div></article></section><h2>Fallbacks and blockers</h2><ol><li><b>NVIDIA Nemotron model</b><span>blocked · set AGENT_BOUNTY_RUN_HERMES_PROJECT_AGENT=1</span></li>
+<li><b>Project-agent decision</b><span>fallback · set AGENT_BOUNTY_RUN_HERMES_PROJECT_AGENT=1 for real Hermes project-agent runs</span></li>
+<li><b>Solver-agent decision</b><span>fallback · set AGENT_BOUNTY_RUN_HERMES_PROJECT_AGENT=1</span></li>
+<li><b>OpenShell/NemoClaw execution</b><span>blocked · docker executable not found on PATH</span></li>
+<li><b>GitHub issue/claim/PR/result</b><span>blocked · set AGENT_BOUNTY_GITHUB_INTEGRATION=1</span></li>
+<li><b>Fresh split Stripe Connect Transfer</b><span>blocked · set AGENT_BOUNTY_STRIPE_SANDBOX=1 for real Stripe sandbox commands</span></li>
+<li><b>Retained credit funds second bounty</b><span>fallback · fresh real split settlement is blocked; deterministic retained-credit spend is shown</span></li></ol><h2>Timeline</h2><ol><li><b>Project treasury funded</b><span>2500 USD via fake_credit_6d6fef5b7db2c29643dfb6dd</span></li>
+<li><b>GitHub bounty contract published</b><span>sha256:6ee283ba51e1c43256e3b9e4ac9d71dfbf58f199e9343476ed63e0c85658b05b</span></li>
+<li><b>Project agent agent_declined</b><span>[&quot;agent declined candidate&quot;]</span></li>
+<li><b>Project agent agent_declined</b><span>[&quot;agent declined candidate&quot;]</span></li>
+<li><b>Project agent approved</b><span>[&quot;trusted policy approved bounded spend&quot;]</span></li>
+<li><b>Project agent declined</b><span>[&quot;reward exceeds maximum bounty amount&quot;,&quot;minimum remaining reserve would be violated&quot;]</span></li>
+<li><b>Solver agent_declined</b><span>[&quot;solver declined&quot;]</span></li>
+<li><b>Solver agent_declined</b><span>[&quot;solver declined&quot;]</span></li>
+<li><b>Solver approved</b><span>[&quot;trusted solver policy approved claim&quot;]</span></li>
+<li><b>Retained credit funds next bounty</b><span>bounty_retained_credit_followup</span></li>
+<li><b>GitHub bounty contract published</b><span>sha256:85a10426733cad689f9511a7c193508abb9fffb57773251d661b73356e20a502</span></li>
+<li><b>Reward split settled</b><span>external 2000 retained 500</span></li>
+<li><b>Verifier accepted</b><span>receipt_e15d5d3950c64421b340fc03ba928b99</span></li></ol><p class="final">Verified software work became operating capital.</p></main>
+</html>

@@ -14,8 +14,10 @@ from agent_bounty.demo_presentation import (
     replay_bundle,
     reset_demo_state,
     run_local_demo,
+    run_winning_bundle,
     validate_bundle,
 )
+from agent_bounty.util import file_digest, stable_json
 
 
 MOTOKO_REPO = Path("/home/mares/repos/motoko-issue-1-tui-input-latency")
@@ -71,6 +73,60 @@ class DemoPresentationTests(unittest.TestCase):
             self.assertFalse(tampered["ok"])
             self.assertIn("digest mismatch for bundle.json", tampered["mismatches"])
 
+    def test_winning_bundle_has_truth_matrix_and_rehearses_repeatedly(self):
+        if not MOTOKO_REPO.exists():
+            self.skipTest("external Motoko issue #1 fixture repo is unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle_dir = Path(tmp) / "winning-run"
+            result = run_winning_bundle(db_path=Path(tmp) / "market.sqlite3", motoko_repo=MOTOKO_REPO, bundle_dir=bundle_dir)
+            validation = validate_bundle(bundle_dir)
+            rehearsal = rehearse_demo(mode="replay", bundle_dir=bundle_dir, repeats=3)
+
+            self.assertTrue(result["ok"])
+            self.assertTrue(validation["ok"])
+            self.assertEqual(validation["mode"], "mixed")
+            self.assertEqual(validation["summary"]["mode_badge"], "Mixed real/fallback")
+            self.assertEqual(validation["truth_matrix"]["overall_status"], "mixed-real-fallback")
+            self.assertGreaterEqual(len(validation["truth_matrix"]["rows"]), 5)
+            self.assertTrue((bundle_dir / "attestation.json").exists())
+            self.assertTrue((bundle_dir / "evidence" / "truth-matrix.json").exists())
+            self.assertTrue(rehearsal["ok"])
+            self.assertEqual(rehearsal["repeat_count"], 3)
+            self.assertEqual(len(rehearsal["stages"]), 3)
+
+    def test_winning_bundle_rejects_fake_ids_in_real_rows(self):
+        if not MOTOKO_REPO.exists():
+            self.skipTest("external Motoko issue #1 fixture repo is unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle_dir = Path(tmp) / "winning-run"
+            run_winning_bundle(db_path=Path(tmp) / "market.sqlite3", motoko_repo=MOTOKO_REPO, bundle_dir=bundle_dir)
+            bundle = json.loads((bundle_dir / "bundle.json").read_text(encoding="utf-8"))
+            bundle["truth_matrix"]["rows"][0]["status"] = "real"
+            bundle["truth_matrix"]["rows"][0]["safe_evidence"] = {"transfer": "fake_transfer_should_fail"}
+            _rewrite_bundle_and_manifest(bundle_dir, bundle)
+
+            validation = validate_bundle(bundle_dir)
+            self.assertFalse(validation["ok"])
+            self.assertIn("real row hermes_executable contains fake/test evidence id", validation["mismatches"])
+
+    def test_winning_bundle_rejects_consistency_drift_and_secrets(self):
+        if not MOTOKO_REPO.exists():
+            self.skipTest("external Motoko issue #1 fixture repo is unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle_dir = Path(tmp) / "winning-run"
+            run_winning_bundle(db_path=Path(tmp) / "market.sqlite3", motoko_repo=MOTOKO_REPO, bundle_dir=bundle_dir)
+            bundle = json.loads((bundle_dir / "bundle.json").read_text(encoding="utf-8"))
+            bundle["consistency"]["currency"] = "EUR"
+            bundle["consistency"]["accepted_receipt_id"] = "receipt_drift"
+            _rewrite_bundle_and_manifest(bundle_dir, bundle)
+            (bundle_dir / "evidence" / "leak.txt").write_text("whsec_should_fail\n", encoding="utf-8")
+
+            validation = validate_bundle(bundle_dir)
+            self.assertFalse(validation["ok"])
+            self.assertIn("consistency currency does not match allocation", validation["mismatches"])
+            self.assertIn("consistency receipt does not match allocation", validation["mismatches"])
+            self.assertIn("secret-like pattern whsec_ found in evidence/leak.txt", validation["mismatches"])
+
     def test_rehearsal_replay_requires_existing_default_bundle(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(DemoPresentationError):
@@ -82,6 +138,17 @@ class DemoPresentationTests(unittest.TestCase):
                 reset_demo_state(Path(tmp), yes=False)
             with self.assertRaises(DemoPresentationError):
                 reset_demo_state(Path(tmp), yes=True)
+
+
+def _rewrite_bundle_and_manifest(bundle_dir: Path, bundle: dict) -> None:
+    bundle_path = bundle_dir / "bundle.json"
+    manifest_path = bundle_dir / "manifest.json"
+    bundle_path.write_text(stable_json(bundle) + "\n", encoding="utf-8")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    digest = file_digest(bundle_path)
+    manifest["files"]["bundle.json"] = digest
+    manifest["bundle_digest"] = digest
+    manifest_path.write_text(stable_json(manifest) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

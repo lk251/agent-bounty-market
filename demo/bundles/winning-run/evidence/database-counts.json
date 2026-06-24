@@ -1,0 +1,1 @@
+{"schema":"agent-bounty-database-counts-evidence-v1","tables":{"bounties":2,"claims":1,"funding_events":1,"github_issue_contracts":2,"ledger_entries":8,"payouts":1,"project_agent_decisions":4,"projects":2,"settlement_allocations":1,"solver_agent_evaluations":3,"solver_agent_submissions":1,"solver_operating_spends":1,"submissions":1,"treasuries":2,"verification_receipts":1}}
