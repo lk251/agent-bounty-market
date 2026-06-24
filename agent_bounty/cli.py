@@ -12,6 +12,17 @@ from typing import Any
 
 from .core import AgentBountyMarket, MarketError
 from .db import connect
+from .economic_loop import (
+    DEFAULT_SECOND_PROJECT_ID,
+    DEFAULT_SECOND_VERIFIER_ID,
+    EconomicLoopError,
+    allocate_accepted_reward,
+    default_solver_operating_policy,
+    economic_loop_status_report,
+    run_demo_economic_loop,
+    save_solver_operating_policy,
+    spend_retained_credit_to_project,
+)
 from .github_integration import (
     FakeGitHubClient,
     GitHubConfig,
@@ -1014,6 +1025,86 @@ def cmd_demo_solver_motoko(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def cmd_economic_loop_status(_args: argparse.Namespace) -> int:
+    print_json(economic_loop_status_report())
+    return 0
+
+
+def cmd_economic_loop_allocate(args: argparse.Namespace) -> int:
+    market = open_market(args.db, verifier_timeout=args.verifier_timeout)
+    try:
+        result = allocate_accepted_reward(
+            market,
+            bounty_id=args.bounty_id,
+            external_transfer_amount=args.external_transfer_cents,
+            retained_operating_amount=args.retained_operating_cents,
+            platform_fee_amount=args.platform_fee_cents,
+            retention_consent=args.retention_consent,
+            transfer_provider=args.transfer_provider,
+            idempotency_key=args.idempotency_key,
+            simulate_transfer_failure=args.simulate_transfer_failure,
+        )
+    except (EconomicLoopError, MarketError) as exc:
+        print_json({"schema": "agent-bounty-settlement-allocation-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_economic_loop_spend_retained(args: argparse.Namespace) -> int:
+    market = open_market(args.db)
+    try:
+        save_solver_operating_policy(
+            market,
+            default_solver_operating_policy(
+                solver_id=args.solver_id,
+                allowed_projects=[args.target_project_id],
+                allowed_repositories=[args.repo],
+                allowed_issue_classes=[args.issue_class],
+                required_verifier_ids=[args.verifier_id],
+                max_spend_cents=args.amount_cents,
+                human_approval_threshold_cents=args.amount_cents,
+                allowed_currencies=[args.currency],
+            ),
+        )
+        result = spend_retained_credit_to_project(
+            market,
+            solver_id=args.solver_id,
+            target_project_id=args.target_project_id,
+            repo_full_name=args.repo,
+            amount=args.amount_cents,
+            currency=args.currency,
+            title=args.title,
+            issue_class=args.issue_class,
+            verifier_id=args.verifier_id,
+            base_commit=args.base_commit,
+            idempotency_key=args.idempotency_key,
+            issue_number=args.issue_number,
+        )
+    except (EconomicLoopError, MarketError, GitHubIntegrationError) as exc:
+        print_json({"schema": "agent-bounty-solver-operating-spend-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_demo_economic_loop(args: argparse.Namespace) -> int:
+    market = open_market(args.db, verifier_timeout=args.verifier_timeout)
+    try:
+        result = run_demo_economic_loop(
+            market,
+            motoko_repo=Path(args.motoko_repo) if args.motoko_repo else None,
+            external_transfer_amount=args.external_transfer_cents,
+            retained_operating_amount=args.retained_operating_cents,
+            platform_fee_amount=args.platform_fee_cents,
+        )
+    except (EconomicLoopError, SolverAgentError, ProjectAgentError, MarketError, GitHubIntegrationError) as exc:
+        print_json({"schema": "agent-bounty-demo-economic-loop-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def open_trusted_market(db_path: str | Path, *, verifier_timeout: float = 60.0) -> AgentBountyMarket:
     conn = connect(db_path)
     return AgentBountyMarket(conn, FakePaymentGateway(), ProtectedVerifierRunner(timeout_seconds=verifier_timeout))
@@ -1694,6 +1785,49 @@ def build_parser() -> argparse.ArgumentParser:
     demo_solver.add_argument("--motoko-repo")
     demo_solver.add_argument("--verifier-timeout", type=float, default=60.0)
     demo_solver.set_defaults(func=cmd_demo_solver_motoko)
+
+    economic_loop = sub.add_parser("economic-loop", help="inspect and operate split settlement plus retained-credit spend")
+    economic_loop_sub = economic_loop.add_subparsers(dest="economic_loop_command", required=True)
+
+    economic_status = economic_loop_sub.add_parser("status", help="show economic-loop fake/real integration readiness")
+    economic_status.set_defaults(func=cmd_economic_loop_status)
+
+    economic_allocate = economic_loop_sub.add_parser("allocate", help="split an accepted reward into external transfer and retained operating credit")
+    economic_allocate.add_argument("--db", required=True)
+    economic_allocate.add_argument("--bounty-id", default=DEFAULT_BOUNTY_ID)
+    economic_allocate.add_argument("--external-transfer-cents", type=int, default=None)
+    economic_allocate.add_argument("--retained-operating-cents", type=int, default=0)
+    economic_allocate.add_argument("--platform-fee-cents", type=int, default=0)
+    economic_allocate.add_argument("--retention-consent", action="store_true")
+    economic_allocate.add_argument("--transfer-provider", choices=["fake", "stripe"], default="fake")
+    economic_allocate.add_argument("--idempotency-key")
+    economic_allocate.add_argument("--simulate-transfer-failure", action="store_true")
+    economic_allocate.add_argument("--verifier-timeout", type=float, default=60.0)
+    economic_allocate.set_defaults(func=cmd_economic_loop_allocate)
+
+    economic_spend = economic_loop_sub.add_parser("spend-retained", help="spend retained solver operating credit into a new bounded project bounty")
+    economic_spend.add_argument("--db", required=True)
+    economic_spend.add_argument("--solver-id", default="solver_python_terminal_tui")
+    economic_spend.add_argument("--target-project-id", default=DEFAULT_SECOND_PROJECT_ID)
+    economic_spend.add_argument("--repo", default="lk251/motoko")
+    economic_spend.add_argument("--amount-cents", type=int, default=500)
+    economic_spend.add_argument("--currency", default=DEFAULT_CURRENCY)
+    economic_spend.add_argument("--title", default="Follow-up bounty funded from retained solver operating credit")
+    economic_spend.add_argument("--issue-class", default="machine-verifiable-tui-regression")
+    economic_spend.add_argument("--verifier-id", default=DEFAULT_SECOND_VERIFIER_ID)
+    economic_spend.add_argument("--base-commit", default=DEFAULT_BASE_COMMIT)
+    economic_spend.add_argument("--issue-number", type=int)
+    economic_spend.add_argument("--idempotency-key")
+    economic_spend.set_defaults(func=cmd_economic_loop_spend_retained)
+
+    demo_economic = sub.add_parser("demo-economic-loop", help="run deterministic earn -> retain -> spend loop")
+    demo_economic.add_argument("--db", required=True)
+    demo_economic.add_argument("--motoko-repo")
+    demo_economic.add_argument("--external-transfer-cents", type=int, default=2000)
+    demo_economic.add_argument("--retained-operating-cents", type=int, default=500)
+    demo_economic.add_argument("--platform-fee-cents", type=int, default=0)
+    demo_economic.add_argument("--verifier-timeout", type=float, default=60.0)
+    demo_economic.set_defaults(func=cmd_demo_economic_loop)
 
     status = sub.add_parser("stripe-status", help="show safe Stripe sandbox configuration status")
     status.set_defaults(func=cmd_stripe_status)

@@ -56,9 +56,10 @@ duplicate funding/reserve, exclusive claims, wrong-solver submission, stale SHA
 rejection, baseline/intermediate/final Motoko verdicts, candidate-owned verifier
 irrelevance, timeout/malformed verifier output, receipt binding, verifier
 recovery after incomplete `running` rows, fake-gateway payout retry, paid payout
-replay, Stripe Checkout request mapping, signed webhook funding, Connect
-Transfer request/retrieval binding, non-negative balances, reconciliation, and
-restart idempotency.
+replay, split settlement allocation, retained solver operating credit, Stripe
+Checkout request mapping, signed webhook funding, Connect Transfer
+request/retrieval binding, non-negative balances, reconciliation, and restart
+idempotency.
 
 Check the optional OpenShell backend:
 
@@ -237,3 +238,23 @@ python -m agent_bounty demo-solver-motoko \
 The default demo truthfully reports the fake solver runtime and local isolated
 fallback backend. Real Hermes/OpenShell/NemoClaw execution remains gated. See
 `docs/solver-agent.md`.
+
+## Economic Loop
+
+The split settlement path proves `earn -> retain -> spend`: an accepted solver
+reward can be split into an external transfer portion and a retained operating
+credit portion, then the retained credit can fund a second allowlisted bounty.
+Retention requires explicit operator consent; without consent the default is a
+full external transfer. Retained credit is an internal liability/operating
+balance, not money in an AI bank account.
+
+Run the deterministic proof:
+
+```bash
+python -m agent_bounty demo-economic-loop \
+  --db .demo/economic-loop.sqlite3 \
+  --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
+```
+
+The command reports fake versus real truth explicitly. See
+`docs/economic-loop.md`.

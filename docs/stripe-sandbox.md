@@ -95,6 +95,9 @@ python -m agent_bounty stripe-reconcile \
 - A bounty reservation is internal ledger movement from available to reserved.
 - A Connect Transfer moves platform Stripe balance to a connected account
   balance after an accepted verifier receipt.
+- `demo-economic-loop` is a deterministic split-retain-spend proof by default.
+  It records fake external transfer IDs and references prior real sandbox
+  evidence, but it does not create a real split Connect Transfer.
 - A bank payout is not part of this milestone.
 
 Plain `stripe-reconcile` is local and safe without credentials. `--remote`

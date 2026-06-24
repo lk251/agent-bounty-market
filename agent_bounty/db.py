@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -24,10 +24,10 @@ def init_db(conn: sqlite3.Connection) -> None:
             value TEXT NOT NULL
         );
 
-        INSERT INTO meta(key, value) VALUES ('schema_version', '9')
+        INSERT INTO meta(key, value) VALUES ('schema_version', '10')
         ON CONFLICT(key) DO UPDATE SET
             value = CASE
-                WHEN CAST(value AS INTEGER) < 9 THEN '9'
+                WHEN CAST(value AS INTEGER) < 10 THEN '10'
                 ELSE value END;
 
         CREATE TABLE IF NOT EXISTS projects (
@@ -546,6 +546,67 @@ def init_db(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             idempotency_key TEXT NOT NULL UNIQUE
         );
+
+        CREATE TABLE IF NOT EXISTS settlement_policies (
+            id TEXT PRIMARY KEY,
+            solver_id TEXT NOT NULL REFERENCES solver_identities(id),
+            policy_json TEXT NOT NULL,
+            policy_digest TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL UNIQUE
+        );
+
+        CREATE TABLE IF NOT EXISTS settlement_allocations (
+            id TEXT PRIMARY KEY,
+            bounty_id TEXT NOT NULL UNIQUE REFERENCES bounties(id),
+            solver_id TEXT NOT NULL REFERENCES solver_identities(id),
+            accepted_receipt_id TEXT NOT NULL REFERENCES verification_receipts(id),
+            payout_id TEXT REFERENCES payouts(id),
+            reward_amount INTEGER NOT NULL CHECK(reward_amount > 0),
+            external_transfer_amount INTEGER NOT NULL CHECK(external_transfer_amount >= 0),
+            retained_operating_amount INTEGER NOT NULL CHECK(retained_operating_amount >= 0),
+            platform_fee_amount INTEGER NOT NULL CHECK(platform_fee_amount >= 0),
+            currency TEXT NOT NULL,
+            retention_consent INTEGER NOT NULL DEFAULT 0 CHECK(retention_consent IN (0, 1)),
+            transfer_provider TEXT NOT NULL,
+            gateway_transfer_id TEXT,
+            transfer_status TEXT NOT NULL,
+            allocation_json TEXT NOT NULL,
+            allocation_digest TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL UNIQUE,
+            CHECK(reward_amount = external_transfer_amount + retained_operating_amount + platform_fee_amount)
+        );
+
+        CREATE TABLE IF NOT EXISTS solver_operating_policies (
+            id TEXT PRIMARY KEY,
+            solver_id TEXT NOT NULL REFERENCES solver_identities(id),
+            policy_json TEXT NOT NULL,
+            policy_digest TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS solver_operating_spends (
+            id TEXT PRIMARY KEY,
+            solver_id TEXT NOT NULL REFERENCES solver_identities(id),
+            source_allocation_id TEXT REFERENCES settlement_allocations(id),
+            target_project_id TEXT NOT NULL REFERENCES projects(id),
+            target_bounty_id TEXT NOT NULL REFERENCES bounties(id),
+            repo_full_name TEXT NOT NULL,
+            amount INTEGER NOT NULL CHECK(amount > 0),
+            currency TEXT NOT NULL,
+            status TEXT NOT NULL,
+            github_issue_url TEXT,
+            contract_digest TEXT,
+            spend_json TEXT NOT NULL,
+            spend_digest TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL UNIQUE
+        );
         """
     )
     _ensure_column(conn, "verification_receipts", "project_id", "TEXT")
@@ -594,6 +655,10 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_solver_agent_executions_bounty ON solver_agent_executions(bounty_id, status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_solver_agent_submissions_bounty ON solver_agent_submissions(bounty_id, status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_solver_agent_capabilities_solver ON solver_agent_capability_events(solver_id, outcome)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_settlement_allocations_solver ON settlement_allocations(solver_id, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_solver_operating_policies_solver ON solver_operating_policies(solver_id, updated_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_solver_operating_spends_solver ON solver_operating_spends(solver_id, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_solver_operating_spends_bounty ON solver_operating_spends(target_bounty_id)")
     conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))
     conn.commit()
 

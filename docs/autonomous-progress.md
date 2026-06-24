@@ -160,3 +160,60 @@ Current external blockers:
 No real Hermes solver wrapper, no configured OpenShell/NemoClaw backend, and no
 reviewed safe live issue for a real live solve.
 ```
+
+## Issue #4: Real Stripe Settlement and Earn -> Retain -> Spend
+
+Status: implementation in progress; deterministic split-retain-spend loop is
+implemented. Real prior Stripe sandbox evidence exists for full-transfer
+settlement, but a real split-Stripe-transfer adapter is not claimed by the new
+economic-loop command.
+
+Implemented so far:
+
+- schema v10 settlement and operating-credit tables:
+  `settlement_policies`, `settlement_allocations`,
+  `solver_operating_policies`, and `solver_operating_spends`;
+- solver operating ledger accounts for available, reserved, and spent operating
+  credit;
+- explicit settlement policy with exact reward split, operator retention
+  consent, and full-external-transfer default when no retention is authorized;
+- split allocation from accepted reward to external payout, retained operating
+  credit, and optional platform fee;
+- external portion creates the only payout/transfer record;
+- retained credit is tracked as internal operating balance, not an AI bank
+  account;
+- retained-credit spend policy for allowlisted project, repo, issue class,
+  verifier, currency, amount, human threshold, and balance;
+- retained-credit spend into a second digest-bound fake-GitHub bounty contract;
+- retry/replay/reversal handling for deterministic split transfers;
+- `economic-loop status`, `economic-loop allocate`,
+  `economic-loop spend-retained`, and `demo-economic-loop` commands;
+- `docs/economic-loop.md` plus README, architecture, threat-model, and Stripe
+  runbook updates.
+
+Validation run so far:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/economic_loop.py agent_bounty/cli.py agent_bounty/db.py tests/test_economic_loop.py
+nix develop --command python3 -m unittest tests.test_economic_loop
+nix develop --command python3 -m agent_bounty demo-economic-loop --db "$tmpdir/economic.sqlite3" --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
+```
+
+Observed results:
+
+- focused economic-loop tests: 9 passed;
+- deterministic `demo-economic-loop`: `ok=true`;
+- allocation split: 2500 reward -> 2000 fake external transfer + 500 retained
+  operating credit + 0 platform fee;
+- retained-credit spend: 500 funds second fake-GitHub bounty contract;
+- replay of allocation and spend returns replayed rows without duplicate
+  ledger movement.
+
+Current external blocker:
+
+```text
+No reviewed real split Stripe Connect Transfer adapter is implemented. The
+existing safe real sandbox evidence in docs/chatgpt-pro-stripe-blocker-report.md
+covers a full-transfer Stripe loop, while demo-economic-loop truthfully runs
+the split-retain-spend path with deterministic fake external transfer IDs.
+```

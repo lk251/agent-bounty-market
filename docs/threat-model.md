@@ -61,6 +61,20 @@
 - Accepted solver outcomes update capability and settlement eligibility exactly
   once. Rejected outcomes record history but grant no earnings or verified
   capability.
+- Split settlement cannot run until a protected verifier has accepted the work
+  and released the reward into solver earned balance.
+- Settlement allocation must sum exactly to the accepted reward. Replays with a
+  different split fail closed.
+- Retained solver operating credit requires explicit operator consent; the
+  default without consent is full external transfer.
+- Retained operating credit is policy-gated before it can fund another project:
+  target project, repository, issue class, verifier, currency, amount, human
+  threshold, reserve floor, and available balance are checked by trusted code.
+- The deterministic economic-loop demo uses `fake_transfer_...` IDs and does
+  not claim real Stripe settlement. Only reviewed Stripe-created `tr_...`
+  objects are treated as real Connect Transfers.
+- Transfer failure, retry, replay, and reversal paths preserve durable state
+  without duplicating earned or retained balances.
 - Secrets are not required for tests or demo execution.
 
 ## Not Yet Protected
@@ -83,5 +97,9 @@ runs when a host has an approved `openshell` sandbox available.
   the runtime is installed and a reviewed JSON wrapper is configured.
 - Exercise the solver-agent live-solve path against real Hermes/NemoClaw/OpenShell
   and a reviewed safe live issue.
+- Add a reviewed real split-Stripe-transfer adapter if the product requires
+  external settlement of only part of an accepted reward. The current real
+  sandbox evidence covers full-transfer settlement; split-retain-spend is
+  deterministic by default.
 - Replace the current local-process verifier isolation with the
   sponsor-prescribed sandbox once that runtime is available.

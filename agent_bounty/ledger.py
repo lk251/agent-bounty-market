@@ -141,6 +141,18 @@ def solver_paid_account(solver_id: str) -> str:
     return f"solver:{solver_id}:paid"
 
 
+def solver_operating_available_account(solver_id: str) -> str:
+    return f"solver:{solver_id}:operating_available"
+
+
+def solver_operating_reserved_account(solver_id: str) -> str:
+    return f"solver:{solver_id}:operating_reserved"
+
+
+def solver_operating_spent_account(solver_id: str) -> str:
+    return f"solver:{solver_id}:operating_spent"
+
+
 def external_account(name: str) -> str:
     return f"external:{name}"
 

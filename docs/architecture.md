@@ -13,6 +13,9 @@ Agent Bounty Market is a local transaction core with four trust zones:
    bounties while trusted code enforces spending policy.
 7. **Solver agents**: specialized seller profiles that underwrite, claim,
    execute, submit, and learn only through protected verification outcomes.
+8. **Economic loop**: accepted solver earnings can be split into external
+   settlement and retained operating credit, then used for bounded follow-up
+   bounty creation.
 
 The orchestrator owns bounty state, idempotency, ledger entries, verification
 receipts, and payout decisions. The candidate can supply code, but not the
@@ -44,6 +47,22 @@ Project treasury, bounty, receipt, and payout currency must match. Funding,
 reserve, verification, refund, and payout updates happen inside SQLite
 transactions. Internal accounts are constrained non-negative, and idempotency
 keys are bound to their original arguments.
+
+Accepted work first releases the full reward from project reserved funds into
+`solver:<id>:earned`. The split settlement layer can then move that exact earned
+balance into:
+
+- an external payout portion through `solver:<id>:payout_transit` to
+  `solver:<id>:paid`;
+- a retained operating-credit portion to
+  `solver:<id>:operating_available`;
+- an optional platform fee to `platform:fees`.
+
+The split must sum exactly to the reward. Retained operating credit requires
+explicit operator consent; without consent the default policy is full external
+transfer. Retained credit can fund only allowlisted follow-up project bounties
+through trusted host policy. It is an internal liability/operating balance, not
+money in an AI-owned bank account.
 
 ## Verification
 
@@ -122,6 +141,20 @@ verification result. Capability/economics update exactly once and only after the
 protected verifier result.
 
 See `docs/solver-agent.md`.
+
+## Economic-Loop Boundary
+
+The economic-loop path composes the project-agent, solver-agent, ledger, payout,
+and fake-GitHub contract boundaries. Agent output can recommend or demonstrate
+the loop, but trusted code enforces allocation sums, consent, spend policy,
+balance checks, replay idempotency, and digest-bound second-bounty publication.
+
+The deterministic demo uses fake external transfer IDs and says so explicitly.
+Only `tr_...` objects created and retrieved through the reviewed Stripe path are
+real Stripe Connect Transfers. Prior real sandbox full-transfer evidence is
+recorded separately in `docs/chatgpt-pro-stripe-blocker-report.md`.
+
+See `docs/economic-loop.md`.
 
 ## Payment Boundary
 
