@@ -217,3 +217,64 @@ existing safe real sandbox evidence in docs/chatgpt-pro-stripe-blocker-report.md
 covers a full-transfer Stripe loop, while demo-economic-loop truthfully runs
 the split-retain-spend path with deterministic fake external transfer IDs.
 ```
+
+## Issue #5: Presentation Demo and Submission Package
+
+Status: implementation in progress; dependency-free local/replay presentation
+harness and submission packet are implemented. Full live sponsor-integrated run
+is externally blocked by missing real GitHub/Hermes/OpenShell configuration and
+the missing real split-transfer adapter.
+
+Implemented so far:
+
+- `demo-preflight --mode local|replay|live` with safe status reporting for repo,
+  Motoko fixture, schema, GitHub, Stripe, project-agent, solver-agent,
+  OpenShell, ports, runtime, and secret-file checks;
+- `demo-local` and `demo-rehearse --mode local` running the deterministic
+  end-to-end economic loop from fresh state;
+- sanitized bundle capture with `manifest.json`, `bundle.json`, and
+  event-backed `dashboard.html`;
+- `demo-replay` and `demo-rehearse --mode replay` bundle validation with digest
+  checks and fake/live truth checks;
+- `demo-live` honest refusal until live prerequisites are configured;
+- `demo-reset --yes` that deletes only `.demo` state;
+- static dashboard rendering project, agent decision, trust/economics, and
+  compounding cards from persisted records;
+- `docs/demo-presentation.md`;
+- submission packet: `DEMO_SCRIPT.md`, `SHOT_LIST.md`, `SUBMISSION.md`,
+  `TWEET.md`, `FORM_ANSWERS.md`, `LIMITATIONS.md`, and `ARCHITECTURE.mmd`;
+- placeholder `demo/bundles/winning-run/README.md` for the future
+  authenticated recorded-real bundle.
+
+Validation run so far:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/demo_presentation.py agent_bounty/cli.py
+nix develop --command python3 -m unittest tests.test_demo_presentation
+nix develop --command python3 -m agent_bounty demo-preflight --mode local
+nix develop --command python3 -m agent_bounty demo-rehearse --mode local --db "$tmpdir/local.sqlite3" --bundle "$tmpdir/bundle" --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
+nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle "$tmpdir/bundle"
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+git diff --check --cached
+git diff --check
+```
+
+Observed results:
+
+- focused demo presentation tests: 5 passed;
+- local preflight: `ok=true`;
+- local rehearsal: `ok=true`, about 15.7 seconds in this run;
+- replay rehearsal: `ok=true`.
+- full test suite: 101 passed, 2 skipped;
+- `nix flake check`: all checks passed.
+
+Current external blockers:
+
+```text
+No real GitHub credentials/webhook, no real Hermes project/solver wrapper, no
+OpenShell/NemoClaw backend, and no reviewed real split Stripe Connect Transfer
+adapter are configured. The current presentation can truthfully demonstrate the
+complete local loop and replay validated local bundles, but not claim a full
+live sponsor-integrated run.
+```

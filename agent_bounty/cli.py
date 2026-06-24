@@ -12,6 +12,15 @@ from typing import Any
 
 from .core import AgentBountyMarket, MarketError
 from .db import connect
+from .demo_presentation import (
+    DemoPresentationError,
+    demo_preflight_report,
+    live_refusal_report,
+    rehearse_demo,
+    replay_bundle,
+    reset_demo_state,
+    run_local_demo,
+)
 from .economic_loop import (
     DEFAULT_SECOND_PROJECT_ID,
     DEFAULT_SECOND_VERIFIER_ID,
@@ -1105,6 +1114,79 @@ def cmd_demo_economic_loop(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def cmd_demo_preflight(args: argparse.Namespace) -> int:
+    try:
+        result = demo_preflight_report(
+            mode=args.mode,
+            db_path=Path(args.db) if args.db else None,
+            motoko_repo=Path(args.motoko_repo) if args.motoko_repo else None,
+        )
+    except DemoPresentationError as exc:
+        print_json({"schema": "agent-bounty-demo-preflight-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") or args.mode != "live" else 1
+
+
+def cmd_demo_local(args: argparse.Namespace) -> int:
+    try:
+        result = run_local_demo(
+            db_path=Path(args.db) if args.db else None,
+            motoko_repo=Path(args.motoko_repo) if args.motoko_repo else None,
+            bundle_dir=Path(args.bundle) if args.bundle else None,
+            fresh=not args.reuse,
+        )
+    except (DemoPresentationError, EconomicLoopError, SolverAgentError, ProjectAgentError, MarketError, GitHubIntegrationError) as exc:
+        print_json({"schema": "agent-bounty-demo-local-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    print_json({"schema": "agent-bounty-demo-local-v1", **result})
+    return 0 if result.get("ok") else 1
+
+
+def cmd_demo_live(args: argparse.Namespace) -> int:
+    result = live_refusal_report(
+        db_path=Path(args.db) if args.db else None,
+        motoko_repo=Path(args.motoko_repo) if args.motoko_repo else None,
+    )
+    print_json(result)
+    return 1
+
+
+def cmd_demo_replay(args: argparse.Namespace) -> int:
+    try:
+        result = replay_bundle(Path(args.bundle))
+    except DemoPresentationError as exc:
+        print_json({"schema": "agent-bounty-demo-replay-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_demo_rehearse(args: argparse.Namespace) -> int:
+    try:
+        result = rehearse_demo(
+            mode=args.mode,
+            db_path=Path(args.db) if args.db else None,
+            motoko_repo=Path(args.motoko_repo) if args.motoko_repo else None,
+            bundle_dir=Path(args.bundle) if args.bundle else None,
+        )
+    except (DemoPresentationError, EconomicLoopError, SolverAgentError, ProjectAgentError, MarketError, GitHubIntegrationError) as exc:
+        print_json({"schema": "agent-bounty-demo-rehearsal-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_demo_reset(args: argparse.Namespace) -> int:
+    try:
+        result = reset_demo_state(Path(args.path) if args.path else None, yes=args.yes)
+    except DemoPresentationError as exc:
+        print_json({"schema": "agent-bounty-demo-reset-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json(result)
+    return 0
+
+
 def open_trusted_market(db_path: str | Path, *, verifier_timeout: float = 60.0) -> AgentBountyMarket:
     conn = connect(db_path)
     return AgentBountyMarket(conn, FakePaymentGateway(), ProtectedVerifierRunner(timeout_seconds=verifier_timeout))
@@ -1828,6 +1910,40 @@ def build_parser() -> argparse.ArgumentParser:
     demo_economic.add_argument("--platform-fee-cents", type=int, default=0)
     demo_economic.add_argument("--verifier-timeout", type=float, default=60.0)
     demo_economic.set_defaults(func=cmd_demo_economic_loop)
+
+    demo_preflight = sub.add_parser("demo-preflight", help="check demo readiness without exposing secrets")
+    demo_preflight.add_argument("--mode", choices=["local", "replay", "live"], default="local")
+    demo_preflight.add_argument("--db")
+    demo_preflight.add_argument("--motoko-repo")
+    demo_preflight.set_defaults(func=cmd_demo_preflight)
+
+    demo_local = sub.add_parser("demo-local", help="run local simulation and write a sanitized bundle/dashboard")
+    demo_local.add_argument("--db")
+    demo_local.add_argument("--motoko-repo")
+    demo_local.add_argument("--bundle")
+    demo_local.add_argument("--reuse", action="store_true", help="reuse existing DB instead of starting fresh")
+    demo_local.set_defaults(func=cmd_demo_local)
+
+    demo_live = sub.add_parser("demo-live", help="preflight and refuse unless all live integrations are configured")
+    demo_live.add_argument("--db")
+    demo_live.add_argument("--motoko-repo")
+    demo_live.set_defaults(func=cmd_demo_live)
+
+    demo_replay = sub.add_parser("demo-replay", help="validate and replay a sanitized evidence bundle")
+    demo_replay.add_argument("--bundle", required=True)
+    demo_replay.set_defaults(func=cmd_demo_replay)
+
+    demo_rehearse = sub.add_parser("demo-rehearse", help="run a timed rehearsal in local, replay, or live mode")
+    demo_rehearse.add_argument("--mode", choices=["local", "replay", "live"], required=True)
+    demo_rehearse.add_argument("--db")
+    demo_rehearse.add_argument("--motoko-repo")
+    demo_rehearse.add_argument("--bundle")
+    demo_rehearse.set_defaults(func=cmd_demo_rehearse)
+
+    demo_reset = sub.add_parser("demo-reset", help="delete .demo state only after explicit confirmation")
+    demo_reset.add_argument("--path")
+    demo_reset.add_argument("--yes", action="store_true")
+    demo_reset.set_defaults(func=cmd_demo_reset)
 
     status = sub.add_parser("stripe-status", help="show safe Stripe sandbox configuration status")
     status.set_defaults(func=cmd_stripe_status)

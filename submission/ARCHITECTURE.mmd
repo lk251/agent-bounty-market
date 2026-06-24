@@ -1,0 +1,14 @@
+flowchart LR
+  Project[Project budget and policy] --> Buyer[Project agent buyer]
+  Buyer --> Contract[GitHub bounty contract]
+  Contract --> Solvers[Specialized solver agents]
+  Solvers --> Claim[Claim and PR evidence]
+  Claim --> Sandbox[OpenShell / NemoClaw boundary]
+  Sandbox --> Verifier[Protected verifier]
+  Verifier --> Receipt[Accepted receipt]
+  Receipt --> Ledger[Trusted market ledger]
+  Ledger --> Stripe[Stripe sandbox / Connect]
+  Ledger --> Retained[Retained solver operating credit]
+  Retained --> NextBounty[Next bounded bounty]
+  Contract --> Events[GitHub events]
+  Events --> Ledger

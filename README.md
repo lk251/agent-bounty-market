@@ -258,3 +258,19 @@ python -m agent_bounty demo-economic-loop \
 
 The command reports fake versus real truth explicitly. See
 `docs/economic-loop.md`.
+
+## Presentation Demo
+
+The judge-facing demo harness has honest live, replay, and local modes:
+
+```bash
+python -m agent_bounty demo-preflight --mode local
+python -m agent_bounty demo-rehearse --mode local
+python -m agent_bounty demo-replay --bundle .demo/bundles/local-rehearsal
+python -m agent_bounty demo-live
+```
+
+`demo-local` and `demo-rehearse --mode local` write a sanitized bundle and a
+static `dashboard.html` backed by persisted SQLite records. `demo-live` refuses
+to run unless real GitHub, Hermes/NVIDIA/OpenShell, and Stripe prerequisites are
+configured. See `docs/demo-presentation.md` and `submission/`.
