@@ -88,8 +88,10 @@ isolation with scrubbed environment, temporary state, a new process group,
 timeouts, bounded output, and resource limits where Python exposes them. It is
 not equivalent to NemoClaw/OpenShell, seccomp, containers, or VM boundaries.
 
-The OpenShell backend is adapter-ready and reports a policy digest, but it only
-runs when a host has an approved `openshell` sandbox available.
+The OpenShell/NemoClaw path now has a project-owned deny-by-default policy and
+manifest under `nvidia/openshell/`, plus `nvidia-runtime-status` and
+`demo-nvidia-sandbox` commands. It only claims `real_backend=true` when a host
+actually has Docker, OpenShell, an approved sandbox, and policy digests ready.
 
 ## Next Hardening
 

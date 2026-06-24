@@ -29,6 +29,7 @@ SENSITIVE_ENV_PREFIXES = (
     "GOOGLE_",
     "HF_",
     "HUGGINGFACE_",
+    "NVIDIA_",
     "STRIPE_",
     "SOPS_",
     "SSH_",
@@ -478,5 +479,11 @@ def openshell_status() -> dict[str, object]:
 
 
 def default_openshell_policy_file() -> Path | None:
-    path = Path(__file__).resolve().parents[1] / "verifiers" / "motoko_issue_1_v2" / "openshell-policy.yaml"
-    return path if path.exists() else None
+    root = Path(__file__).resolve().parents[1]
+    for path in (
+        root / "nvidia" / "openshell" / "agent-bounty-policy.yaml",
+        root / "verifiers" / "motoko_issue_1_v2" / "openshell-policy.yaml",
+    ):
+        if path.exists():
+            return path
+    return None

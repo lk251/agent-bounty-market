@@ -1,0 +1,130 @@
+schema: agent-bounty-openshell-policy-v1
+name: agent-bounty-market-verifier
+description: Deny-by-default OpenShell policy for Agent Bounty Market candidate verification.
+default: deny
+
+trust_zones:
+  host_trusted_orchestrator: outside_sandbox
+  host_github_stripe_adapters: outside_sandbox
+  host_protected_verifier_receipts: outside_sandbox
+  sandbox_agent_solver_workspace: inside_sandbox
+  sandbox_candidate_checkout: untrusted_inside_sandbox
+
+filesystem:
+  readonly_mounts:
+    - task_package
+    - selected_repository_files
+    - public_tests
+    - solver_profile
+    - solver_skills
+  writable_mounts:
+    - candidate_worktree
+    - ephemeral_home
+    - ephemeral_tmp
+  forbidden_mounts:
+    - user_home
+    - .ssh
+    - .netrc
+    - .git-credentials
+    - .env
+    - .demo
+    - motoko_private_state
+    - host_verifier_policy
+    - host_receipt_destination
+
+network:
+  default: deny
+  denied:
+    - public_internet
+    - github_api
+    - stripe_api
+    - arbitrary_dns
+  inference_allowlist:
+    - name: nvidia_nim_models
+      env_base_url: NVIDIA_BASE_URL
+      default_host: integrate.api.nvidia.com
+      methods: [GET]
+      paths: [/v1/models]
+    - name: nvidia_nim_chat
+      env_base_url: NVIDIA_BASE_URL
+      default_host: integrate.api.nvidia.com
+      methods: [POST]
+      paths: [/v1/chat/completions, /v1/responses]
+
+process:
+  default: deny
+  allowed_binaries:
+    - bash
+    - env
+    - python3
+    - git
+    - hermes
+    - node
+    - npm
+    - timeout
+    - cat
+    - sed
+    - grep
+    - rg
+    - mkdir
+    - rm
+    - cp
+    - mv
+    - chmod
+    - test
+  limits:
+    cpu_seconds: 300
+    wall_seconds: 600
+    memory_mib: 4096
+    processes: 128
+    open_files: 128
+    output_bytes: 2000000
+
+credentials:
+  policy: host_brokered_only
+  forbidden_environment_prefixes:
+    - AWS_
+    - AZURE_
+    - GCP_
+    - GITHUB_
+    - GH_
+    - OPENAI_
+    - ANTHROPIC_
+    - GOOGLE_
+    - HF_
+    - HUGGINGFACE_
+    - STRIPE_
+    - SOPS_
+    - SSH_
+    - NVIDIA_API_KEY
+  brokered_only:
+    - NVIDIA_API_KEY
+    - NVIDIA_BASE_URL
+    - AGENT_BOUNTY_NVIDIA_MODEL_ID
+
+cleanup:
+  sandbox_teardown_required: true
+  remove_ephemeral_home: true
+  remove_candidate_state: true
+  snapshot_exclude_globs:
+    - .env
+    - "*token*"
+    - "*secret*"
+    - "*key*"
+    - ".ssh/**"
+    - ".netrc"
+    - ".git-credentials"
+    - ".demo/**"
+    - "motoko_private_state/**"
+
+receipts:
+  host_generated: true
+  bind:
+    - backend
+    - backend_digest
+    - policy_digest
+    - sandbox_name
+    - openshell_version
+    - image_identity
+    - candidate_commit
+    - base_commit

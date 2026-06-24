@@ -137,11 +137,14 @@ enforces claim policy before an exclusive lease is acquired.
 
 Execution is recorded through the strongest configured backend. The current demo
 uses deterministic Motoko replay and labels the backend as
-`local-isolated-process-fallback`; OpenShell/NemoClaw is reported as blocked
-until configured. PR evidence packages bind contract digest, solver profile,
-base/candidate SHAs, changed files, command/output digests, limitations, and
-verification result. Capability/economics update exactly once and only after the
-protected verifier result.
+`local-isolated-process-fallback`. The OpenShell/NemoClaw boundary is represented
+by `nvidia-runtime-status`, `demo-nvidia-sandbox`, and the project-owned policy
+under `nvidia/openshell/`; it reports a real backend only when Docker,
+OpenShell, an approved sandbox, and policy digests are present. PR evidence
+packages bind contract digest, solver profile, base/candidate SHAs, changed
+files, command/output digests, limitations, and verification result.
+Capability/economics update exactly once and only after the protected verifier
+result.
 
 Solver fit decisions can use a separate reviewed Hermes solver wrapper. The
 wrapper is advisory only; trusted code still validates capability, margin,

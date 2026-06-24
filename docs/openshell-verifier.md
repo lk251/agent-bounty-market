@@ -18,15 +18,19 @@ OpenShell execution path. This repo exposes the lower-level `openshell` adapter
 only as a verifier backend boundary; production deployment should decide whether
 to wrap it with NemoClaw registry names or raw OpenShell sandbox names.
 
-The intended OpenShell policy artifact is
-`verifiers/motoko_issue_1_v2/openshell-policy.yaml`. It declares deny-by-default
-network behavior and no candidate-visible credentials. The status command hashes
+The current OpenShell policy artifact is
+`nvidia/openshell/agent-bounty-policy.yaml`; the older verifier-local policy is
+kept as a compatibility fallback. The project policy declares deny-by-default
+network behavior and no candidate-visible credentials. The status commands hash
 that file into `policy_digest`.
 
 Inspect availability:
 
 ```bash
 python -m agent_bounty openshell-status
+python -m agent_bounty nvidia-runtime-status
+python -m agent_bounty demo-nvidia-sandbox \
+  --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
 ```
 
 Current HB3 result at implementation time:

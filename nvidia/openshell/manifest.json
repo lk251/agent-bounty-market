@@ -1,0 +1,43 @@
+{
+  "schema": "agent-bounty-openshell-manifest-v1",
+  "created_at": "2026-06-24T15:48:18Z",
+  "sandbox_name": "agent-bounty-verifier",
+  "policy_file": "nvidia/openshell/agent-bounty-policy.yaml",
+  "official_sources": {
+    "nvidia_blog": "https://developer.nvidia.com/blog/deploy-self-evolving-agents-for-faster-more-secure-research-with-a-hermes-agent-and-nvidia-nemoclaw/",
+    "openshell_repo": "https://github.com/NVIDIA/OpenShell",
+    "openshell_docs": "https://docs.nvidia.com/openshell/get-started/quickstart",
+    "nemoclaw_repo": "https://github.com/NVIDIA/NemoClaw",
+    "nemoclaw_community_repo": "https://github.com/NVIDIA/nemoclaw-community"
+  },
+  "observed_sources": {
+    "openshell_main": "2c545893ed247d4e04b585377d7bda8f24fd93dd",
+    "openshell_v0.0.38_tag": "dfd47683e7da4f1a4a8fa5d77f92d3696e6a41f9",
+    "openshell_v0.0.68_tag": "d64542f69d06694cbd203b64929d286dd0533bbb",
+    "nemoclaw_main": "17d03317b042b56da8147a2e7d1955408c11d22d",
+    "nemoclaw_community_main": "cea4ae01a0e2d7d359d37ed52b5bb454a226ca1b",
+    "openshell_install_sh_sha256": "c15d6cb8090e1c7c8d79a320b5bcbdaf1c15c2363942d81e84b56e03b836249e"
+  },
+  "install_policy": {
+    "pipe_remote_script_directly": false,
+    "download_and_inspect_first": true,
+    "sudo_or_system_service_changes": "operator_approval_required",
+    "preferred_host_install": "user_owned_when_supported"
+  },
+  "completion_truth": {
+    "fallback_allowed": true,
+    "fallback_label": "real_backend=false",
+    "real_backend_requires": [
+      "docker_ready",
+      "openshell_cli_ready",
+      "approved_sandbox_ready",
+      "policy_digest_recorded"
+    ],
+    "real_hermes_in_sandbox_requires": [
+      "real_backend",
+      "NVIDIA_API_KEY",
+      "AGENT_BOUNTY_NVIDIA_MODEL_ID",
+      "Hermes CLI inside sandbox"
+    ]
+  }
+}

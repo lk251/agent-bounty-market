@@ -376,3 +376,108 @@ Truth status:
   deterministic fallback bundle with the NVIDIA blocker recorded.
 
 Next issue: #9 after issue #8 handoff comment and push.
+
+## Issue #9: Real NVIDIA OpenShell / NemoClaw Sandbox
+
+UTC start: 2026-06-24T15:47:00Z
+UTC focused validation: 2026-06-24T15:48:43Z
+UTC final validation: 2026-06-24T15:51:56Z
+
+Status: partial, external blocker for real Docker/OpenShell/NemoClaw execution.
+Real OpenShell/NemoClaw execution is
+externally blocked in this terminal environment because Docker/OpenShell are not
+available on `PATH`.
+
+Implemented so far:
+
+- read issue #9 and confirmed there are no comments;
+- checked current official OpenShell/NemoClaw sources and recorded current
+  source refs and OpenShell installer digest;
+- added project-owned OpenShell policy artifacts under `nvidia/openshell/`;
+- added `agent_bounty.nvidia_runtime` with Docker/OpenShell/NemoClaw/NVIDIA
+  status reporting, policy/manifest digests, credential-safe inference config
+  reporting, adversarial probe plan, sanitized sandbox environment filtering,
+  and `demo-nvidia-sandbox` fallback/real gate;
+- updated the shared execution scrubber to treat `NVIDIA_` environment names as
+  sensitive;
+- added CLI commands `nvidia-runtime-status` and `demo-nvidia-sandbox`;
+- documented the runtime boundary in `docs/nvidia-sandbox.md`.
+
+Safe evidence:
+
+```text
+OpenShell main: 2c545893ed247d4e04b585377d7bda8f24fd93dd
+OpenShell v0.0.38: dfd47683e7da4f1a4a8fa5d77f92d3696e6a41f9
+OpenShell v0.0.68: d64542f69d06694cbd203b64929d286dd0533bbb
+NemoClaw main: 17d03317b042b56da8147a2e7d1955408c11d22d
+nemoclaw-community main: cea4ae01a0e2d7d359d37ed52b5bb454a226ca1b
+OpenShell install.sh digest:
+sha256:c15d6cb8090e1c7c8d79a320b5bcbdaf1c15c2363942d81e84b56e03b836249e
+
+policy file digest:
+sha256:0e282c88700035e86547b777415c173daa736514848705bfd36f6be2fc6636ac
+
+manifest digest:
+sha256:6235854a62d67608abe8d81018627f0a8bd2a9601c679877f88759b171d17915
+
+effective policy digest:
+sha256:9211dad2c0732aa14d07159df7ab4445f34100197c9f88cbe7879bc635b2d7a9
+
+fallback demo bundle digest:
+sha256:1b6460a7563ed6a65697a1bab85a18ddee3b4c7682eacf89554c29d39f86be78
+```
+
+Exact external blocker observed:
+
+```text
+docker executable not found on PATH; openshell executable not found on PATH.
+Without Docker/OpenShell, the repo cannot create or execute a real
+OpenShell/NemoClaw sandbox on this host.
+```
+
+Focused validation run:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/nvidia_runtime.py agent_bounty/execution.py agent_bounty/cli.py tests/test_nvidia_runtime.py
+nix develop --command python3 -m unittest tests.test_nvidia_runtime
+nix develop --command python3 -m unittest tests.test_execution_backend
+nix develop --command bash -lc 'python3 -m agent_bounty nvidia-runtime-status | python3 -m json.tool'
+nix develop --command bash -lc 'python3 -m agent_bounty demo-nvidia-sandbox --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle .demo/bundles/nvidia-sandbox | python3 -m json.tool'
+```
+
+Observed results:
+
+- NVIDIA runtime tests: 6 passed;
+- execution backend tests: 6 passed, 1 skipped because OpenShell is unavailable;
+- `nvidia-runtime-status`: `ok=false`, `real_backend_ready=false`;
+- `demo-nvidia-sandbox`: `ok=true`, `real_backend=false`,
+  `real_hermes_in_sandbox=false`, baseline/intermediate/final verification
+  cases marked `not_run`.
+
+Full validation run:
+
+```bash
+nix develop --command python3 -m compileall agent_bounty tests verifiers
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+git diff --check --cached
+git diff --check
+```
+
+Observed results:
+
+- compileall passed;
+- full test suite: 111 passed, 2 skipped;
+- `nix flake check`: all checks passed;
+- diff whitespace checks: clean.
+
+Truth status:
+
+- Docker/OpenShell/NemoClaw were not installed or visible in this terminal
+  environment;
+- no real sandbox, unauthorized-network denial, credential-sentinel denial, or
+  three-commit verification run is claimed;
+- the sanitized fallback bundle records `real_backend=false` and `not_run`
+  evidence rows.
+
+Next issue: #10 after issue #9 handoff comment and push.

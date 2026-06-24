@@ -58,6 +58,7 @@ from .hermes_integration import (
     run_skill_value_eval,
     run_solver_wrapper_from_stdin,
 )
+from .nvidia_runtime import nvidia_runtime_status_report, run_nvidia_sandbox_demo
 from .payments import FakePaymentGateway, StripePaymentGateway
 from .project_agent import (
     FakeProjectAgentRuntime,
@@ -487,6 +488,28 @@ def cmd_openshell_status(_args: argparse.Namespace) -> int:
     status = openshell_status()
     print_json(status)
     return 0 if status["available"] else 2
+
+
+def cmd_nvidia_runtime_status(args: argparse.Namespace) -> int:
+    status = nvidia_runtime_status_report(discover_models=args.discover_models, doctor=args.doctor)
+    print_json(status)
+    return 0 if status["ok"] else 2
+
+
+def cmd_demo_nvidia_sandbox(args: argparse.Namespace) -> int:
+    result = run_nvidia_sandbox_demo(
+        motoko_repo=Path(args.motoko_repo),
+        bundle_dir=Path(args.bundle) if args.bundle else None,
+        require_real=args.require_real,
+        base_commit=args.base_commit,
+        intermediate_commit=args.intermediate_commit,
+        final_commit=args.final_commit,
+        timeout_seconds=args.verifier_timeout,
+    )
+    print_json(result)
+    if args.require_real and not result.get("real_backend"):
+        return 1
+    return 0 if result.get("ok") else 1
 
 
 def make_github_client() -> tuple[GitHubConfig, GitHubRestClient]:
@@ -1777,6 +1800,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     openshell = sub.add_parser("openshell-status", help="inspect OpenShell verifier backend availability")
     openshell.set_defaults(func=cmd_openshell_status)
+
+    nvidia_status = sub.add_parser("nvidia-runtime-status", help="show safe Docker/OpenShell/NemoClaw/NVIDIA runtime readiness")
+    nvidia_status.add_argument("--doctor", action="store_true", help="include Hermes doctor output when Hermes is available")
+    nvidia_status.add_argument("--discover-models", action="store_true", help="query NVIDIA /v1/models when NVIDIA_API_KEY is configured")
+    nvidia_status.set_defaults(func=cmd_nvidia_runtime_status)
+
+    nvidia_demo = sub.add_parser("demo-nvidia-sandbox", help="run or truthfully block the OpenShell/NemoClaw verifier demo")
+    nvidia_demo.add_argument("--motoko-repo", required=True)
+    nvidia_demo.add_argument("--bundle", default=".demo/bundles/nvidia-sandbox")
+    nvidia_demo.add_argument("--require-real", action="store_true")
+    nvidia_demo.add_argument("--base-commit", default=DEFAULT_BASE_COMMIT)
+    nvidia_demo.add_argument("--intermediate-commit", default=DEFAULT_INTERMEDIATE_COMMIT)
+    nvidia_demo.add_argument("--final-commit", default=DEFAULT_FINAL_COMMIT)
+    nvidia_demo.add_argument("--verifier-timeout", type=float, default=60.0)
+    nvidia_demo.set_defaults(func=cmd_demo_nvidia_sandbox)
 
     github_status = sub.add_parser("github-status", help="show safe GitHub integration configuration status")
     github_status.set_defaults(func=cmd_github_status)
