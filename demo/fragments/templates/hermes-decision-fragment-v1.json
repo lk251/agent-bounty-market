@@ -1,0 +1,29 @@
+{
+  "schema": "hermes-decision-fragment-v1",
+  "component_id": "project_agent_decision",
+  "label": "Project-agent decision",
+  "truth_status": "recorded-real",
+  "source_issue": "REPLACE_WITH_GITHUB_ISSUE",
+  "source_commit": "REPLACE_WITH_COMMIT_SHA",
+  "source_command": "REPLACE_WITH_CAPTURE_COMMAND",
+  "captured_at": "REPLACE_WITH_UTC_TIMESTAMP",
+  "source_digest": "sha256:REPLACE_WITH_SOURCE_OUTPUT_DIGEST",
+  "safe_evidence": {
+    "hermes_version": "REPLACE_WITH_HERMES_VERSION",
+    "provider_model_id": "REPLACE_WITH_PROVIDER_MODEL_ID",
+    "skill_digests": {
+      "project-bounty-triage": "sha256:REPLACE_WITH_DIGEST"
+    },
+    "command_digest": "sha256:REPLACE_WITH_COMMAND_DIGEST",
+    "decision_digest": "sha256:REPLACE_WITH_DECISION_DIGEST"
+  },
+  "evidence_digest": "sha256:REPLACE_WITH_SAFE_EVIDENCE_DIGEST",
+  "consistency": {
+    "project": "lk251/motoko",
+    "candidate_sha": "4c03e0fa02a26f1cbadbe593ae687eaa9b333d2c",
+    "currency": "USD",
+    "reward_amount": 2500,
+    "receipt_id": "REPLACE_WITH_RECEIPT_ID"
+  },
+  "blocker": null
+}

@@ -44,6 +44,13 @@ Bundle files:
 - `evidence/*.json`: compact evidence slices for truth matrix, demo summary,
   and database counts.
 
+Fragment upgrades:
+
+- templates: `demo/fragments/templates/`
+- docs: `docs/fragment-import.md`
+- commands: `fragment validate`, `fragment import`, `fragment list`, and
+  `fragment build-winning`
+
 ## Truth Matrix
 
 Current truth status:

@@ -43,6 +43,10 @@ recorded-real Stripe sandbox evidence, deterministic fallback rows, and exact
 blockers for the remaining live paths. The recording cues live at
 `demo/bundles/winning-run/recording-timeline.md`.
 
+To upgrade one component later with safe recorded evidence, use the fragment
+import flow in `docs/fragment-import.md`; it validates schemas, digests,
+consistency, and downgrade protection before rewriting the bundle.
+
 Run the complete Motoko issue #1 proof suite:
 
 ```bash

@@ -1,0 +1,32 @@
+{
+  "schema": "github-lifecycle-fragment-v1",
+  "component_id": "github_lifecycle",
+  "label": "GitHub issue/claim/PR/result",
+  "truth_status": "recorded-real",
+  "source_issue": "REPLACE_WITH_GITHUB_ISSUE",
+  "source_commit": "REPLACE_WITH_COMMIT_SHA",
+  "source_command": "REPLACE_WITH_CAPTURE_COMMAND",
+  "captured_at": "REPLACE_WITH_UTC_TIMESTAMP",
+  "source_digest": "sha256:REPLACE_WITH_SOURCE_OUTPUT_DIGEST",
+  "safe_evidence": {
+    "repository_url": "https://github.com/lk251/motoko",
+    "issue_number": "REPLACE_WITH_ISSUE_NUMBER",
+    "issue_url": "REPLACE_WITH_ISSUE_URL",
+    "claim_comment_id": "REPLACE_WITH_CLAIM_COMMENT_ID",
+    "claim_comment_url": "REPLACE_WITH_CLAIM_COMMENT_URL",
+    "pr_number": "REPLACE_WITH_PR_NUMBER",
+    "pr_url": "REPLACE_WITH_PR_URL",
+    "candidate_sha": "4c03e0fa02a26f1cbadbe593ae687eaa9b333d2c",
+    "receipt_publication_id": "REPLACE_WITH_STATUS_OR_COMMENT_ID",
+    "receipt_publication_url": "REPLACE_WITH_STATUS_OR_COMMENT_URL"
+  },
+  "evidence_digest": "sha256:REPLACE_WITH_SAFE_EVIDENCE_DIGEST",
+  "consistency": {
+    "project": "lk251/motoko",
+    "candidate_sha": "4c03e0fa02a26f1cbadbe593ae687eaa9b333d2c",
+    "currency": "USD",
+    "reward_amount": 2500,
+    "receipt_id": "REPLACE_WITH_RECEIPT_ID"
+  },
+  "blocker": null
+}

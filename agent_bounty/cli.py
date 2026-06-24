@@ -36,6 +36,13 @@ from .economic_loop import (
     save_solver_operating_policy,
     spend_retained_credit_to_project,
 )
+from .fragments import (
+    FragmentError,
+    import_fragment_file,
+    list_imported_fragments,
+    rebuild_bundle_from_imports,
+    validate_fragment_file,
+)
 from .github_integration import (
     FakeGitHubClient,
     GitHubConfig,
@@ -1394,6 +1401,46 @@ def cmd_demo_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fragment_validate(args: argparse.Namespace) -> int:
+    try:
+        result = validate_fragment_file(Path(args.file), bundle_dir=Path(args.bundle) if args.bundle else None)
+    except (FragmentError, DemoPresentationError) as exc:
+        print_json({"schema": "agent-bounty-fragment-validation-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_fragment_import(args: argparse.Namespace) -> int:
+    try:
+        result = import_fragment_file(Path(args.bundle), Path(args.file), downgrade_ok=args.downgrade_ok)
+    except (FragmentError, DemoPresentationError) as exc:
+        print_json({"schema": "agent-bounty-fragment-import-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_fragment_list(args: argparse.Namespace) -> int:
+    try:
+        result = list_imported_fragments(Path(args.bundle))
+    except (FragmentError, DemoPresentationError) as exc:
+        print_json({"schema": "agent-bounty-fragment-list-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_fragment_build_winning(args: argparse.Namespace) -> int:
+    try:
+        result = rebuild_bundle_from_imports(Path(args.bundle))
+    except (FragmentError, DemoPresentationError) as exc:
+        print_json({"schema": "agent-bounty-fragment-build-winning-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def cmd_demo_reset(args: argparse.Namespace) -> int:
     try:
         result = reset_demo_state(Path(args.path) if args.path else None, yes=args.yes)
@@ -2237,6 +2284,28 @@ def build_parser() -> argparse.ArgumentParser:
     demo_serve.add_argument("--port", type=int, default=8787)
     demo_serve.add_argument("--check", action="store_true", help="validate and print serve metadata without starting the server")
     demo_serve.set_defaults(func=cmd_demo_serve)
+
+    fragment = sub.add_parser("fragment", help="validate, import, list, and rebuild authenticated evidence fragments")
+    fragment_sub = fragment.add_subparsers(dest="fragment_command", required=True)
+
+    fragment_validate = fragment_sub.add_parser("validate", help="validate a fragment file")
+    fragment_validate.add_argument("--file", required=True)
+    fragment_validate.add_argument("--bundle", help="optional bundle for consistency checks")
+    fragment_validate.set_defaults(func=cmd_fragment_validate)
+
+    fragment_import = fragment_sub.add_parser("import", help="import a validated fragment into a bundle")
+    fragment_import.add_argument("--bundle", required=True)
+    fragment_import.add_argument("--file", required=True)
+    fragment_import.add_argument("--downgrade-ok", action="store_true", help="allow replacing real/recorded-real evidence with fallback/blocked evidence")
+    fragment_import.set_defaults(func=cmd_fragment_import)
+
+    fragment_list = fragment_sub.add_parser("list", help="list imported fragments in a bundle")
+    fragment_list.add_argument("--bundle", required=True)
+    fragment_list.set_defaults(func=cmd_fragment_list)
+
+    fragment_build = fragment_sub.add_parser("build-winning", help="validate and rewrite a bundle from its imported fragments")
+    fragment_build.add_argument("--bundle", required=True)
+    fragment_build.set_defaults(func=cmd_fragment_build_winning)
 
     demo_reset = sub.add_parser("demo-reset", help="delete .demo state only after explicit confirmation")
     demo_reset.add_argument("--path")

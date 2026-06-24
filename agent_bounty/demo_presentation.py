@@ -676,6 +676,7 @@ def write_bundle(bundle_dir: Path, bundle: dict[str, Any], *, overwrite: bool = 
     if bundle_dir.exists() and overwrite:
         _delete_demo_path(bundle_dir)
     bundle_dir.mkdir(parents=True, exist_ok=True)
+    bundle["bundle_content_digest"] = sha256_text(stable_json({key: value for key, value in bundle.items() if key != "bundle_content_digest"}))
     bundle_path = bundle_dir / "bundle.json"
     dashboard_path = bundle_dir / "dashboard.html"
     readme_path = bundle_dir / "README.md"

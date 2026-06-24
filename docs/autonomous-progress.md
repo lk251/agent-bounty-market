@@ -816,3 +816,68 @@ Observed results:
 - diff whitespace check: clean.
 
 Next issue: #16 after issue #15 handoff comment, closure, and pull.
+
+## Issue #16: Authenticated Fragment Importers
+
+UTC start: 2026-06-24T21:10:00Z
+
+Status: completed; authenticated safe fragments can now upgrade individual
+bundle components without code changes while preserving the mixed truth
+boundary.
+
+Implemented:
+
+- added `agent_bounty.fragments`, a dependency-free fragment validator/importer
+  with versioned fragment schemas, safe evidence digests, consistency checks,
+  downgrade protection, and fail-closed bundle validation;
+- added `python -m agent_bounty fragment validate|import|list|build-winning`;
+- added fragment templates for Hermes decisions, NVIDIA/OpenShell evidence,
+  GitHub lifecycle evidence, Stripe split settlement evidence, and Motoko
+  verification evidence;
+- documented the safe fragment workflow in `docs/fragment-import.md`;
+- updated README and final handoff pointers;
+- rebuilt `demo/bundles/winning-run` after the command additions.
+
+Safe bundle evidence after rebuild:
+
+```text
+bundle: demo/bundles/winning-run
+mode badge: Mixed real/fallback
+truth overall: mixed-real-fallback
+bundle digest: sha256:166e11b5fe987c4d18aeff5498e9f90a3ddc68b21f46962b9c822db2045eddd9
+attestation digest: sha256:c407f560374fe10e085837fa80efd48b96f3eef47da19f885a7d1b9a0613fa8c
+truth matrix digest: sha256:55560e713453a66ebacb96aa85c8baf29d39445cc4ae287c8726370d37550506
+```
+
+Sample fragment CLI evidence:
+
+```text
+fragment validate: ok=true schema=github-lifecycle-fragment-v1 component=github_lifecycle status=recorded-real errors=[]
+fragment import: ok=true component=github_lifecycle previous=blocked new=recorded-real bundle_digest=sha256:a0119af18351be6589f4d3e7948c18b8e59e1b29fff2d9b9c7ecb1fee9b07613
+fragment list: ok=true count=1 first=github_lifecycle
+template validate: ok=false with placeholder/digest errors until placeholders are replaced
+```
+
+Validation run:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/fragments.py agent_bounty/cli.py tests/test_fragments.py
+nix develop --command python3 -m unittest tests.test_fragments
+nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
+nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+git diff --check
+```
+
+Observed results:
+
+- focused fragment tests: 12 passed;
+- winning bundle build: `ok=true`, `mode=mixed`,
+  `truth_overall=mixed-real-fallback`;
+- replay rehearsal: 5/5 validations passed, p95 1 ms;
+- full test suite: 137 passed, 2 skipped;
+- `nix flake check`: all checks passed;
+- diff whitespace check: clean.
+
+Next issue: #17 after issue #16 handoff comment, closure, and pull.

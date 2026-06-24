@@ -1,0 +1,30 @@
+{
+  "schema": "stripe-split-settlement-fragment-v1",
+  "component_id": "stripe_split_transfer",
+  "label": "Fresh split Stripe Connect Transfer",
+  "truth_status": "recorded-real",
+  "source_issue": "REPLACE_WITH_GITHUB_ISSUE",
+  "source_commit": "REPLACE_WITH_COMMIT_SHA",
+  "source_command": "REPLACE_WITH_CAPTURE_COMMAND",
+  "captured_at": "REPLACE_WITH_UTC_TIMESTAMP",
+  "source_digest": "sha256:REPLACE_WITH_SOURCE_OUTPUT_DIGEST",
+  "safe_evidence": {
+    "checkout_session": "cs_REPLACE_WITH_SAFE_ID",
+    "payment_intent": "pi_REPLACE_WITH_SAFE_ID",
+    "charge": "ch_REPLACE_WITH_SAFE_ID",
+    "funding_event": "evt_REPLACE_WITH_SAFE_ID",
+    "connected_account": "acct_REPLACE_WITH_SAFE_ID",
+    "transfer": "tr_REPLACE_WITH_SAFE_ID",
+    "transfer_event": "evt_REPLACE_WITH_SAFE_ID",
+    "reconciliation_digest": "sha256:REPLACE_WITH_RECONCILIATION_DIGEST"
+  },
+  "evidence_digest": "sha256:REPLACE_WITH_SAFE_EVIDENCE_DIGEST",
+  "consistency": {
+    "project": "lk251/motoko",
+    "candidate_sha": "4c03e0fa02a26f1cbadbe593ae687eaa9b333d2c",
+    "currency": "USD",
+    "reward_amount": 2500,
+    "receipt_id": "REPLACE_WITH_RECEIPT_ID"
+  },
+  "blocker": null
+}

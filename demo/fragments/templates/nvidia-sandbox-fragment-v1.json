@@ -1,0 +1,29 @@
+{
+  "schema": "nvidia-sandbox-fragment-v1",
+  "component_id": "openshell_nemoclaw",
+  "label": "OpenShell/NemoClaw execution",
+  "truth_status": "recorded-real",
+  "source_issue": "REPLACE_WITH_GITHUB_ISSUE",
+  "source_commit": "REPLACE_WITH_COMMIT_SHA",
+  "source_command": "REPLACE_WITH_CAPTURE_COMMAND",
+  "captured_at": "REPLACE_WITH_UTC_TIMESTAMP",
+  "source_digest": "sha256:REPLACE_WITH_SOURCE_OUTPUT_DIGEST",
+  "safe_evidence": {
+    "openshell_version": "REPLACE_WITH_OPENSHELL_VERSION",
+    "sandbox_id": "REPLACE_WITH_SANDBOX_OR_IMAGE_ID",
+    "policy_digest": "sha256:REPLACE_WITH_POLICY_DIGEST",
+    "adversarial_proof_rows": [
+      "REPLACE_WITH_SAFE_PROOF_ROW_DIGEST"
+    ],
+    "receipt_backend_digest": "sha256:REPLACE_WITH_BACKEND_DIGEST"
+  },
+  "evidence_digest": "sha256:REPLACE_WITH_SAFE_EVIDENCE_DIGEST",
+  "consistency": {
+    "project": "lk251/motoko",
+    "candidate_sha": "4c03e0fa02a26f1cbadbe593ae687eaa9b333d2c",
+    "currency": "USD",
+    "reward_amount": 2500,
+    "receipt_id": "REPLACE_WITH_RECEIPT_ID"
+  },
+  "blocker": null
+}
