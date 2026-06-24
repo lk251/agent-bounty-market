@@ -2,7 +2,12 @@
 
 Canonical coordinator: <https://github.com/lk251/agent-bounty-market/issues/20>
 
-Current release candidate: `hackathon-mixed-rc1`.
+Current release candidate: `hackathon-mixed-rc6`.
+
+Status: issues #15 through #19 have been completed. RC6 supersedes RC1 through
+RC5 without rewriting the earlier tags; it preserves the `Mixed real/fallback`
+truth boundary and includes the final release-manifest and fresh-clone metadata
+corrections.
 
 Execute in order:
 

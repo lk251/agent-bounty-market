@@ -1027,9 +1027,9 @@ Next issue: #19 after issue #18 handoff comment, closure, and pull.
 
 UTC start: 2026-06-24T21:50:00Z
 
-Status: completed pending final push/tag/fresh-clone comment; the main checkout
-has a reproducible rc2 release bundle, release audit, release checklist, and
-manifest.
+Status: completed; the main checkout has a reproducible final mixed release
+bundle, release audit, release checklist, release manifest, fresh-clone
+validation evidence, and coordinator handoff.
 
 Implemented:
 
@@ -1049,7 +1049,8 @@ Implemented:
   before the fresh-clone test-order fix; rc3 was then superseded by rc4 after
   the documented build-then-test order exposed a dirty-bundle test boundary;
   rc4 was then superseded by rc5 to make the release manifest's fresh-clone
-  status match the final validated handoff.
+  status match the final validated handoff; rc5 was superseded by rc6 to make
+  the post-RC queue and progress documents agree with the final release state.
 
 Safe bundle evidence after rebuild:
 
@@ -1091,11 +1092,11 @@ Observed results:
 - `nix flake check`: all checks passed;
 - diff whitespace check: clean.
 
-Final boundary actions:
+Final boundary actions completed:
 
-- commit and push issue #19 changes;
-- create and push `hackathon-mixed-rc5`;
-- run a fresh-clone validation from GitHub at the pushed state;
-- comment on #19 and coordinator #20 with the final tag, commit, clone result,
+- committed and pushed issue #19 changes;
+- created and pushed final tag `hackathon-mixed-rc6`;
+- ran fresh-clone validation from GitHub at the pushed state;
+- commented on #19 and coordinator #20 with the final tag, commit, clone result,
   digests, commands, submission files, and remaining blockers;
-- close #19 when the final comment is posted.
+- closed #19 after the final handoff comment.

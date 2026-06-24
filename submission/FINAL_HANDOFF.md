@@ -1,6 +1,6 @@
 # Final Handoff
 
-Release candidate tag: `hackathon-mixed-rc5`
+Release candidate tag: `hackathon-mixed-rc6`
 
 This release candidate is a truthful mixed real/fallback demo package. It does
 not claim a complete sponsor-integrated live run. It packages the strongest
@@ -72,9 +72,9 @@ Backup bundle:
 
 ```bash
 nix develop --command python3 -m agent_bounty demo-build-winning-run \
-  --db .demo/release-backups/hackathon-mixed-rc5.sqlite3 \
+  --db .demo/release-backups/hackathon-mixed-rc6.sqlite3 \
   --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency \
-  --bundle .demo/release-backups/hackathon-mixed-rc5
+  --bundle .demo/release-backups/hackathon-mixed-rc6
 ```
 
 The backup path is intentionally under ignored `.demo/` state. Regenerate it
