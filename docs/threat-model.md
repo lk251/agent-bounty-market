@@ -56,5 +56,5 @@ runs when a host has an approved `openshell` sandbox available.
 - Run untrusted candidate work in the sponsor-prescribed OpenShell/NemoClaw
   sandbox once that runtime is installed and configured for this verifier.
 - Add GitHub App signature verification and repository installation scoping.
-- Run an actual Stripe sandbox Checkout/webhook/Connect Transfer once Javier
-  supplies test credentials and a connected account.
+- Replace the current local-process verifier isolation with the
+  sponsor-prescribed sandbox once that runtime is available.

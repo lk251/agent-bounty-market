@@ -24,7 +24,7 @@ from .stripe_sandbox import (
     stripe_cli_version,
     stripe_package_version,
 )
-from .util import utc_now
+from .util import require_currency, utc_now
 from .execution import openshell_status
 from .verification import ProtectedVerifierRunner, default_verifier_dir
 
@@ -520,8 +520,8 @@ def cmd_stripe_automated_payment(args: argparse.Namespace) -> int:
             client=client,
             idempotency_key=args.idempotency_key,
         )
-    except (StripeSandboxError, MarketError) as exc:
-        print_json({"schema": "agent-bounty-stripe-automated-payment-v1", "ok": False, "error": str(exc)})
+    except Exception as exc:
+        print_json({"schema": "agent-bounty-stripe-automated-payment-v1", "ok": False, "error": safe_error_message(exc)})
         return 1
     print_json({"schema": "agent-bounty-stripe-automated-payment-v1", "ok": True, **result})
     return 0
@@ -602,6 +602,7 @@ def stripe_reconcile_report(
     project_id: str,
     solver_id: str,
     bounty_id: str | None = None,
+    currency: str | None = None,
     client: OfficialStripeClient | None = None,
     remote_blockers: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -610,8 +611,9 @@ def stripe_reconcile_report(
     webhooks = [dict(row) for row in market.conn.execute("SELECT * FROM stripe_webhook_events ORDER BY received_at, event_id").fetchall()]
     payouts = [dict(row) for row in market.conn.execute("SELECT * FROM payouts ORDER BY created_at, id").fetchall()]
     solvers = [dict(row) for row in market.conn.execute("SELECT * FROM solver_identities ORDER BY created_at, id").fetchall()]
-    reconciliation = market.reconciliation(project_id=project_id, solver_id=solver_id)
     bounty = market.bounty_summary(bounty_id) if bounty_id else None
+    reconciliation_currency = require_currency(currency or (bounty["currency"] if bounty else DEFAULT_CURRENCY))
+    reconciliation = market.reconciliation(project_id=project_id, solver_id=solver_id, currency=reconciliation_currency)
     remote = _remote_stripe_reconciliation(client=client, funding_requests=funding_requests, payouts=payouts, solvers=solvers)
     blockers = list(remote_blockers or [])
     if client is None and not blockers:
@@ -688,8 +690,8 @@ def _remote_stripe_reconciliation(
             if expected_account:
                 account = client.retrieve_account(str(expected_account))
                 objects.append({"kind": "connected_account", "id": account.get("id"), "livemode": account.get("livemode")})
-                if account.get("livemode") is not False:
-                    mismatches.append(f"Connected account {expected_account} is not test-mode")
+                if account.get("livemode") is True:
+                    mismatches.append(f"Connected account {expected_account} is live-mode")
                 if account.get("id") != expected_account:
                     mismatches.append(f"Connected account {expected_account} id mismatch")
             transfer = client.retrieve_transfer(str(transfer_id))
@@ -783,7 +785,8 @@ def cmd_demo_stripe_motoko(args: argparse.Namespace) -> int:
     try:
         client = OfficialStripeClient(config)
         market = open_trusted_market(args.db, verifier_timeout=args.verifier_timeout)
-        market.create_project(project_id=DEFAULT_PROJECT_ID, name="Motoko", currency=DEFAULT_CURRENCY)
+        currency = require_currency(args.currency)
+        market.create_project(project_id=DEFAULT_PROJECT_ID, name="Motoko", currency=currency)
         market.set_budget_policy(
             project_id=DEFAULT_PROJECT_ID,
             max_bounty_amount=args.reward_cents,
@@ -796,18 +799,19 @@ def cmd_demo_stripe_motoko(args: argparse.Namespace) -> int:
             project_id=DEFAULT_PROJECT_ID,
             title="Eliminate idle Motoko TUI typing latency",
             reward_amount=args.reward_cents,
-            currency=DEFAULT_CURRENCY,
+            currency=currency,
             base_commit=DEFAULT_BASE_COMMIT,
             issue_ref="lk251/motoko#1",
             verifier_id="motoko_issue_1_tui_latency_v2",
         )
-        available = market.ledger.balance(f"project:{DEFAULT_PROJECT_ID}:available", DEFAULT_CURRENCY)
-        if available < args.reward_cents:
+        bounty_before_reserve = market.bounty_summary(DEFAULT_BOUNTY_ID)
+        available = market.ledger.balance(f"project:{DEFAULT_PROJECT_ID}:available", currency)
+        if bounty_before_reserve["state"] == "awaiting_funding" and available < args.reward_cents:
             checkout = market.create_stripe_checkout(
                 project_id=DEFAULT_PROJECT_ID,
                 source_kind="owner",
                 amount=args.reward_cents,
-                currency=DEFAULT_CURRENCY,
+                currency=currency,
                 success_url=f"{config.public_base_url}/success",
                 cancel_url=f"{config.public_base_url}/cancel",
                 client=client,
@@ -863,13 +867,13 @@ def cmd_demo_stripe_motoko(args: argparse.Namespace) -> int:
             transfer = market.release_stripe_transfer(
                 bounty_id=DEFAULT_BOUNTY_ID,
                 client=client,
-                idempotency_key=f"stripe-transfer:{DEFAULT_BOUNTY_ID}:{DEFAULT_FINAL_COMMIT}",
             )
         reconciliation = stripe_reconcile_report(
             market,
             project_id=DEFAULT_PROJECT_ID,
             solver_id=DEFAULT_SOLVER_ID,
             bounty_id=DEFAULT_BOUNTY_ID,
+            currency=currency,
             client=client,
         )
         result = {
@@ -995,6 +999,7 @@ def build_parser() -> argparse.ArgumentParser:
     demo_stripe.add_argument("--db", required=True)
     demo_stripe.add_argument("--motoko-repo", required=True)
     demo_stripe.add_argument("--reward-cents", type=int, default=2500)
+    demo_stripe.add_argument("--currency", default=DEFAULT_CURRENCY)
     demo_stripe.add_argument("--verifier-timeout", type=float, default=60.0)
     demo_stripe.set_defaults(func=cmd_demo_stripe_motoko)
 

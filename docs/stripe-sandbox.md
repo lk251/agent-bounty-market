@@ -45,7 +45,7 @@ python -m agent_bounty stripe-automated-payment \
   --project-id project_motoko \
   --source owner \
   --amount-cents 2500 \
-  --currency usd \
+  --currency eur \
   --payment-method pm_card_visa
 
 python -m agent_bounty stripe-webhook-serve \
@@ -57,7 +57,7 @@ python -m agent_bounty stripe-process-events \
   --db .demo/stripe.sqlite3
 
 stripe listen \
-  --events payment_intent.succeeded,payment_intent.payment_failed,checkout.session.completed,checkout.session.expired \
+  --events payment_intent.succeeded,payment_intent.payment_failed,checkout.session.completed,checkout.session.expired,transfer.created,transfer.reversed \
   --forward-to localhost:4242/stripe/webhook
 
 python -m agent_bounty stripe-attach-beneficiary \
@@ -88,6 +88,8 @@ python -m agent_bounty stripe-reconcile \
 - Checkout payment moves money into the Stripe platform sandbox.
 - The automated test PaymentMethod helper is only for repeatable sandbox smoke
   tests and is gated by `AGENT_BOUNTY_RUN_STRIPE_INTEGRATION=1`.
+- Use the platform/account currency for real transfer smoke tests. On the HB3
+  Spanish sandbox platform, the successful end-to-end run used EUR.
 - The internal project treasury is credited only from a signed, retrieved,
   validated payment completion event.
 - A bounty reservation is internal ledger movement from available to reserved.

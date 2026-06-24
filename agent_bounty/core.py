@@ -551,6 +551,7 @@ class AgentBountyMarket:
             BountyState.VERIFYING.value,
             BountyState.ACCEPTED.value,
             BountyState.PAYOUT_PENDING.value,
+            BountyState.PAYOUT_FAILED.value,
             BountyState.PAID.value,
         }:
             return {"bounty_id": bounty_id, "replayed": True, "state": bounty["state"]}
@@ -1103,7 +1104,11 @@ class AgentBountyMarket:
 
     def attach_stripe_beneficiary(self, *, solver_id: str, account_id: str, client: StripeClient) -> dict[str, Any]:
         account = client.retrieve_account(account_id)
-        actual_id = require_id(account, prefix="acct_", object_name="connected account")
+        actual_id = account.get("id")
+        if not isinstance(actual_id, str) or not actual_id.startswith("acct_"):
+            raise StripeSandboxError("connected account missing acct_ id")
+        if account.get("livemode") is True:
+            raise StripeSandboxError("connected account must not be a live-mode Stripe object")
         if actual_id != account_id:
             raise MarketError("Stripe connected account retrieval returned a different account")
         country = account.get("country") if isinstance(account.get("country"), str) else None
@@ -1168,6 +1173,7 @@ class AgentBountyMarket:
             verifier_digest=receipt["verifier_digest"],
             backend_digest=receipt["backend_digest"],
             policy_digest=receipt["policy_digest"],
+            source_transaction_id=self._source_transaction_for_payout(bounty),
         )
         digest = request_digest(params)
         operation_id = self._begin_stripe_operation(
@@ -1218,10 +1224,10 @@ class AgentBountyMarket:
                     """
                     UPDATE payouts
                     SET status = 'pending', gateway_payout_id = ?, stripe_transfer_id = ?,
-                        transfer_group = ?, updated_at = ?
+                        idempotency_key = ?, transfer_group = ?, updated_at = ?
                     WHERE id = ?
                     """,
-                    (transfer_id, transfer_id, params["transfer_group"], utc_now(), payout_id),
+                    (transfer_id, transfer_id, transfer_key, params["transfer_group"], utc_now(), payout_id),
                 )
             self._complete_payout(
                 bounty=bounty,
@@ -1239,8 +1245,8 @@ class AgentBountyMarket:
                     safe_error_message=safe_error_message(exc),
                 )
                 self.conn.execute(
-                    "UPDATE payouts SET status = 'failed', updated_at = ? WHERE id = ?",
-                    (utc_now(), payout_id),
+                    "UPDATE payouts SET status = 'failed', idempotency_key = ?, updated_at = ? WHERE id = ?",
+                    (transfer_key, utc_now(), payout_id),
                 )
                 self._transition_bounty(bounty_id, BountyState.PAYOUT_FAILED, reason=f"stripe_transfer_failed:{safe_error_message(exc)}", idempotency_key=f"state:{transfer_key}:payout_failed")
             return {"payout_id": payout_id, "transfer_id": None, "replayed": False, "failed": True, "error": safe_error_message(exc)}
@@ -1630,6 +1636,8 @@ class AgentBountyMarket:
             raise MarketError("Stripe Transfer destination mismatch")
         if transfer.get("transfer_group") != expected["transfer_group"]:
             raise MarketError("Stripe Transfer group mismatch")
+        if expected.get("source_transaction") and transfer.get("source_transaction") != expected["source_transaction"]:
+            raise MarketError("Stripe Transfer source transaction mismatch")
         metadata = transfer.get("metadata") if isinstance(transfer.get("metadata"), dict) else {}
         for key, value in expected["metadata"].items():
             if metadata.get(key) != value:

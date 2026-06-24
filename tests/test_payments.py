@@ -241,6 +241,21 @@ class PaymentTests(unittest.TestCase):
             self.assertEqual(market.bounty_summary(bounty_id)["state"], "paid")
             self.assertTrue(market.reconciliation(project_id=project_id, solver_id=solver_id)["ok"])
 
+    def test_reserve_replays_after_payout_failed(self):
+        payout_key = "payout:test"
+        with tempfile.TemporaryDirectory() as tmp:
+            verifier_dir = accepted_verifier(Path(tmp))
+            holder, market = make_market(verifier_dir, fail_payout_keys={payout_key})
+            self.addCleanup(holder.cleanup)
+            _project_id, bounty_id, _solver_id, submission_id = submit_ready(market)
+            market.run_verification(submission_id=submission_id, idempotency_key="verify:test")
+            failed = market.release_payout(bounty_id=bounty_id, idempotency_key=payout_key)
+            replay = market.reserve_bounty(bounty_id=bounty_id, idempotency_key="reserve:test")
+
+            self.assertTrue(failed["failed"])
+            self.assertTrue(replay["replayed"])
+            self.assertEqual(replay["state"], "payout_failed")
+
     def test_core_passes_stored_funding_source_transaction_to_gateway_payout(self):
         with tempfile.TemporaryDirectory() as tmp:
             verifier_dir = accepted_verifier(Path(tmp))
@@ -385,7 +400,10 @@ class PaymentTests(unittest.TestCase):
         self.assertTrue(result["charge_id"].startswith("ch_test_"))
         self.assertTrue(result["credit_requires_signed_webhook"])
         self.assertEqual(market.ledger.balance("project:project_test:available"), 0)
-        self.assertEqual(client.created_payment_intent_params[0]["params"]["payment_method"], "pm_card_visa")
+        params = client.created_payment_intent_params[0]["params"]
+        self.assertEqual(params["payment_method"], "pm_card_visa")
+        self.assertEqual(params["payment_method_types"], ["card"])
+        self.assertTrue(params["error_on_requires_action"])
 
     def test_automated_payment_credits_only_after_signed_event(self):
         holder, market = self._stripe_market()
@@ -519,6 +537,20 @@ class PaymentTests(unittest.TestCase):
         self.assertEqual(result["account_id"], "acct_solver_test")
         self.assertEqual(row["beneficiary_external_id"], "acct_solver_test")
 
+    def test_attach_beneficiary_allows_connected_account_without_livemode_field(self):
+        holder, market = self._stripe_market()
+        self.addCleanup(holder.cleanup)
+        client = FakeStripeClient()
+        client.accounts["acct_solver_test"] = {
+            "id": "acct_solver_test",
+            "object": "account",
+            "country": "ES",
+            "charges_enabled": False,
+            "payouts_enabled": False,
+        }
+        result = market.attach_stripe_beneficiary(solver_id="solver_test", account_id="acct_solver_test", client=client)
+        self.assertEqual(result["account_id"], "acct_solver_test")
+
     def test_stripe_transfer_requires_accepted_receipt(self):
         with tempfile.TemporaryDirectory() as tmp:
             verifier_dir = accepted_verifier(Path(tmp))
@@ -536,6 +568,11 @@ class PaymentTests(unittest.TestCase):
             holder, market = make_market(verifier_dir)
             self.addCleanup(holder.cleanup)
             project_id, bounty_id, solver_id, submission_id = submit_ready(market)
+            with market.conn:
+                market.conn.execute(
+                    "UPDATE funding_events SET gateway_source_transaction_id = ? WHERE project_id = ?",
+                    ("ch_source_test", project_id),
+                )
             market.run_verification(submission_id=submission_id, idempotency_key="verify:test")
             client = FakeStripeClient()
             market.attach_stripe_beneficiary(solver_id=solver_id, account_id="acct_solver_test", client=client)
@@ -547,6 +584,7 @@ class PaymentTests(unittest.TestCase):
             self.assertTrue(market.reconciliation(project_id=project_id, solver_id=solver_id)["ok"])
             transfer_params = client.created_transfer_params[0]["params"]
             self.assertEqual(transfer_params["metadata"]["receipt_id"], market.bounty_summary(bounty_id)["accepted_receipt_id"])
+            self.assertEqual(transfer_params["source_transaction"], "ch_source_test")
 
     def test_remote_reconciliation_retrieves_stripe_objects(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -611,6 +649,8 @@ class PaymentTests(unittest.TestCase):
             self.assertEqual(market.bounty_summary(bounty_id)["state"], "payout_failed")
             retry = market.release_stripe_transfer(bounty_id=bounty_id, client=client, idempotency_key="stripe-transfer:retry")
             self.assertFalse(retry.get("failed", False))
+            row = market.conn.execute("SELECT idempotency_key FROM payouts WHERE bounty_id = ?", (bounty_id,)).fetchone()
+            self.assertEqual(row["idempotency_key"], "stripe-transfer:retry")
 
     def test_stripe_transfer_retrieval_mismatch_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:

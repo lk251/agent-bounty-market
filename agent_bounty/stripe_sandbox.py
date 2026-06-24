@@ -191,6 +191,7 @@ def automated_payment_intent_params(
     return {
         "amount": amount,
         "currency": currency,
+        "payment_method_types": ["card"],
         "payment_method": payment_method,
         "confirm": True,
         "error_on_requires_action": True,
@@ -212,6 +213,7 @@ def transfer_params(
     verifier_digest: str,
     backend_digest: str,
     policy_digest: str,
+    source_transaction_id: str | None = None,
 ) -> dict[str, Any]:
     require_positive_amount(amount)
     currency = require_currency(currency).lower()
@@ -228,13 +230,16 @@ def transfer_params(
         "backend_digest": backend_digest[:120],
         "policy_digest": policy_digest[:120],
     }
-    return {
+    params = {
         "amount": amount,
         "currency": currency,
         "destination": destination_account_id,
         "transfer_group": transfer_group,
         "metadata": metadata,
     }
+    if source_transaction_id:
+        params["source_transaction"] = source_transaction_id
+    return params
 
 
 class OfficialStripeClient:
@@ -428,6 +433,8 @@ class FakeStripeClient:
             "transfer_group": params["transfer_group"],
             "metadata": dict(params["metadata"]),
         }
+        if params.get("source_transaction"):
+            transfer["source_transaction"] = params["source_transaction"]
         self.transfers[transfer_id] = transfer
         return dict(transfer)
 
