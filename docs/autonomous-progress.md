@@ -56,3 +56,52 @@ Next boundary action:
 - leave issue #1 open until real GitHub credentials and webhook delivery are
   available;
 - pull `main`, then continue issue #2.
+
+## Issue #2: Hermes Project-Agent Buyer
+
+Status: implementation in progress; real Hermes/NemoClaw/Nemotron execution is
+externally blocked unless the runtime and reviewed wrapper command are provided.
+
+Implemented so far:
+
+- inspected current Hermes Agent, Hermes Skills System, NVIDIA NemoClaw,
+  NVIDIA NemoClaw GitHub, and NVIDIA Nemotron sources;
+- schema v8 project-agent tables for skills, policies, candidates, runs, and
+  decisions;
+- deterministic `fake-project-agent-runtime-v1`;
+- gated `hermes-cli-adapter-v1` with exact blocker/status reporting;
+- versioned skills under `skills/project-agent/`;
+- trusted `project-agent-policy-v1` checks for repo/class/verifier/currency,
+  reward ceiling, human threshold, reserve floor, simultaneous bounties, and
+  contract completeness;
+- candidate queue for the four required Motoko demo cases;
+- scan/evaluate/fund-and-publish CLI commands;
+- `demo-project-agent-motoko`;
+- deterministic tests for malformed output, prompt injection, policy isolation,
+  decline paths, exactly-once publish, publication failure recovery, restart
+  replay, and Hermes blocker reporting.
+
+Validation run so far:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/project_agent.py agent_bounty/cli.py agent_bounty/db.py
+nix develop --command python3 -m agent_bounty project-agent status
+nix develop --command python3 -m agent_bounty demo-project-agent-motoko --db "$tmpdir/project-agent.sqlite3"
+nix develop --command python3 -m unittest tests.test_project_agent
+```
+
+Observed results:
+
+- project-agent status: fake runtime available, Hermes blocked by missing CLI,
+  run env, and reviewed wrapper command;
+- project-agent Motoko demo: `ok=true`;
+- focused project-agent tests: 9 passed.
+
+Current external blocker:
+
+```text
+No real Hermes/NemoClaw/Nemotron runtime is configured. project-agent status
+requires AGENT_BOUNTY_RUN_HERMES_PROJECT_AGENT=1,
+AGENT_BOUNTY_HERMES_EVALUATE_COMMAND, and an installed Hermes CLI or
+AGENT_BOUNTY_HERMES_CLI.
+```

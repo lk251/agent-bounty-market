@@ -9,6 +9,8 @@ Agent Bounty Market is a local transaction core with four trust zones:
    Stripe sandbox boundary when configured.
 5. **GitHub coordination surface**: optional issue/comment/PR/status transport
    for bounty contracts and solver submissions.
+6. **Project-agent buyer**: optional runtime boundary that proposes bounded
+   bounties while trusted code enforces spending policy.
 
 The orchestrator owns bounty state, idempotency, ledger entries, verification
 receipts, and payout decisions. The candidate can supply code, but not the
@@ -85,6 +87,21 @@ credentials; local tests use `FakeGitHubClient`.
 
 See `docs/github-native.md` for commands and the current real-integration
 blocker.
+
+## Project-Agent Boundary
+
+The project-agent buyer is deliberately split:
+
+- agent runtime proposes structured `project-agent-bounty-decision-v1` objects;
+- trusted policy validates repo/class/verifier/currency/reward/reserve limits;
+- only trusted host code can reserve funds or publish a GitHub bounty contract;
+- runtime request/trace excludes Stripe and GitHub credentials;
+- skill versions and digests, runtime identity, request/response digests,
+  proposal digests, policy verdicts, and publication IDs are stored.
+
+The default runtime is deterministic for tests. The gated Hermes adapter records
+the exact runtime/model and refuses to run unless a reviewed Hermes wrapper
+command is configured. See `docs/project-agent.md`.
 
 ## Payment Boundary
 

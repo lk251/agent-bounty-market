@@ -195,3 +195,26 @@ python -m agent_bounty github-status
 
 See `docs/github-native.md` for commands, replay semantics, and current
 credential/webhook blockers.
+
+## Project-Agent Buyer
+
+The project-agent path turns a project into a bounded buyer. A runtime evaluates
+allowlisted candidate work and proposes structured bounty decisions; trusted
+policy decides whether any proposal may reserve funds and publish a GitHub
+contract.
+
+Run the deterministic local demo:
+
+```bash
+python -m agent_bounty demo-project-agent-motoko \
+  --db .demo/project-agent.sqlite3
+```
+
+Check the gated Hermes/NemoClaw/Nemotron readiness path:
+
+```bash
+python -m agent_bounty project-agent status
+```
+
+By default this reports `fake-project-agent-runtime-v1` for tests/demos and an
+explicit blocker for real Hermes execution. See `docs/project-agent.md`.

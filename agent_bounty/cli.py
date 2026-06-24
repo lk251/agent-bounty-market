@@ -30,6 +30,20 @@ from .github_integration import (
     sign_github_payload,
 )
 from .payments import FakePaymentGateway, StripePaymentGateway
+from .project_agent import (
+    FakeProjectAgentRuntime,
+    HermesCliRuntime,
+    ProjectAgentError,
+    default_project_agent_policy,
+    evaluate_project_agent,
+    fund_and_publish_project_agent_decision,
+    load_project_agent_policy,
+    project_agent_status_report,
+    run_demo_project_agent_motoko,
+    save_project_agent_policy,
+    scan_project_candidates,
+    setup_demo_project,
+)
 from .stripe_sandbox import (
     OfficialStripeClient,
     PINNED_STRIPE_PACKAGE,
@@ -811,6 +825,97 @@ def cmd_demo_github_motoko(args: argparse.Namespace) -> int:
     return 0 if result["ok"] and replay_publication.get("replayed") else 1
 
 
+def _project_agent_runtime(kind: str) -> FakeProjectAgentRuntime | HermesCliRuntime:
+    if kind == "fake":
+        return FakeProjectAgentRuntime()
+    if kind == "hermes":
+        return HermesCliRuntime()
+    raise ProjectAgentError(f"unknown project-agent runtime {kind}")
+
+
+def _github_client_for_project_agent(fake: bool) -> FakeGitHubClient | GitHubRestClient:
+    if fake:
+        return FakeGitHubClient()
+    _config, client = make_github_client()
+    return client
+
+
+def cmd_project_agent_status(_args: argparse.Namespace) -> int:
+    print_json(project_agent_status_report())
+    return 0
+
+
+def cmd_project_agent_scan(args: argparse.Namespace) -> int:
+    try:
+        market = open_market(args.db)
+        market.create_project(project_id=args.project_id, name=args.project_id, currency=args.currency)
+        policy = default_project_agent_policy(
+            project_id=args.project_id,
+            repo_full_name=args.repo,
+            currency=args.currency,
+            max_bounty_amount_cents=args.max_bounty_cents,
+            monthly_budget_cents=args.monthly_budget_cents,
+            human_approval_threshold_cents=args.human_approval_threshold_cents,
+        )
+        saved_policy = save_project_agent_policy(market, policy)
+        scan = scan_project_candidates(market, project_id=args.project_id, repo_full_name=args.repo)
+    except (ProjectAgentError, MarketError, ValueError) as exc:
+        print_json({"schema": "project-agent-scan-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "project-agent-scan-v1", "ok": True, "policy": saved_policy, "scan": scan})
+    return 0
+
+
+def cmd_project_agent_evaluate(args: argparse.Namespace) -> int:
+    try:
+        market = open_market(args.db)
+        result = evaluate_project_agent(
+            market,
+            project_id=args.project_id,
+            runtime=_project_agent_runtime(args.runtime),
+            idempotency_key=args.idempotency_key or f"project-agent:evaluate:{args.project_id}:{args.runtime}",
+            timeout_seconds=args.timeout_seconds,
+        )
+    except (ProjectAgentError, MarketError) as exc:
+        print_json({"schema": "project-agent-evaluation-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "project-agent-evaluation-v1", "ok": True, **result})
+    return 0
+
+
+def cmd_project_agent_fund_and_publish(args: argparse.Namespace) -> int:
+    try:
+        market = open_market(args.db)
+        _policy = load_project_agent_policy(market, args.project_id)
+        result = fund_and_publish_project_agent_decision(
+            market,
+            project_id=args.project_id,
+            github_client=_github_client_for_project_agent(args.fake_github),
+            repo_full_name=args.repo,
+            idempotency_key=args.idempotency_key or f"project-agent:fund-and-publish:{args.project_id}:{args.repo}",
+        )
+    except (ProjectAgentError, MarketError, GitHubIntegrationError) as exc:
+        print_json({"schema": "project-agent-fund-and-publish-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json({"schema": "project-agent-fund-and-publish-v1", "ok": True, **result})
+    return 0
+
+
+def cmd_demo_project_agent_motoko(args: argparse.Namespace) -> int:
+    try:
+        market = open_market(args.db)
+        if args.runtime == "fake":
+            runtime: FakeProjectAgentRuntime | HermesCliRuntime = FakeProjectAgentRuntime()
+        else:
+            runtime = HermesCliRuntime()
+        result = run_demo_project_agent_motoko(market, repo_full_name=args.repo, runtime=runtime)
+    except (ProjectAgentError, MarketError, GitHubIntegrationError) as exc:
+        print_json({"schema": "project-agent-demo-motoko-v1", "ok": False, "error": str(exc)})
+        return 1
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def open_trusted_market(db_path: str | Path, *, verifier_timeout: float = 60.0) -> AgentBountyMarket:
     conn = connect(db_path)
     return AgentBountyMarket(conn, FakePaymentGateway(), ProtectedVerifierRunner(timeout_seconds=verifier_timeout))
@@ -1409,6 +1514,44 @@ def build_parser() -> argparse.ArgumentParser:
     demo_github.add_argument("--reward-cents", type=int, default=2500)
     demo_github.add_argument("--verifier-timeout", type=float, default=60.0)
     demo_github.set_defaults(func=cmd_demo_github_motoko)
+
+    project_agent = sub.add_parser("project-agent", help="scan, evaluate, and publish project-agent bounties")
+    project_agent_sub = project_agent.add_subparsers(dest="project_agent_command", required=True)
+
+    project_agent_status = project_agent_sub.add_parser("status", help="show project-agent runtime and skill readiness")
+    project_agent_status.set_defaults(func=cmd_project_agent_status)
+
+    project_agent_scan = project_agent_sub.add_parser("scan", help="build the normalized project-agent candidate queue")
+    project_agent_scan.add_argument("--db", required=True)
+    project_agent_scan.add_argument("--project-id", default=DEFAULT_PROJECT_ID)
+    project_agent_scan.add_argument("--repo", default="lk251/motoko")
+    project_agent_scan.add_argument("--currency", default=DEFAULT_CURRENCY)
+    project_agent_scan.add_argument("--max-bounty-cents", type=int, default=2500)
+    project_agent_scan.add_argument("--monthly-budget-cents", type=int, default=2500)
+    project_agent_scan.add_argument("--human-approval-threshold-cents", type=int, default=2500)
+    project_agent_scan.set_defaults(func=cmd_project_agent_scan)
+
+    project_agent_eval = project_agent_sub.add_parser("evaluate", help="run a project-agent runtime over queued candidates")
+    project_agent_eval.add_argument("--db", required=True)
+    project_agent_eval.add_argument("--project-id", default=DEFAULT_PROJECT_ID)
+    project_agent_eval.add_argument("--runtime", choices=["fake", "hermes"], default="fake")
+    project_agent_eval.add_argument("--idempotency-key")
+    project_agent_eval.add_argument("--timeout-seconds", type=float, default=30.0)
+    project_agent_eval.set_defaults(func=cmd_project_agent_evaluate)
+
+    project_agent_fund = project_agent_sub.add_parser("fund-and-publish", help="reserve funds and publish the approved project-agent bounty")
+    project_agent_fund.add_argument("--db", required=True)
+    project_agent_fund.add_argument("--project-id", default=DEFAULT_PROJECT_ID)
+    project_agent_fund.add_argument("--repo", default="lk251/motoko")
+    project_agent_fund.add_argument("--fake-github", action="store_true", help="use deterministic fake GitHub client")
+    project_agent_fund.add_argument("--idempotency-key")
+    project_agent_fund.set_defaults(func=cmd_project_agent_fund_and_publish)
+
+    demo_project_agent = sub.add_parser("demo-project-agent-motoko", help="run the fake-runtime project-agent Motoko underwriting demo")
+    demo_project_agent.add_argument("--db", required=True)
+    demo_project_agent.add_argument("--repo", default="lk251/motoko")
+    demo_project_agent.add_argument("--runtime", choices=["fake", "hermes"], default="fake")
+    demo_project_agent.set_defaults(func=cmd_demo_project_agent_motoko)
 
     status = sub.add_parser("stripe-status", help="show safe Stripe sandbox configuration status")
     status.set_defaults(func=cmd_stripe_status)

@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -24,10 +24,10 @@ def init_db(conn: sqlite3.Connection) -> None:
             value TEXT NOT NULL
         );
 
-        INSERT INTO meta(key, value) VALUES ('schema_version', '7')
+        INSERT INTO meta(key, value) VALUES ('schema_version', '8')
         ON CONFLICT(key) DO UPDATE SET
             value = CASE
-                WHEN CAST(value AS INTEGER) < 7 THEN '7'
+                WHEN CAST(value AS INTEGER) < 8 THEN '8'
                 ELSE value END;
 
         CREATE TABLE IF NOT EXISTS projects (
@@ -358,6 +358,89 @@ def init_db(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS project_agent_skills (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            digest TEXT NOT NULL,
+            path TEXT NOT NULL,
+            content_digest TEXT NOT NULL,
+            metadata_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(name, version, digest)
+        );
+
+        CREATE TABLE IF NOT EXISTS project_agent_policies (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES projects(id),
+            policy_json TEXT NOT NULL,
+            policy_digest TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS project_agent_candidates (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES projects(id),
+            source_kind TEXT NOT NULL,
+            repo_full_name TEXT NOT NULL,
+            issue_number INTEGER,
+            title TEXT NOT NULL,
+            issue_class TEXT NOT NULL,
+            verifier_id TEXT,
+            base_commit TEXT,
+            reward_hint_cents INTEGER,
+            currency TEXT NOT NULL,
+            allowlisted INTEGER NOT NULL DEFAULT 0 CHECK(allowlisted IN (0, 1)),
+            snapshot_json TEXT NOT NULL,
+            snapshot_digest TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS project_agent_runs (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES projects(id),
+            runtime_kind TEXT NOT NULL,
+            runtime_name TEXT NOT NULL,
+            model TEXT NOT NULL,
+            request_json TEXT NOT NULL,
+            request_digest TEXT NOT NULL,
+            response_json TEXT,
+            response_digest TEXT,
+            safe_trace_json TEXT NOT NULL,
+            safe_trace_digest TEXT NOT NULL,
+            skill_versions_json TEXT NOT NULL,
+            status TEXT NOT NULL,
+            error TEXT,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            duration_ms INTEGER,
+            prompt_tokens INTEGER,
+            completion_tokens INTEGER,
+            idempotency_key TEXT NOT NULL UNIQUE
+        );
+
+        CREATE TABLE IF NOT EXISTS project_agent_decisions (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES projects(id),
+            run_id TEXT REFERENCES project_agent_runs(id),
+            candidate_id TEXT NOT NULL REFERENCES project_agent_candidates(id),
+            proposal_digest TEXT NOT NULL,
+            decision TEXT NOT NULL,
+            trusted_verdict TEXT NOT NULL,
+            policy_reasons_json TEXT NOT NULL,
+            bounty_id TEXT REFERENCES bounties(id),
+            github_issue_number INTEGER,
+            contract_digest TEXT,
+            publication_url TEXT,
+            idempotency_key TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(candidate_id, proposal_digest)
+        );
         """
     )
     _ensure_column(conn, "verification_receipts", "project_id", "TEXT")
@@ -398,6 +481,9 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_github_contracts_digest ON github_issue_contracts(contract_digest)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_github_prs_bounty ON github_pull_requests(bounty_id, solver_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_github_publications_receipt ON github_publications(receipt_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_project_agent_candidates_project ON project_agent_candidates(project_id, allowlisted, issue_class)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_project_agent_runs_project ON project_agent_runs(project_id, started_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_project_agent_decisions_project ON project_agent_decisions(project_id, created_at)")
     conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(SCHEMA_VERSION),))
     conn.commit()
 

@@ -47,6 +47,12 @@
   stale markers fail closed.
 - Candidate-owned GitHub CI is non-authoritative. It is recorded for context but
   cannot create a verification receipt or settlement eligibility.
+- Project-agent output is advisory. It cannot edit trusted policy, cannot see
+  payment/GitHub credentials, cannot reserve funds, and cannot publish GitHub
+  contracts directly.
+- Project-agent malformed output, extra fields, prompt-injection attempts,
+  unallowlisted repositories/classes, missing verifier IDs, overspend, and
+  above-threshold spending all fail closed before money moves.
 - Secrets are not required for tests or demo execution.
 
 ## Not Yet Protected
@@ -65,5 +71,7 @@ runs when a host has an approved `openshell` sandbox available.
   sandbox once that runtime is installed and configured for this verifier.
 - Exercise the GitHub path against a real GitHub App or fine-grained token and
   webhook endpoint once credentials are available.
+- Exercise the project-agent path against real Hermes/NemoClaw/Nemotron once
+  the runtime is installed and a reviewed JSON wrapper is configured.
 - Replace the current local-process verifier isolation with the
   sponsor-prescribed sandbox once that runtime is available.
