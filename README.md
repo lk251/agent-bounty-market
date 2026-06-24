@@ -29,12 +29,19 @@ nix develop --command python3 -m agent_bounty demo-rehearse \
   --mode replay \
   --bundle demo/bundles/winning-run \
   --repeat 5
+
+nix develop --command python3 -m agent_bounty demo-serve \
+  --bundle demo/bundles/winning-run \
+  --host 127.0.0.1 \
+  --port 8787 \
+  --check
 ```
 
 The dashboard lives at `demo/bundles/winning-run/dashboard.html` and must show
 `Mixed real/fallback`. It includes real Hermes executable evidence, prior
 recorded-real Stripe sandbox evidence, deterministic fallback rows, and exact
-blockers for the remaining live paths.
+blockers for the remaining live paths. The recording cues live at
+`demo/bundles/winning-run/recording-timeline.md`.
 
 Run the complete Motoko issue #1 proof suite:
 

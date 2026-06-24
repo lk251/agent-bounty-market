@@ -15,6 +15,12 @@ nix develop --command python3 -m agent_bounty demo-rehearse \
   --mode replay \
   --bundle demo/bundles/winning-run \
   --repeat 5
+
+nix develop --command python3 -m agent_bounty demo-serve \
+  --bundle demo/bundles/winning-run \
+  --host 127.0.0.1 \
+  --port 8787 \
+  --check
 ```
 
 Expected:
@@ -23,10 +29,28 @@ Expected:
 - `mode=mixed`
 - `truth_overall=mixed-real-fallback`
 - dashboard path: `demo/bundles/winning-run/dashboard.html`
+- serve URL: `http://127.0.0.1:8787/dashboard.html`
+- recording cues: `demo/bundles/winning-run/recording-timeline.md`
+
+## Serve
+
+Start the local recording server:
+
+```bash
+nix develop --command python3 -m agent_bounty demo-serve \
+  --bundle demo/bundles/winning-run \
+  --host 127.0.0.1 \
+  --port 8787
+```
+
+The command validates the bundle before serving. If the bundle is tampered, it
+prints validation mismatches and exits nonzero instead of serving. It serves
+only files from the bundle directory.
 
 ## Record
 
-1. Open `demo/bundles/winning-run/dashboard.html`.
+1. Open `http://127.0.0.1:8787/dashboard.html`, or the local file
+   `demo/bundles/winning-run/dashboard.html` as a backup.
 2. Keep the `Mixed real/fallback` badge visible in the opening shot.
 3. Use the five dashboard cards as the story spine:
    - Project buys work
@@ -36,7 +60,21 @@ Expected:
    - Economics compound
 4. Show the blocker list briefly. Say that those components are not claimed as
    live in this bundle.
-5. Close on: "Verified software work became operating capital."
+5. Keep `demo/bundles/winning-run/recording-timeline.md` open as the timing
+   script.
+6. Close on: "Verified software work became operating capital."
+
+## Screenshot
+
+The current Nix shell does not include a headless browser or image stack. Use a
+manual screenshot:
+
+1. Open the served dashboard in a browser.
+2. Set browser zoom to 100%, then verify 110% and 125% remain readable.
+3. Use a 1920x1080 window when possible.
+4. Capture the full first viewport with the mode badge and five cards visible.
+5. Do not crop out the fallback/blocker section if using the image as a
+   thumbnail.
 
 ## Voiceover Boundary
 

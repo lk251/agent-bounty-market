@@ -752,3 +752,67 @@ Stripe sandbox env for a fresh split Connect Transfer.
 ```
 
 Next issue: #13 final handoff/tag/comment after commit, push, and tag push.
+
+## Issue #15: Recording QA And Dashboard Polish
+
+UTC start: 2026-06-24T20:54:00Z
+
+Status: completed; this is a recording-readiness pass that preserves the
+`Mixed real/fallback` truth boundary.
+
+Implemented so far:
+
+- added `demo-serve`, which validates a bundle before serving
+  `dashboard.html` from the bundle directory only;
+- added `demo-serve --check`, which prints the serve URL, dashboard path, bundle
+  digest, mode badge, and truth status without starting a server;
+- added generated `recording-timeline.md` with deterministic two-minute
+  recording cues;
+- added recording cues directly to the dashboard;
+- improved dependency-free dashboard CSS for larger typography, responsive
+  cards, stable card order, visible mode badge, and explicit fallback/blocker
+  presentation;
+- updated README, `docs/demo-presentation.md`, `submission/FINAL_HANDOFF.md`,
+  `submission/SUBMISSION.md`, and `submission/RECORDING_RUNBOOK.md`;
+- documented manual screenshot instructions because the current Nix shell does
+  not include a headless browser or image stack.
+
+Safe bundle evidence after rebuild:
+
+```text
+bundle: demo/bundles/winning-run
+dashboard: demo/bundles/winning-run/dashboard.html
+recording timeline: demo/bundles/winning-run/recording-timeline.md
+serve URL: http://127.0.0.1:8787/dashboard.html
+mode badge: Mixed real/fallback
+truth overall: mixed-real-fallback
+bundle digest: sha256:b6622dd716817709fac19037ad299dd97a2f89046d965c880a7c850b3806dd75
+attestation digest: sha256:6fe21f8d57bd70460000bf4b4de8be0232289dae03c367985abd0a4da98ced9a
+truth matrix digest: sha256:417aca2874fbb8f1ca53c68adacf732f5faef67743fa5751e4825b21003caebf
+```
+
+Validation run:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/demo_presentation.py agent_bounty/cli.py tests/test_demo_presentation.py
+nix develop --command python3 -m unittest tests.test_demo_presentation
+nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
+nix develop --command python3 -m agent_bounty demo-serve --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8787 --check
+nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+git diff --check
+```
+
+Observed results:
+
+- focused demo presentation tests: 11 passed;
+- winning bundle build: `ok=true`, `mode=mixed`,
+  `truth_overall=mixed-real-fallback`;
+- serve check: `ok=true`, `url=http://127.0.0.1:8787/dashboard.html`;
+- replay rehearsal: 5/5 validations passed, p95 1 ms.
+- full test suite: 125 passed, 2 skipped;
+- `nix flake check`: all checks passed;
+- diff whitespace check: clean.
+
+Next issue: #16 after issue #15 handoff comment, closure, and pull.

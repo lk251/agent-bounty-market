@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import http.server
 import json
 import os
@@ -16,6 +17,7 @@ from .demo_presentation import (
     DemoPresentationError,
     demo_preflight_report,
     live_refusal_report,
+    prepare_demo_serve_report,
     rehearse_demo,
     replay_bundle,
     reset_demo_state,
@@ -1356,6 +1358,42 @@ def cmd_demo_rehearse(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def cmd_demo_serve(args: argparse.Namespace) -> int:
+    bundle_dir = Path(args.bundle)
+    try:
+        result = prepare_demo_serve_report(bundle_dir=bundle_dir, host=args.host, port=args.port)
+    except DemoPresentationError as exc:
+        print_json({"schema": "agent-bounty-demo-serve-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    if not result.get("ok"):
+        print_json(result)
+        return 1
+    if args.check:
+        print_json(result)
+        return 0
+
+    root = bundle_dir.resolve()
+
+    class BundleHandler(http.server.SimpleHTTPRequestHandler):
+        def translate_path(self, path: str) -> str:
+            translated = Path(super().translate_path(path)).resolve()
+            if translated == root or root in translated.parents:
+                return str(translated)
+            return str(root / "__forbidden__")
+
+        def log_message(self, format: str, *args: Any) -> None:
+            return
+
+    handler = functools.partial(BundleHandler, directory=str(root))
+    server = http.server.ThreadingHTTPServer((args.host, args.port), handler)
+    print_json(result)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        return 0
+    return 0
+
+
 def cmd_demo_reset(args: argparse.Namespace) -> int:
     try:
         result = reset_demo_state(Path(args.path) if args.path else None, yes=args.yes)
@@ -2192,6 +2230,13 @@ def build_parser() -> argparse.ArgumentParser:
     demo_rehearse.add_argument("--bundle")
     demo_rehearse.add_argument("--repeat", type=int, default=1)
     demo_rehearse.set_defaults(func=cmd_demo_rehearse)
+
+    demo_serve = sub.add_parser("demo-serve", help="validate and serve a bundle dashboard from the bundle directory only")
+    demo_serve.add_argument("--bundle", required=True)
+    demo_serve.add_argument("--host", default="127.0.0.1")
+    demo_serve.add_argument("--port", type=int, default=8787)
+    demo_serve.add_argument("--check", action="store_true", help="validate and print serve metadata without starting the server")
+    demo_serve.set_defaults(func=cmd_demo_serve)
 
     demo_reset = sub.add_parser("demo-reset", help="delete .demo state only after explicit confirmation")
     demo_reset.add_argument("--path")

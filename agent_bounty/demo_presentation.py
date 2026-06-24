@@ -33,6 +33,8 @@ BUNDLE_MANIFEST_SCHEMA = "agent-bounty-demo-bundle-manifest-v1"
 BUNDLE_VALIDATION_SCHEMA = "agent-bounty-demo-bundle-validation-v1"
 TRUTH_MATRIX_SCHEMA = "agent-bounty-truth-matrix-v1"
 ATTESTATION_SCHEMA = "agent-bounty-demo-attestation-v1"
+RECORDING_TIMELINE_SCHEMA = "agent-bounty-recording-timeline-v1"
+SERVE_REPORT_SCHEMA = "agent-bounty-demo-serve-v1"
 RESET_SCHEMA = "agent-bounty-demo-reset-v1"
 
 SECRET_PATTERNS = (
@@ -51,7 +53,18 @@ REQUIRED_DASHBOARD_TEXT = (
     "GitHub work",
     "Trust",
     "Economics compound",
+    "Fallbacks and blockers",
+    "Recording cues",
     "Verified software work became operating capital.",
+)
+RECORDING_STAGES = (
+    ("00:00", "Problem", "A real project has useful work that needs funding, verification, and settlement."),
+    ("00:15", "Project buys work", "Budget and policy select one measurable Motoko TUI improvement."),
+    ("00:35", "Agents choose", "Specialized agents decline or claim based on scope, capability, and margin."),
+    ("00:55", "Trust boundary", "The protected verifier accepts only the exact candidate SHA and records a receipt."),
+    ("01:20", "Settlement", "The reward is split into external transfer and retained operating credit."),
+    ("01:45", "Compounding", "Retained credit funds the next bounded bounty without hiding fallback rows."),
+    ("02:05", "Close", "Verified software work became operating capital."),
 )
 
 
@@ -357,6 +370,27 @@ def rehearse_demo(*, mode: str, db_path: Path | None = None, motoko_repo: Path |
     raise DemoPresentationError("mode must be local, replay, or live")
 
 
+def prepare_demo_serve_report(*, bundle_dir: Path, host: str = "127.0.0.1", port: int = 8787) -> dict[str, Any]:
+    validation = validate_bundle(bundle_dir)
+    dashboard_path = (bundle_dir / "dashboard.html").resolve()
+    url = f"http://{host}:{int(port)}/dashboard.html"
+    return {
+        "schema": SERVE_REPORT_SCHEMA,
+        "ok": bool(validation["ok"]),
+        "host": host,
+        "port": int(port),
+        "url": url,
+        "bundle_dir": str(bundle_dir),
+        "dashboard": str(dashboard_path),
+        "bundle_digest": validation.get("bundle_digest"),
+        "attestation_digest": validation.get("attestation_digest"),
+        "mode": validation.get("mode"),
+        "mode_badge": validation.get("summary", {}).get("mode_badge"),
+        "truth_overall": (validation.get("truth_matrix") or {}).get("overall_status"),
+        "mismatches": validation.get("mismatches", []),
+    }
+
+
 def snapshot_database(market: AgentBountyMarket) -> dict[str, list[dict[str, Any]]]:
     tables = [
         "projects",
@@ -645,15 +679,18 @@ def write_bundle(bundle_dir: Path, bundle: dict[str, Any], *, overwrite: bool = 
     bundle_path = bundle_dir / "bundle.json"
     dashboard_path = bundle_dir / "dashboard.html"
     readme_path = bundle_dir / "README.md"
+    recording_timeline_path = bundle_dir / "recording-timeline.md"
     evidence_dir = bundle_dir / "evidence"
     evidence_dir.mkdir(parents=True, exist_ok=True)
     bundle_path.write_text(stable_json(bundle) + "\n", encoding="utf-8")
     dashboard_path.write_text(render_dashboard(bundle), encoding="utf-8")
     readme_path.write_text(render_bundle_readme(bundle), encoding="utf-8")
+    recording_timeline_path.write_text(render_recording_timeline(bundle), encoding="utf-8")
     files = {
         "bundle.json": file_digest(bundle_path),
         "dashboard.html": file_digest(dashboard_path),
         "README.md": file_digest(readme_path),
+        "recording-timeline.md": file_digest(recording_timeline_path),
     }
     for name, payload in sorted((bundle.get("evidence") or {}).items()):
         relative = f"evidence/{_safe_filename(name)}.json"
@@ -712,8 +749,51 @@ Contents:
   matrix.
 - `attestation.json`: hashed attestation only; no signing key was created.
 - `dashboard.html`: static presentation surface.
+- `recording-timeline.md`: deterministic two-minute recording cues.
 - `evidence/*.json`: compact evidence slices.
 """
+
+
+def build_recording_timeline(bundle: dict[str, Any]) -> dict[str, Any]:
+    summary = bundle.get("summary", {})
+    truth = bundle.get("truth_matrix") or {}
+    blockers = [
+        {"component": row.get("label"), "status": row.get("status"), "blocker": row.get("blocker")}
+        for row in truth.get("rows", [])
+        if row.get("status") in {"fallback", "blocked"}
+    ]
+    return {
+        "schema": RECORDING_TIMELINE_SCHEMA,
+        "mode_badge": summary.get("mode_badge"),
+        "truth_overall": truth.get("overall_status") or bundle.get("truth_mode"),
+        "dashboard": "dashboard.html",
+        "stages": [
+            {"time": timecode, "title": title, "cue": cue}
+            for timecode, title, cue in RECORDING_STAGES
+        ],
+        "truth_boundary": "Keep the Mixed real/fallback badge visible. Name blocked and fallback components plainly.",
+        "blockers": blockers,
+    }
+
+
+def render_recording_timeline(bundle: dict[str, Any]) -> str:
+    timeline = build_recording_timeline(bundle)
+    lines = [
+        "# Recording Timeline",
+        "",
+        f"Mode badge: `{timeline.get('mode_badge')}`",
+        "",
+        f"Truth: `{timeline.get('truth_overall')}`",
+        "",
+        "## Two-Minute Cues",
+        "",
+    ]
+    for stage in timeline["stages"]:
+        lines.append(f"- `{stage['time']}` **{stage['title']}** — {stage['cue']}")
+    lines.extend(["", "## Truth Boundary", "", str(timeline["truth_boundary"]), "", "## Fallbacks And Blockers", ""])
+    for blocker in timeline["blockers"]:
+        lines.append(f"- **{blocker.get('component')}**: {blocker.get('status')} — {blocker.get('blocker') or 'fallback shown truthfully'}")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def build_attestation(bundle: dict[str, Any], files: dict[str, str]) -> dict[str, Any]:
@@ -770,6 +850,7 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
     mismatches.extend(_validate_truth_matrix(bundle))
     mismatches.extend(_validate_consistency(bundle))
     mismatches.extend(_validate_dashboard(bundle_dir / "dashboard.html"))
+    mismatches.extend(_validate_recording_timeline(bundle_dir / "recording-timeline.md"))
     mismatches.extend(_secret_scan_bundle(bundle_dir))
     return {
         "schema": BUNDLE_VALIDATION_SCHEMA,
@@ -795,6 +876,7 @@ def render_dashboard(bundle: dict[str, Any]) -> str:
     github = rows_by_id.get("github_lifecycle", {})
     openshell = rows_by_id.get("openshell_nemoclaw", {})
     stripe_split = rows_by_id.get("stripe_split_transfer", {})
+    timeline_plan = build_recording_timeline(bundle)
     cards = [
         ("Project buys work", [("Repository", summary.get("project")), ("Reward", _money(summary.get("reward"), summary.get("currency"))), ("Contract", _short(summary.get("contract_digest")))]),
         ("Agents choose", [("Project agent", _row_status(rows_by_id.get("project_agent_decision"))), ("Solver agent", _row_status(rows_by_id.get("solver_agent_decision"))), ("Claimed SHA", _short(summary.get("candidate_sha")))]),
@@ -812,27 +894,34 @@ def render_dashboard(bundle: dict[str, Any]) -> str:
         f"<li><b>{html.escape(str(item.get('label')))}</b><span>{html.escape(str(item.get('detail') or ''))}</span></li>"
         for item in timeline
     )
+    cue_html = "\n".join(
+        f"<li><b>{html.escape(str(stage.get('time')))} {html.escape(str(stage.get('title')))}</b><span>{html.escape(str(stage.get('cue')))}</span></li>"
+        for stage in timeline_plan["stages"]
+    )
     return f"""<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent Bounty Demo</title>
 <style>
-body{{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f6f5f2;color:#171717}}
-header{{padding:26px 34px;background:#111;color:#fff;display:flex;justify-content:space-between;gap:24px;align-items:flex-start}}
-h1{{font-size:32px;margin:0 0 8px}} p{{margin:0;max-width:780px;line-height:1.38}}
-.badge{{border:1px solid #fff;padding:8px 12px;text-transform:uppercase;font-weight:700;letter-spacing:.04em}}
-main{{padding:22px 34px}} .grid{{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}}
-.card{{background:#fff;border:1px solid #d8d5cf;border-radius:8px;padding:14px;min-height:150px}}
-.card h2{{font-size:16px;margin:0 0 12px}} .row{{border-top:1px solid #ece9e2;padding:8px 0}}
-.key{{display:block;color:#666;font-size:12px;text-transform:uppercase}} .value{{font-family:ui-monospace,Menlo,monospace;word-break:break-word}}
-ol{{background:#fff;border:1px solid #d8d5cf;border-radius:8px;padding:16px 16px 16px 38px}}
-li{{margin:10px 0}} li span{{display:block;color:#555;margin-top:2px}}
-.final{{font-size:22px;font-weight:800;margin:18px 0 0}}
-@media(max-width:1200px){{.grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}
+*{{box-sizing:border-box}}
+body{{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f6f5f2;color:#171717;font-size:16px}}
+header{{padding:24px 34px;background:#111;color:#fff;display:flex;justify-content:space-between;gap:24px;align-items:flex-start}}
+h1{{font-size:34px;margin:0 0 8px;line-height:1.05}} p{{margin:0;max-width:840px;line-height:1.38}}
+.badge{{border:2px solid #fff;padding:10px 14px;text-transform:uppercase;font-weight:800;letter-spacing:.04em;white-space:nowrap}}
+main{{padding:20px 34px 28px}} .grid{{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}}
+.card{{background:#fff;border:1px solid #d8d5cf;border-radius:8px;padding:14px;min-height:164px;box-shadow:0 1px 2px rgba(0,0,0,.04)}}
+.card h2{{font-size:17px;margin:0 0 12px;line-height:1.15}} .row{{border-top:1px solid #ece9e2;padding:8px 0}}
+.key{{display:block;color:#666;font-size:12px;text-transform:uppercase;font-weight:700}} .value{{font-family:ui-monospace,Menlo,monospace;word-break:break-word;font-size:14px;line-height:1.3}}
+.split{{display:grid;grid-template-columns:1.1fr .9fr;gap:14px;margin-top:18px}}
+ol{{background:#fff;border:1px solid #d8d5cf;border-radius:8px;padding:14px 16px 14px 36px;margin:8px 0 0}}
+li{{margin:8px 0}} li span{{display:block;color:#555;margin-top:2px;line-height:1.35}}
+.final{{font-size:24px;font-weight:900;margin:18px 0 0}}
+@media(max-width:1500px){{.grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}
+@media(max-width:1050px){{header{{flex-direction:column}}.grid,.split{{grid-template-columns:1fr}}.badge{{white-space:normal}}}}
 </style>
 <header><div><h1>Agent Bounty Market</h1><p>A project receives a budget, buys a verified improvement from a specialized agent, settles exactly once, and lets retained operating credit fund the next useful bounty.</p></div><div class="badge">{html.escape(str(badge))} · {status}</div></header>
-<main><section class="grid">{card_html}</section><h2>Fallbacks and blockers</h2><ol>{warning_html}</ol><h2>Timeline</h2><ol>{timeline_html}</ol><p class="final">Verified software work became operating capital.</p></main>
+<main><section class="grid">{card_html}</section><section class="split"><div><h2>Fallbacks and blockers</h2><ol>{warning_html}</ol></div><div><h2>Recording cues</h2><ol>{cue_html}</ol></div></section><h2>Timeline</h2><ol>{timeline_html}</ol><p class="final">Verified software work became operating capital.</p></main>
 </html>
 """
 
@@ -931,6 +1020,14 @@ def _validate_dashboard(path: Path) -> list[str]:
         return ["dashboard.html missing"]
     text = path.read_text(encoding="utf-8")
     return [f"dashboard missing required text: {item}" for item in REQUIRED_DASHBOARD_TEXT if item not in text]
+
+
+def _validate_recording_timeline(path: Path) -> list[str]:
+    if not path.exists():
+        return ["recording-timeline.md missing"]
+    text = path.read_text(encoding="utf-8")
+    required = ["# Recording Timeline", "Mode badge:", "Truth:", "00:00", "00:15", "00:35", "00:55", "01:20", "01:45", "02:05"]
+    return [f"recording timeline missing required text: {item}" for item in required if item not in text]
 
 
 def _secret_scan_bundle(bundle_dir: Path) -> list[str]:

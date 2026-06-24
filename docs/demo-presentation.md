@@ -44,6 +44,15 @@ python -m agent_bounty demo-rehearse \
   --bundle demo/bundles/winning-run \
   --repeat 5
 
+python -m agent_bounty demo-serve \
+  --bundle demo/bundles/winning-run \
+  --host 127.0.0.1 \
+  --port 8787
+
+python -m agent_bounty demo-serve \
+  --bundle demo/bundles/winning-run \
+  --check
+
 python -m agent_bounty demo-live
 python -m agent_bounty demo-reset --yes
 ```
@@ -58,6 +67,7 @@ Each bundle directory contains:
 - `bundle.json`: sanitized run data, persisted table snapshot, timeline, and
   summary;
 - `dashboard.html`: static event-backed presentation surface.
+- `recording-timeline.md`: deterministic two-minute recording cues.
 - `attestation.json`: hashed attestation, with no private signing key.
 - `evidence/*.json`: compact evidence files for the truth matrix and demo
   counts.
@@ -66,6 +76,10 @@ Validation checks schema, file digests, mode consistency, fake-provider truth,
 the visible mode badge, truth matrix rows, consistency fields, dashboard
 required text, and secret-like bundle contents. A fake or fallback component
 cannot be relabeled as live without failing validation.
+
+`demo-serve` validates the bundle before serving and serves only files from the
+bundle directory. `--check` prints the URL, file path, bundle digest, mode, and
+truth status without starting the server.
 
 ## Current Truth Boundary
 

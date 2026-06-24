@@ -24,6 +24,12 @@ nix develop --command python3 -m agent_bounty demo-rehearse \
   --mode replay \
   --bundle demo/bundles/winning-run \
   --repeat 5
+
+nix develop --command python3 -m agent_bounty demo-serve \
+  --bundle demo/bundles/winning-run \
+  --host 127.0.0.1 \
+  --port 8787 \
+  --check
 ```
 
 Bundle files:
@@ -34,6 +40,7 @@ Bundle files:
 - `attestation.json`: hashed attestation only; no private signing key was
   created.
 - `dashboard.html`: static recording surface.
+- `recording-timeline.md`: deterministic two-minute recording cues.
 - `evidence/*.json`: compact evidence slices for truth matrix, demo summary,
   and database counts.
 
@@ -104,6 +111,7 @@ nix develop --command python3 -m py_compile agent_bounty/demo_presentation.py ag
 nix develop --command python3 -m unittest tests.test_demo_presentation
 nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
 nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
+nix develop --command python3 -m agent_bounty demo-serve --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8787 --check
 nix develop --command python3 -m agent_bounty demo-preflight --mode replay
 nix develop --command python3 -m agent_bounty demo-live
 nix develop --command python3 -m compileall agent_bounty tests verifiers
@@ -118,17 +126,19 @@ Observed before final commit:
 focused presentation tests: 8 passed
 winning bundle validation: ok=true, mode=mixed, truth=mixed-real-fallback
 replay rehearsal: 5/5 validations passed
-bundle digest: sha256:96973575de01b25c682e121b64e1be1f851fc91d0d71ba9ef0ae43314738ac1a
-attestation digest: sha256:8cca5c2479ddef11c3e0b22d8c186ddb0c99e90cfd486cb5e02425dba54b4fdd
-truth matrix digest: sha256:66cb60b7843ae2a047271a8fc4ce0f324f7f7027a1c87d7acba0973bb36802cf
-full suite: 122 tests passed, 2 skipped
+serve check: ok=true, url=http://127.0.0.1:8787/dashboard.html
+bundle digest: sha256:b6622dd716817709fac19037ad299dd97a2f89046d965c880a7c850b3806dd75
+attestation digest: sha256:6fe21f8d57bd70460000bf4b4de8be0232289dae03c367985abd0a4da98ced9a
+truth matrix digest: sha256:417aca2874fbb8f1ca53c68adacf732f5faef67743fa5751e4825b21003caebf
+full suite: 125 tests passed, 2 skipped
 nix flake check: all checks passed
 ```
 
 ## Recording
 
-Use `submission/RECORDING_RUNBOOK.md`. Record `demo/bundles/winning-run/dashboard.html`
-with the `Mixed real/fallback` badge visible and say the blockers plainly.
+Use `submission/RECORDING_RUNBOOK.md`. Serve
+`demo/bundles/winning-run/dashboard.html` with `demo-serve`, keep the
+`Mixed real/fallback` badge visible, and say the blockers plainly.
 
 ## Submission Checklist
 
