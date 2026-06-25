@@ -1311,3 +1311,82 @@ Remaining boundary actions:
 - comment on #23 with commit, draft checker output, remaining placeholders, and
   pointer to #24;
 - close #23 only after the handoff comment.
+
+## Issue #24: Bundle-Backed Presentation Director
+
+UTC start: 2026-06-25T04:42:00Z
+UTC end: 2026-06-25T04:51:11Z
+
+Status: completed locally; the optional two-minute recording director is built
+from the validated mixed winning bundle and the required validation gates pass.
+
+Implemented:
+
+- added `python -m agent_bounty demo-director`;
+- added bundle-backed static director generation:
+  `director.html`, `director-record.html`, `director-notes.html`, and
+  `director-cues.json`;
+- generated seven scenes from bundle data: Problem, Project buys work, Agents
+  choose, Trust boundary, Settlement, Compounding, and Close;
+- kept the `Mixed real/fallback` truth badge visible on every scene;
+- kept presenter notes out of the record route;
+- added keyboard/autoplay/restart/escape controls, progress/timer display, URL
+  parameters, and reduced-motion CSS;
+- confined serving to the validated bundle directory;
+- added `submission/VOICEOVER_FINAL.md`;
+- updated recording runbook, shot list, video metadata, demo-presentation docs,
+  final handoff, release manifest, and portal checklist;
+- rebuilt the winning bundle, which refreshed Hermes executable evidence and
+  changed the current bundle digests;
+- made release/submission tests compare current working bundle data rather than
+  stale hard-coded digests.
+
+Current evidence:
+
+```text
+bundle digest: sha256:5ab1df5b9d1f901008c7425bebf10df9895748a77e454ea58a0fd01355625cf6
+attestation digest: sha256:11554b3999fe144cb804c941a3a6cb48fd53729fd8ce1c19fc05bdc6ccf6aa0b
+truth matrix digest: sha256:bc769442f2102ee2ddad06a84b35f6c992fef227a7b579ba71979df9922d3e07
+director URL: http://127.0.0.1:8788/director.html?duration=120
+record URL: http://127.0.0.1:8788/director-record.html?duration=120&autoplay=1
+scene count: 7
+truth label: Mixed real/fallback
+```
+
+Validation run:
+
+```bash
+nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
+nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 120 --check
+nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
+nix develop --command python3 -m agent_bounty submission-check
+nix develop --command python3 -m agent_bounty submission-check --entry
+nix develop --command python3 -m agent_bounty release-audit
+nix develop --command python3 -m unittest tests.test_demo_director
+nix develop --command python3 -m unittest tests.test_release_integrity tests.test_submission_check
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+git diff --check
+```
+
+Observed results:
+
+- winning bundle build: `ok=true`, `truth_overall=mixed-real-fallback`;
+- director check: `ok=true`, 7 scenes, 4 assets generated;
+- replay rehearsal: 5/5 validations passed, p95 3 ms;
+- standard submission-check: `ok=true`;
+- entry draft check: `ok=true`, 34 operator placeholders remain;
+- release-audit: `ok=true`;
+- focused director tests: 6 passed;
+- focused release/submission tests: 28 passed;
+- full test suite: 184 passed, 2 skipped;
+- `nix flake check`: all checks passed;
+- diff whitespace check: clean.
+
+Remaining boundary actions:
+
+- commit and push issue #24 changes;
+- comment on #24 with commit, director command, validation, current digests, and
+  remaining operator placeholders;
+- close #24 after the handoff comment;
+- continue the coordinator final handoff and retag decision in issue #25.

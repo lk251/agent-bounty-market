@@ -6,7 +6,19 @@ Status: draft until `[FINAL_VIDEO_FILENAME]` and `[FINAL_TWEET_URL]` are filled.
 
 - Hard requirement: 1-3 minutes.
 - Target duration: 1:45-2:15.
+- Director target: 2:00 using `demo-director --duration 120`.
 - Cut anything that pushes the video beyond 2:45 unless it is essential.
+
+## Capture Source
+
+- Preferred command:
+  `nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 120`
+- Preferred capture URL:
+  `http://127.0.0.1:8788/director-record.html?duration=120&autoplay=1`
+- Presenter notes URL, kept off capture:
+  `http://127.0.0.1:8788/director-notes.html`
+- Fallback dashboard URL:
+  `http://127.0.0.1:8787/dashboard.html`
 
 ## Export
 
@@ -22,6 +34,8 @@ Status: draft until `[FINAL_VIDEO_FILENAME]` and `[FINAL_TWEET_URL]` are filled.
 ## Visual Checks
 
 - `Mixed real/fallback` mode badge visible.
+- Director scenes present: Problem, Project buys work, Agents choose, Trust
+  boundary, Settlement, Compounding, Close.
 - No terminal window exposes secrets, raw webhook payloads, private prompts,
   personal files, browser sessions, or unrelated home-directory content.
 - Repository URL and release tag are readable.

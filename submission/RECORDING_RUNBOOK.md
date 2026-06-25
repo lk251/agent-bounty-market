@@ -23,6 +23,13 @@ nix develop --command python3 -m agent_bounty demo-serve \
   --host 127.0.0.1 \
   --port 8787 \
   --check
+
+nix develop --command python3 -m agent_bounty demo-director \
+  --bundle demo/bundles/winning-run \
+  --host 127.0.0.1 \
+  --port 8788 \
+  --duration 120 \
+  --check
 ```
 
 Expected:
@@ -32,11 +39,28 @@ Expected:
 - `truth_overall=mixed-real-fallback`
 - dashboard path: `demo/bundles/winning-run/dashboard.html`
 - serve URL: `http://127.0.0.1:8787/dashboard.html`
+- director URL: `http://127.0.0.1:8788/director.html?duration=120`
+- record URL: `http://127.0.0.1:8788/director-record.html?duration=120&autoplay=1`
 - recording cues: `demo/bundles/winning-run/recording-timeline.md`
+- director cues: `demo/bundles/winning-run/director-cues.json`
 
 ## Serve
 
 Start the local recording server:
+
+```bash
+nix develop --command python3 -m agent_bounty demo-director \
+  --bundle demo/bundles/winning-run \
+  --host 127.0.0.1 \
+  --port 8788 \
+  --duration 120
+```
+
+The command validates the bundle, generates `director.html`,
+`director-record.html`, `director-notes.html`, and `director-cues.json`, then
+serves only files from the bundle directory.
+
+Fallback dashboard server:
 
 ```bash
 nix develop --command python3 -m agent_bounty demo-serve \
@@ -51,19 +75,22 @@ only files from the bundle directory.
 
 ## Record
 
-1. Open `http://127.0.0.1:8787/dashboard.html`, or the local file
-   `demo/bundles/winning-run/dashboard.html` as a backup.
+1. Open `http://127.0.0.1:8788/director-record.html?duration=120&autoplay=1`
+   for capture. Keep `http://127.0.0.1:8788/director-notes.html` off-screen as
+   the presenter notes view.
 2. Keep the `Mixed real/fallback` badge visible in the opening shot.
-3. Use the five dashboard cards as the story spine:
+3. Use the seven director scenes as the story spine:
+   - Problem
    - Project buys work
    - Agents choose
-   - GitHub work
-   - Trust
-   - Economics compound
-4. Show the blocker list briefly. Say that those components are not claimed as
+   - Trust boundary
+   - Settlement
+   - Compounding
+   - Close
+4. Show the blocker/fallback statements briefly. Say that those components are not claimed as
    live in this bundle.
-5. Keep `demo/bundles/winning-run/recording-timeline.md` open as the timing
-   script.
+5. Use `submission/VOICEOVER_FINAL.md` as the spoken script and
+   `demo/bundles/winning-run/director-cues.json` as the timing source.
 6. Close on: "Verified software work became operating capital."
 
 ## Screenshot

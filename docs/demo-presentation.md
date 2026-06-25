@@ -15,6 +15,10 @@ The hackathon release candidate uses a checked-in mixed bundle at
 `recorded-real`, `fallback`, and `blocked` rows and displays a
 `Mixed real/fallback` badge.
 
+For recording, the preferred surface is the bundle-backed director mode. It
+generates a seven-scene, two-minute static presentation from the same validated
+bundle data and keeps presenter notes out of the record route.
+
 ## Commands
 
 ```bash
@@ -53,6 +57,19 @@ python -m agent_bounty demo-serve \
   --bundle demo/bundles/winning-run \
   --check
 
+python -m agent_bounty demo-director \
+  --bundle demo/bundles/winning-run \
+  --host 127.0.0.1 \
+  --port 8788 \
+  --duration 120 \
+  --check
+
+python -m agent_bounty demo-director \
+  --bundle demo/bundles/winning-run \
+  --host 127.0.0.1 \
+  --port 8788 \
+  --duration 120
+
 python -m agent_bounty demo-live
 python -m agent_bounty demo-reset --yes
 ```
@@ -68,6 +85,10 @@ Each bundle directory contains:
   summary;
 - `dashboard.html`: static event-backed presentation surface.
 - `recording-timeline.md`: deterministic two-minute recording cues.
+- `director.html`: interactive presenter view with notes.
+- `director-record.html`: clean capture route with no presenter notes.
+- `director-notes.html`: off-screen presenter notes view.
+- `director-cues.json`: machine-readable seven-scene timing and voiceover cues.
 - `attestation.json`: hashed attestation, with no private signing key.
 - `evidence/*.json`: compact evidence files for the truth matrix and demo
   counts.
@@ -80,6 +101,12 @@ cannot be relabeled as live without failing validation.
 `demo-serve` validates the bundle before serving and serves only files from the
 bundle directory. `--check` prints the URL, file path, bundle digest, mode, and
 truth status without starting the server.
+
+`demo-director` also validates before serving. It writes only static director
+assets inside the bundle directory, uses the bundle truth badge on every scene,
+supports arrow/space/restart/escape controls, honors reduced-motion preferences,
+and provides `director-record.html?duration=120&autoplay=1` as the clean
+capture URL.
 
 ## Current Truth Boundary
 

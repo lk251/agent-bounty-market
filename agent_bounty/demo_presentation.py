@@ -36,6 +36,8 @@ ATTESTATION_SCHEMA = "agent-bounty-demo-attestation-v1"
 RECORDING_TIMELINE_SCHEMA = "agent-bounty-recording-timeline-v1"
 SERVE_REPORT_SCHEMA = "agent-bounty-demo-serve-v1"
 RESET_SCHEMA = "agent-bounty-demo-reset-v1"
+DIRECTOR_REPORT_SCHEMA = "agent-bounty-demo-director-v1"
+DIRECTOR_CUES_SCHEMA = "agent-bounty-demo-director-cues-v1"
 
 SECRET_PATTERNS = (
     "sk_test_",
@@ -370,6 +372,30 @@ def prepare_demo_serve_report(*, bundle_dir: Path, host: str = "127.0.0.1", port
         "mode": validation.get("mode"),
         "mode_badge": validation.get("summary", {}).get("mode_badge"),
         "truth_overall": (validation.get("truth_matrix") or {}).get("overall_status"),
+        "mismatches": validation.get("mismatches", []),
+    }
+
+
+def prepare_demo_director_report(*, bundle_dir: Path, host: str = "127.0.0.1", port: int = 8788, duration: int = 120) -> dict[str, Any]:
+    validation = validate_bundle(bundle_dir)
+    assets = write_director_assets(bundle_dir, duration=duration) if validation["ok"] else {}
+    url = f"http://{host}:{int(port)}/director.html?duration={int(duration)}"
+    record_url = f"http://{host}:{int(port)}/director-record.html?duration={int(duration)}&autoplay=1"
+    return {
+        "schema": DIRECTOR_REPORT_SCHEMA,
+        "ok": bool(validation["ok"] and assets.get("ok")),
+        "host": host,
+        "port": int(port),
+        "duration_seconds": int(duration),
+        "url": url,
+        "record_url": record_url,
+        "notes_url": f"http://{host}:{int(port)}/director-notes.html",
+        "bundle_dir": str(bundle_dir),
+        "bundle_digest": validation.get("bundle_digest"),
+        "mode_badge": validation.get("summary", {}).get("mode_badge"),
+        "truth_overall": (validation.get("truth_matrix") or {}).get("overall_status"),
+        "scene_count": assets.get("scene_count", 0),
+        "asset_paths": assets.get("paths", []),
         "mismatches": validation.get("mismatches", []),
     }
 
@@ -799,6 +825,342 @@ def render_recording_timeline(bundle: dict[str, Any]) -> str:
     for blocker in timeline["blockers"]:
         lines.append(f"- **{blocker.get('component')}**: {blocker.get('status')} — {blocker.get('blocker') or 'fallback shown truthfully'}")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def write_director_assets(bundle_dir: Path, *, duration: int = 120) -> dict[str, Any]:
+    validation = validate_bundle(bundle_dir)
+    if not validation["ok"]:
+        return {"ok": False, "paths": [], "scene_count": 0, "mismatches": validation["mismatches"]}
+    bundle = json.loads((bundle_dir / "bundle.json").read_text(encoding="utf-8"))
+    data = build_director_data(bundle, duration=duration)
+    cues = build_director_cues(data)
+    paths = {
+        "director.html": render_director_html(data, include_notes=True),
+        "director-record.html": render_director_html(data, include_notes=False),
+        "director-notes.html": render_director_notes_html(data),
+        "director-cues.json": stable_json(cues) + "\n",
+    }
+    written: list[str] = []
+    for relative, content in paths.items():
+        path = bundle_dir / relative
+        path.write_text(content, encoding="utf-8")
+        written.append(relative)
+    return {"ok": True, "paths": written, "scene_count": len(data["scenes"]), "cues_digest": sha256_text(stable_json(cues))}
+
+
+def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[str, Any]:
+    summary = bundle.get("summary") or {}
+    snapshot = bundle.get("snapshot") or {}
+    truth = bundle.get("truth_matrix") or {}
+    rows = truth.get("rows") if isinstance(truth.get("rows"), list) else []
+    rows_by_id = {row.get("component_id"): row for row in rows if isinstance(row, dict)}
+    bounties = snapshot.get("bounties") or []
+    primary_bounty = bounties[0] if bounties else {}
+    followup_bounty = bounties[1] if len(bounties) > 1 else {}
+    project_decisions = snapshot.get("project_agent_decisions") or []
+    solver_evals = snapshot.get("solver_agent_evaluations") or []
+    receipts = snapshot.get("verification_receipts") or []
+    allocation = (bundle.get("demo_result") or {}).get("allocation") or {}
+    durations = _scene_durations(max(30, int(duration)), 7)
+    badge = summary.get("mode_badge") or _expected_badge(bundle)
+
+    scenes = [
+        _director_scene(
+            "problem",
+            "Problem",
+            "Useful repo work should become a packaged, verifiable transaction.",
+            badge,
+            durations[0],
+            [
+                ("Bounty", primary_bounty.get("title") or "unavailable in bundle"),
+                ("Issue", primary_bounty.get("issue_ref") or "unavailable"),
+                ("Reward", _money(primary_bounty.get("reward_amount"), primary_bounty.get("currency"))),
+            ],
+            [
+                "The bundle records a real Motoko TUI responsiveness bounty as the first task.",
+                "The director uses persisted bundle data only; missing facts render as unavailable.",
+            ],
+            "Name the problem: valuable maintenance work needs funding, exact acceptance, and safe settlement.",
+        ),
+        _director_scene(
+            "project-buys-work",
+            "Project buys work",
+            "Policy and budget select one bounded bounty while alternatives can decline.",
+            badge,
+            durations[1],
+            [
+                ("Project", summary.get("project")),
+                ("Contract digest", _short(summary.get("contract_digest"))),
+                ("Project decisions", f"{len(project_decisions)} recorded"),
+            ],
+            _decision_bullets(project_decisions, "project"),
+            "Point at the digest-bound contract and policy-bounded reward.",
+        ),
+        _director_scene(
+            "agents-choose",
+            "Agents choose",
+            "Specialized solver profiles can decline or claim based on capability and margin.",
+            badge,
+            durations[2],
+            [
+                ("Solver decisions", f"{len(solver_evals)} recorded"),
+                ("Claimed solver", allocation.get("solver_id") or "unavailable"),
+                ("Candidate SHA", _short(summary.get("candidate_sha"))),
+            ],
+            _decision_bullets(solver_evals, "solver"),
+            "Explain that fallback decisions are schema-checked and policy-gated, not hidden as live reasoning.",
+        ),
+        _director_scene(
+            "trust-boundary",
+            "Trust boundary",
+            "Payment waits for a protected verifier receipt bound to the exact candidate.",
+            badge,
+            durations[3],
+            [
+                ("Candidate", _short(summary.get("candidate_sha"))),
+                ("Receipt", _short(summary.get("receipt_id"))),
+                ("Verifier receipts", f"{len(receipts)} recorded"),
+            ],
+            [
+                f"Accepted receipt: {_short(summary.get('receipt_id'))}",
+                "Bad or intermediate verifier outcomes are unavailable in this bundle unless a receipt row records them.",
+                f"Contract digest: {_short(summary.get('contract_digest'))}",
+            ],
+            "Keep this crisp: candidate-owned code cannot authorize payment.",
+        ),
+        _director_scene(
+            "settlement",
+            "Settlement",
+            "Accepted work is split exactly once into external transfer and retained operating credit.",
+            badge,
+            durations[4],
+            [
+                ("Reward", _money(allocation.get("reward_amount"), allocation.get("currency"))),
+                ("External", _money(allocation.get("external_transfer_amount"), allocation.get("currency"))),
+                ("Retained", _money(allocation.get("retained_operating_amount"), allocation.get("currency"))),
+            ],
+            [
+                f"Transfer provider: {allocation.get('transfer_provider') or 'unavailable'}",
+                f"Transfer truth: {((allocation.get('split') or {}).get('truth') or 'unavailable')}",
+                f"Ledger entries: {summary.get('ledger_entries')}",
+            ],
+            "Say that fake external IDs stay visibly fake; only recorded real Stripe IDs are labeled real.",
+        ),
+        _director_scene(
+            "compounding",
+            "Compounding",
+            "Retained credit funds the second bounded bounty without hiding fallback rows.",
+            badge,
+            durations[5],
+            [
+                ("Retained credit", _money(summary.get("retained_operating_credit"), summary.get("currency"))),
+                ("Follow-up bounty", followup_bounty.get("title") or summary.get("second_bounty")),
+                ("Follow-up state", followup_bounty.get("state") or "unavailable"),
+            ],
+            [
+                f"Second bounty id: {_short(summary.get('second_bounty'))}",
+                f"Second bounty URL: {summary.get('second_bounty_url') or 'unavailable'}",
+            ],
+            "This is the compounding loop: verified software work becomes operating capital.",
+        ),
+        _director_scene(
+            "close",
+            "Close",
+            "Verified software work became operating capital.",
+            badge,
+            durations[6],
+            [
+                ("Truth overall", truth.get("overall_status") or bundle.get("truth_mode")),
+                ("Real rows", _truth_count(rows, "real")),
+                ("Fallback/blocked rows", _truth_count(rows, "fallback") + _truth_count(rows, "blocked")),
+            ],
+            _truth_bullets(rows),
+            "Close on usefulness, viability, and the sponsor architecture without all-live claims.",
+        ),
+    ]
+    start = 0
+    for scene in scenes:
+        scene["start_second"] = start
+        start += int(scene["duration_seconds"])
+    return {
+        "schema": "agent-bounty-demo-director-data-v1",
+        "duration_seconds": int(duration),
+        "mode_badge": badge,
+        "truth_overall": truth.get("overall_status") or bundle.get("truth_mode"),
+        "bundle_digest": bundle.get("bundle_content_digest"),
+        "scenes": scenes,
+        "controls": ["ArrowLeft", "ArrowRight", "Space", "Escape", "r"],
+    }
+
+
+def build_director_cues(data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema": DIRECTOR_CUES_SCHEMA,
+        "duration_seconds": data["duration_seconds"],
+        "truth_badge": data["mode_badge"],
+        "scenes": [
+            {
+                "id": scene["id"],
+                "title": scene["title"],
+                "start_second": scene["start_second"],
+                "duration_seconds": scene["duration_seconds"],
+                "voiceover": scene["voiceover"],
+            }
+            for scene in data["scenes"]
+        ],
+    }
+
+
+def _director_scene(
+    scene_id: str,
+    title: str,
+    subtitle: str,
+    badge: str,
+    duration: int,
+    stats: list[tuple[str, Any]],
+    bullets: list[str],
+    voiceover: str,
+) -> dict[str, Any]:
+    return {
+        "id": scene_id,
+        "title": title,
+        "subtitle": subtitle,
+        "truth_badge": badge,
+        "duration_seconds": int(duration),
+        "stats": [{"label": label, "value": str(value if value is not None else "unavailable")} for label, value in stats],
+        "bullets": [str(item) for item in bullets if item],
+        "voiceover": voiceover,
+    }
+
+
+def _scene_durations(total: int, count: int) -> list[int]:
+    base = total // count
+    remainder = total % count
+    return [base + (1 if index < remainder else 0) for index in range(count)]
+
+
+def _decision_bullets(rows: list[dict[str, Any]], kind: str) -> list[str]:
+    if not rows:
+        return [f"No {kind} decisions available in bundle."]
+    bullets: list[str] = []
+    for row in rows[:5]:
+        verdict = row.get("trusted_verdict") or row.get("decision") or "recorded"
+        reasons = row.get("policy_reasons_json") or row.get("reasons_json") or ""
+        bullets.append(f"{verdict}: {_short(reasons, keep=96)}")
+    if len(rows) > 5:
+        bullets.append(f"{len(rows) - 5} more {kind} decisions recorded.")
+    return bullets
+
+
+def _truth_count(rows: list[dict[str, Any]], status: str) -> int:
+    return sum(1 for row in rows if row.get("status") == status)
+
+
+def _truth_bullets(rows: list[dict[str, Any]]) -> list[str]:
+    if not rows:
+        return ["Truth matrix unavailable in bundle."]
+    bullets = []
+    for row in rows:
+        status = row.get("status")
+        if status in {"fallback", "blocked", "recorded-real", "real"}:
+            bullets.append(f"{row.get('label')}: {status} - {row.get('blocker') or 'evidence recorded in bundle'}")
+    return bullets
+
+
+def render_director_html(data: dict[str, Any], *, include_notes: bool) -> str:
+    scenes_html = "\n".join(_render_director_scene(scene, include_notes=include_notes) for scene in data["scenes"])
+    data_json = stable_json(data).replace("<", "\\u003c")
+    notes_hint = "<a href=\"director-notes.html\">Presenter notes</a>" if include_notes else "Record mode"
+    return f"""<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Bounty Director</title>
+<style>
+*{{box-sizing:border-box}}
+html,body{{margin:0;min-height:100%;background:#0d1117;color:#f5f7fb;font-family:system-ui,-apple-system,Segoe UI,sans-serif}}
+body{{overflow:hidden}}
+.shell{{width:100vw;height:100vh;display:flex;flex-direction:column}}
+.top{{height:72px;display:flex;align-items:center;justify-content:space-between;padding:18px 32px;background:#111827;border-bottom:1px solid #2a3444}}
+.brand{{font-weight:800;font-size:22px;letter-spacing:.02em}}
+.badge{{display:inline-flex;align-items:center;gap:8px;border:2px solid #facc15;color:#facc15;border-radius:999px;padding:8px 14px;font-weight:800;text-transform:uppercase}}
+.badge::before{{content:"";width:10px;height:10px;border-radius:50%;background:#facc15;display:inline-block}}
+.timer{{font-variant-numeric:tabular-nums;color:#cbd5e1}}
+.stage{{display:none;flex:1;padding:46px 58px 42px;gap:36px;grid-template-columns:minmax(0,1.15fr) minmax(360px,.85fr);align-items:stretch}}
+.stage.active{{display:grid}}
+h1{{font-size:70px;line-height:.95;margin:0 0 18px;letter-spacing:0}}
+.subtitle{{font-size:28px;line-height:1.2;color:#cbd5e1;max-width:980px;margin-bottom:34px}}
+.bullets{{list-style:none;padding:0;margin:0;display:grid;gap:14px}}
+.bullets li{{font-size:24px;line-height:1.28;background:#161d29;border-left:6px solid #60a5fa;padding:16px 18px;border-radius:8px}}
+.panel{{background:#111827;border:1px solid #2a3444;border-radius:12px;padding:24px;display:flex;flex-direction:column;gap:20px;min-width:0}}
+.stats{{display:grid;gap:12px}}
+.stat{{border:1px solid #334155;border-radius:8px;padding:14px;background:#0f172a}}
+.stat b{{display:block;color:#93c5fd;font-size:14px;text-transform:uppercase;margin-bottom:6px}}
+.stat span{{display:block;font-size:22px;line-height:1.18;overflow-wrap:anywhere}}
+.notes{{margin-top:auto;border-top:1px solid #334155;padding-top:16px;color:#e2e8f0;font-size:18px;line-height:1.35}}
+.notes strong{{color:#facc15}}
+.controls{{height:52px;display:flex;align-items:center;gap:18px;padding:0 32px;background:#111827;border-top:1px solid #2a3444;color:#cbd5e1;font-size:15px}}
+.progress{{height:8px;background:#1f2937}}
+.bar{{height:100%;width:0;background:#60a5fa;transition:width .2s linear}}
+a{{color:#93c5fd}}
+@media (prefers-reduced-motion: reduce){{.bar{{transition:none}}}}
+</style>
+<script type="application/json" id="director-data">{data_json}</script>
+<div class="shell">
+  <div class="top"><div class="brand">Agent Bounty Market</div><div class="badge">{html.escape(str(data["mode_badge"]))}</div><div class="timer" id="timer">00:00 / {int(data["duration_seconds"]):02d}s</div></div>
+  <main>{scenes_html}</main>
+  <div class="progress"><div class="bar" id="bar"></div></div>
+  <div class="controls">Space pause/resume · Arrow keys navigate · R restart · Esc stop autoplay · {notes_hint}</div>
+</div>
+<script>
+const root=document.querySelector('.shell');
+const data=JSON.parse(document.getElementById('director-data').textContent);
+const scenes=[...document.querySelectorAll('.stage')];
+const timer=document.getElementById('timer');
+const bar=document.getElementById('bar');
+const params=new URLSearchParams(location.search);
+let index=Math.max(0, Math.min(scenes.length-1, parseInt(params.get('scene')||'0',10)||0));
+let autoplay=params.get('autoplay')==='1';
+let paused=false;
+let elapsed=0;
+const total=parseInt(params.get('duration')||data.duration_seconds,10)||data.duration_seconds;
+function show(i){{index=(i+scenes.length)%scenes.length;scenes.forEach((s,n)=>s.classList.toggle('active',n===index));elapsed=data.scenes.slice(0,index).reduce((a,s)=>a+s.duration_seconds,0);paint();}}
+function paint(){{const mm=String(Math.floor(elapsed/60)).padStart(2,'0');const ss=String(elapsed%60).padStart(2,'0');timer.textContent=`${{mm}}:${{ss}} / ${{total}}s`;bar.style.width=`${{Math.min(100,elapsed/total*100)}}%`;}}
+function next(){{show(Math.min(index+1,scenes.length-1));}}
+function prev(){{show(Math.max(index-1,0));}}
+setInterval(()=>{{if(!autoplay||paused)return;elapsed++;let boundary=0;for(let i=0;i<data.scenes.length;i++){{boundary+=data.scenes[i].duration_seconds;if(elapsed>=boundary&&i<scenes.length-1){{index=i+1;scenes.forEach((s,n)=>s.classList.toggle('active',n===index));}}}}paint();if(elapsed>=total)autoplay=false;}},1000);
+document.addEventListener('keydown',e=>{{if(e.key==='ArrowRight')next(); if(e.key==='ArrowLeft')prev(); if(e.key===' '){{paused=!paused;autoplay=true;e.preventDefault();}} if(e.key==='r'||e.key==='R'){{elapsed=0;show(0);autoplay=params.get('autoplay')==='1';}} if(e.key==='Escape')autoplay=false;}});
+show(index);
+</script>
+</html>
+"""
+
+
+def _render_director_scene(scene: dict[str, Any], *, include_notes: bool) -> str:
+    stats = "\n".join(f"<div class=\"stat\"><b>{html.escape(item['label'])}</b><span>{html.escape(item['value'])}</span></div>" for item in scene["stats"])
+    bullets = "\n".join(f"<li>{html.escape(item)}</li>" for item in scene["bullets"])
+    notes = f"<div class=\"notes\"><strong>Presenter Notes:</strong> {html.escape(str(scene['voiceover']))}</div>" if include_notes else ""
+    return f"""<section class="stage" data-scene="{html.escape(scene['id'])}">
+  <div><h1>{html.escape(scene['title'])}</h1><div class="subtitle">{html.escape(scene['subtitle'])}</div><ul class="bullets">{bullets}</ul></div>
+  <aside class="panel"><div class="badge">{html.escape(scene['truth_badge'])}</div><div class="stats">{stats}</div>{notes}</aside>
+</section>"""
+
+
+def render_director_notes_html(data: dict[str, Any]) -> str:
+    rows = "\n".join(
+        f"<li><b>{scene['start_second']:03d}s {html.escape(scene['title'])}</b><p>{html.escape(scene['voiceover'])}</p></li>"
+        for scene in data["scenes"]
+    )
+    return f"""<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Director Notes</title>
+<style>body{{font-family:system-ui,sans-serif;margin:32px;line-height:1.45;max-width:980px}}li{{margin:0 0 18px}}b{{font-size:18px}}</style>
+<h1>Presenter Notes</h1>
+<p>Truth badge: <b>{html.escape(str(data["mode_badge"]))}</b>. Duration: {int(data["duration_seconds"])} seconds.</p>
+<ol>{rows}</ol>
+</html>
+"""
 
 
 def build_attestation(bundle: dict[str, Any], files: dict[str, str]) -> dict[str, Any]:

@@ -30,15 +30,15 @@ class ReleaseIntegrityTests(unittest.TestCase):
         self.assertNotIn("commit_sha", manifest)
         self.assertRegex(manifest["source_baseline_sha"], r"^[0-9a-f]{40}$")
         self.assertEqual(manifest["truth_status"], "Mixed real/fallback")
-        committed_bundle = git_show_text("demo/bundles/winning-run/manifest.json")
-        committed_truth = git_show_text("demo/bundles/winning-run/evidence/truth-matrix.json")
-        if committed_bundle is None or committed_truth is None:
+        bundle_path = BUNDLE_DIR / "manifest.json"
+        truth_path = BUNDLE_DIR / "evidence" / "truth-matrix.json"
+        if not bundle_path.is_file() or not truth_path.is_file():
             self.assertTrue(str(manifest["bundle_digest"]).startswith("sha256:"))
             self.assertTrue(str(manifest["attestation_digest"]).startswith("sha256:"))
             self.assertTrue(str(manifest["truth_matrix_digest"]).startswith("sha256:"))
             return
-        bundle_manifest = json.loads(committed_bundle)
-        truth = json.loads(committed_truth)
+        bundle_manifest = json.loads(bundle_path.read_text(encoding="utf-8"))
+        truth = json.loads(truth_path.read_text(encoding="utf-8"))
         self.assertEqual(manifest["bundle_digest"], bundle_manifest["bundle_digest"])
         self.assertEqual(manifest["attestation_digest"], bundle_manifest["attestation_digest"])
         self.assertEqual(manifest["truth_matrix_digest"], truth["digest"])

@@ -17,6 +17,7 @@ from .demo_presentation import (
     DemoPresentationError,
     demo_preflight_report,
     live_refusal_report,
+    prepare_demo_director_report,
     prepare_demo_serve_report,
     rehearse_demo,
     replay_bundle,
@@ -1407,6 +1408,47 @@ def cmd_demo_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_demo_director(args: argparse.Namespace) -> int:
+    bundle_dir = Path(args.bundle)
+    try:
+        result = prepare_demo_director_report(
+            bundle_dir=bundle_dir,
+            host=args.host,
+            port=args.port,
+            duration=args.duration,
+        )
+    except DemoPresentationError as exc:
+        print_json({"schema": "agent-bounty-demo-director-v1", "ok": False, "error": safe_error_message(exc)})
+        return 1
+    if not result.get("ok"):
+        print_json(result)
+        return 1
+    if args.check:
+        print_json(result)
+        return 0
+
+    root = bundle_dir.resolve()
+
+    class BundleHandler(http.server.SimpleHTTPRequestHandler):
+        def translate_path(self, path: str) -> str:
+            translated = Path(super().translate_path(path)).resolve()
+            if translated == root or root in translated.parents:
+                return str(translated)
+            return str(root / "__forbidden__")
+
+        def log_message(self, format: str, *args: Any) -> None:
+            return
+
+    handler = functools.partial(BundleHandler, directory=str(root))
+    server = http.server.ThreadingHTTPServer((args.host, args.port), handler)
+    print_json(result)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        return 0
+    return 0
+
+
 def cmd_fragment_validate(args: argparse.Namespace) -> int:
     try:
         result = validate_fragment_file(Path(args.file), bundle_dir=Path(args.bundle) if args.bundle else None)
@@ -2354,6 +2396,14 @@ def build_parser() -> argparse.ArgumentParser:
     demo_serve.add_argument("--port", type=int, default=8787)
     demo_serve.add_argument("--check", action="store_true", help="validate and print serve metadata without starting the server")
     demo_serve.set_defaults(func=cmd_demo_serve)
+
+    demo_director = sub.add_parser("demo-director", help="validate and serve the bundle-backed two-minute presentation director")
+    demo_director.add_argument("--bundle", required=True)
+    demo_director.add_argument("--host", default="127.0.0.1")
+    demo_director.add_argument("--port", type=int, default=8788)
+    demo_director.add_argument("--duration", type=int, default=120)
+    demo_director.add_argument("--check", action="store_true", help="validate, generate assets, and print director metadata without starting the server")
+    demo_director.set_defaults(func=cmd_demo_director)
 
     fragment = sub.add_parser("fragment", help="validate, import, list, and rebuild authenticated evidence fragments")
     fragment_sub = fragment.add_subparsers(dest="fragment_command", required=True)

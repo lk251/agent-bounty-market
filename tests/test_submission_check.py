@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import tempfile
 import unittest
@@ -107,10 +108,14 @@ class SubmissionCheckTests(unittest.TestCase):
 
     def test_entry_stale_bundle_digest_fails(self):
         with copied_submission_tree() as root:
+            current_digest = (
+                root / "demo" / "bundles" / "winning-run" / "manifest.json"
+            )
+            digest = json.loads(current_digest.read_text(encoding="utf-8"))["bundle_digest"]
             checklist = root / "submission" / "SUBMISSION_PORTAL_CHECKLIST.md"
             checklist.write_text(
                 checklist.read_text(encoding="utf-8").replace(
-                    "sha256:88beb2a882505aa33a84b39499c3e485ffdf47db389ed97dae0fcc6e41ee8219",
+                    digest,
                     "sha256:" + "0" * 64,
                 ),
                 encoding="utf-8",
