@@ -190,9 +190,9 @@ submission-check: ok=true, errors=[]
 release-audit: ok=true, errors=[]
 replay rehearsal: 5/5 validations passed
 serve check: ok=true, url=http://127.0.0.1:8787/dashboard.html
-bundle digest: sha256:a6d39511063f4d9a06761fc4094596ed6e106e243cc5b458604a3135be48d8f7
-attestation digest: sha256:284e1146759735b28d6810f855fc6daabc4311c1cfd4d8a8dcc4b2f181982b18
-truth matrix digest: sha256:33b6045045206db1123d602f339ac1b8ba8bd17dd7d540953d65bfe00b207eec
+bundle digest: sha256:88beb2a882505aa33a84b39499c3e485ffdf47db389ed97dae0fcc6e41ee8219
+attestation digest: sha256:8fba534b8761d5988dac86994d43a6b54d99927c40ad977f730c612e8ec3a182
+truth matrix digest: sha256:4c2f88387d193813d90319f669b32b2e1269072c50eb265550ae545b7a5ef029
 full suite: 158 tests passed, 2 skipped
 nix flake check: all checks passed
 ```
