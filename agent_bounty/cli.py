@@ -1482,7 +1482,9 @@ def cmd_release_provenance_render_tag_message(args: argparse.Namespace) -> int:
 
 def cmd_release_dogfood_issue(args: argparse.Namespace) -> int:
     try:
-        market = open_release_dogfood_market(Path(args.db))
+        db_path = Path(args.db)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        market = open_release_dogfood_market(db_path)
         result = release_dogfood_report(
             market,
             candidate_repo=Path(args.candidate_repo),
