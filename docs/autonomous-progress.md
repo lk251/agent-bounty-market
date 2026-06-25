@@ -1229,3 +1229,85 @@ Remaining boundary actions:
 - commit and push issue #22 changes;
 - comment on #22 with findings, fixes, validation, and pointer to #23;
 - close #22 only after all required gates pass.
+
+## Issue #23: Final Entry Compliance Package
+
+UTC start: 2026-06-25T04:05:00Z
+
+Status: completed locally; the entry package is ready in draft mode, and final
+mode correctly fails until the operator fills final URLs and confirmation
+placeholders.
+
+Implemented:
+
+- added `submission/ENTRY_REQUIREMENTS.md` with the supplied organizer
+  requirements, public source links, Typeform URL, deadline handling, and
+  private Discord-token avoidance;
+- replaced `submission/TWEET.md` with checker-readable tweet variants:
+  single-post, two-post thread, and ultra-short fallback, each with measured
+  character counts and required `@NousResearch` tag;
+- added `submission/DISCORD_SUBMISSION.md` with concise and expanded Discord
+  messages;
+- added `submission/TYPEFORM_FINAL.md` with ready answers for likely Typeform
+  fields;
+- added `submission/VIDEO_METADATA.md` and
+  `submission/SUBMISSION_PORTAL_CHECKLIST.md`;
+- expanded `submission/JUDGE_QA.md` with the requested competitive and sponsor
+  objection answers;
+- extended `python -m agent_bounty submission-check --entry` and
+  `--entry --final`;
+- added deterministic entry tests for required tags, character counts, missing
+  docs, draft/final placeholders, truth/digest consistency, duration
+  requirements, and current package pass.
+
+Entry package evidence:
+
+```text
+release tag: hackathon-mixed-rc7
+truth label: Mixed real/fallback
+bundle digest: sha256:88beb2a882505aa33a84b39499c3e485ffdf47db389ed97dae0fcc6e41ee8219
+tweet counts: 275, 243, 262, 117
+draft placeholder count: 34
+final blocker class: final_placeholder only
+```
+
+Validation run:
+
+```bash
+nix develop --command python3 -m py_compile agent_bounty/submission_check.py agent_bounty/cli.py tests/test_submission_check.py
+nix develop --command python3 -m unittest tests.test_submission_check
+nix develop --command python3 -m agent_bounty submission-check
+nix develop --command python3 -m agent_bounty submission-check --entry
+nix develop --command python3 -m agent_bounty submission-check --entry --final
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+git diff --check
+```
+
+Observed results:
+
+- focused submission tests: 14 passed;
+- standard submission-check: `ok=true`;
+- entry draft check: `ok=true`;
+- entry final check: `ok=false`, `error_codes=["final_placeholder"]`,
+  placeholder count 34;
+- full test suite: 178 passed, 2 skipped;
+- `nix flake check`: all checks passed;
+- diff whitespace check: clean.
+
+Remaining operator placeholders:
+
+- final tweet URL;
+- repository URL if the operator wants it in tweets/forms;
+- final video filename and file path;
+- team/member/contact fields;
+- Discord confirmation path;
+- Typeform confirmation path;
+- local backup paths.
+
+Remaining boundary actions:
+
+- commit and push issue #23 changes;
+- comment on #23 with commit, draft checker output, remaining placeholders, and
+  pointer to #24;
+- close #23 only after the handoff comment.

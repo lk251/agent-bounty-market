@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
 
 
 SCHEMA = "agent-bounty-submission-check-v1"
+ENTRY_SCHEMA = "agent-bounty-entry-check-v1"
 REQUIRED_DOCS = [
     Path("submission/LIMITATIONS.md"),
     Path("submission/JUDGE_QA.md"),
@@ -46,12 +48,39 @@ SECRET_PATTERNS = [
     re.compile(r"\bNVIDIA_API_KEY=(?!\.\.\.)[^\s`'\"]+"),
 ]
 TEXT_SUFFIXES = {".html", ".json", ".md", ".txt"}
+ENTRY_REQUIRED_DOCS = [
+    Path("submission/ENTRY_REQUIREMENTS.md"),
+    Path("submission/TWEET.md"),
+    Path("submission/DISCORD_SUBMISSION.md"),
+    Path("submission/TYPEFORM_FINAL.md"),
+    Path("submission/VIDEO_METADATA.md"),
+    Path("submission/SUBMISSION_PORTAL_CHECKLIST.md"),
+]
+ENTRY_TRUTH_FILES = [
+    Path("submission/TWEET.md"),
+    Path("submission/DISCORD_SUBMISSION.md"),
+    Path("submission/TYPEFORM_FINAL.md"),
+    Path("submission/VIDEO_METADATA.md"),
+    Path("submission/SUBMISSION_PORTAL_CHECKLIST.md"),
+]
+ENTRY_PLACEHOLDER_RE = re.compile(r"\[[A-Z][A-Z0-9_ /.-]*\]|\b(?:TODO|TBD|TO_BE_FILLED)\b")
+TWEET_BLOCK_RE = re.compile(
+    r"^### (?P<name>.+?)\n"
+    r"Status: (?P<status>[^\n]+)\n"
+    r"Character count: (?P<count>[0-9]+)\n"
+    r"```tweet\n(?P<body>.*?)\n```",
+    re.MULTILINE | re.DOTALL,
+)
+TWEET_LIMIT = 280
+ULTRA_SHORT_LIMIT = 180
 
 
-def submission_check_report(root: Path | None = None) -> dict[str, Any]:
+def submission_check_report(root: Path | None = None, *, entry: bool = False, final: bool = False) -> dict[str, Any]:
     root_path = (root or Path.cwd()).resolve()
     errors: list[dict[str, Any]] = []
     checked_files = _candidate_files(root_path)
+    if final:
+        entry = True
 
     for doc in REQUIRED_DOCS:
         if not (root_path / doc).is_file():
@@ -61,16 +90,21 @@ def submission_check_report(root: Path | None = None) -> dict[str, Any]:
     _check_sponsor_table(root_path, errors)
     _check_demo_scripts(root_path, errors)
     _check_forbidden_text(root_path, checked_files, errors)
+    entry_report = _check_entry_package(root_path, final=final, errors=errors) if entry else None
 
-    return {
+    result = {
         "schema": SCHEMA,
         "ok": not errors,
+        "mode": "entry-final" if final else "entry-draft" if entry else "standard",
         "checked_files": [str(path.relative_to(root_path)) for path in checked_files],
         "required_docs": [str(path) for path in REQUIRED_DOCS],
         "required_truth_files": [str(path) for path in REQUIRED_TRUTH_FILES],
         "required_sponsor_rows": REQUIRED_SPONSOR_ROWS,
         "errors": errors,
     }
+    if entry_report is not None:
+        result["entry"] = entry_report
+    return result
 
 
 def _candidate_files(root: Path) -> list[Path]:
@@ -138,6 +172,175 @@ def _check_forbidden_text(root: Path, files: list[Path], errors: list[dict[str, 
             for pattern in SECRET_PATTERNS:
                 if pattern.search(line):
                     errors.append(_error("secret_like_text", rel, "secret-like value must not appear in submission artifacts", line=line_no))
+
+
+def _check_entry_package(root: Path, *, final: bool, errors: list[dict[str, Any]]) -> dict[str, Any]:
+    placeholders: list[dict[str, Any]] = []
+    for doc in ENTRY_REQUIRED_DOCS:
+        path = root / doc
+        if not path.is_file():
+            errors.append(_error("missing_entry_doc", doc, f"required entry document is missing: {doc}"))
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        placeholders.extend(_placeholder_locations(doc, text))
+
+    for rel in ENTRY_TRUTH_FILES:
+        path = root / rel
+        if path.is_file() and "Mixed real/fallback" not in path.read_text(encoding="utf-8", errors="replace"):
+            errors.append(_error("entry_missing_truth_boundary", rel, "entry-facing file must include `Mixed real/fallback`"))
+
+    tweet_variants = _check_tweets(root, errors)
+    release = _check_entry_release_claims(root, errors)
+    _check_video_metadata(root, errors)
+    _check_judge_qa_completion(root, errors)
+
+    if final and placeholders:
+        for placeholder in placeholders:
+            errors.append(_error("final_placeholder", Path(placeholder["path"]), f"final mode cannot contain placeholder `{placeholder['placeholder']}`", line=placeholder["line"]))
+
+    return {
+        "schema": ENTRY_SCHEMA,
+        "mode": "final" if final else "draft",
+        "required_docs": [str(path) for path in ENTRY_REQUIRED_DOCS],
+        "tweet_variants": tweet_variants,
+        "release": release,
+        "placeholder_count": len(placeholders),
+        "placeholders": placeholders[:50],
+    }
+
+
+def _check_tweets(root: Path, errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rel = Path("submission/TWEET.md")
+    path = root / rel
+    if not path.is_file():
+        return []
+    text = path.read_text(encoding="utf-8", errors="replace")
+    variants = extract_tweet_variants(text)
+    if len(variants) < 4:
+        errors.append(_error("tweet_variant_count", rel, "tweet package must include single post, two thread posts, and ultra-short fallback"))
+    heading_text = "\n".join(variant["name"].lower() for variant in variants)
+    for required in ["single", "thread 1", "thread 2", "ultra"]:
+        if required not in heading_text:
+            errors.append(_error("tweet_variant_missing", rel, f"tweet package missing `{required}` variant"))
+    for variant in variants:
+        line = variant["line"]
+        body = variant["body"]
+        actual = tweet_character_count(body)
+        if actual != variant["declared_count"]:
+            errors.append(_error("tweet_character_count_mismatch", rel, f"{variant['name']} declares {variant['declared_count']} but actual count is {actual}", line=line))
+        if actual > TWEET_LIMIT:
+            errors.append(_error("tweet_too_long", rel, f"{variant['name']} is {actual} characters; limit is {TWEET_LIMIT}", line=line))
+        if "ultra" in variant["name"].lower() and tweet_character_count(_before_url_placeholder(body)) > ULTRA_SHORT_LIMIT:
+            errors.append(_error("tweet_ultra_short_too_long", rel, f"{variant['name']} must be under {ULTRA_SHORT_LIMIT} characters before URL", line=line))
+        if "@NousResearch" not in body:
+            errors.append(_error("tweet_missing_nous_tag", rel, f"{variant['name']} must include @NousResearch", line=line))
+        if "Mixed real/fallback" not in body:
+            errors.append(_error("tweet_missing_truth_boundary", rel, f"{variant['name']} must include Mixed real/fallback", line=line))
+    return [
+        {"name": variant["name"], "status": variant["status"], "declared_count": variant["declared_count"], "actual_count": tweet_character_count(variant["body"])}
+        for variant in variants
+    ]
+
+
+def extract_tweet_variants(text: str) -> list[dict[str, Any]]:
+    variants: list[dict[str, Any]] = []
+    for match in TWEET_BLOCK_RE.finditer(text):
+        variants.append(
+            {
+                "name": match.group("name").strip(),
+                "status": match.group("status").strip(),
+                "declared_count": int(match.group("count")),
+                "body": match.group("body"),
+                "line": text.count("\n", 0, match.start()) + 1,
+            }
+        )
+    return variants
+
+
+def tweet_character_count(text: str) -> int:
+    return len(text)
+
+
+def _before_url_placeholder(text: str) -> str:
+    return text.split("[REPO_URL]", 1)[0].split("[TWEET_URL]", 1)[0].rstrip()
+
+
+def _check_entry_release_claims(root: Path, errors: list[dict[str, Any]]) -> dict[str, Any]:
+    release_manifest = _read_json(root / "submission" / "RELEASE_MANIFEST.json")
+    bundle_manifest = _read_json(root / "demo" / "bundles" / "winning-run" / "manifest.json")
+    release_tag = str(release_manifest.get("release_tag") or "")
+    release_truth = str(release_manifest.get("truth_status") or "")
+    release_bundle_digest = str(release_manifest.get("bundle_digest") or "")
+    bundle_digest = str(bundle_manifest.get("bundle_digest") or "")
+    if release_truth != "Mixed real/fallback":
+        errors.append(_error("entry_release_truth_mismatch", Path("submission/RELEASE_MANIFEST.json"), "release manifest truth status must be Mixed real/fallback"))
+    if release_bundle_digest != bundle_digest:
+        errors.append(_error("entry_bundle_digest_mismatch", Path("submission/RELEASE_MANIFEST.json"), "release manifest bundle digest must match current bundle manifest"))
+
+    portal = root / "submission" / "SUBMISSION_PORTAL_CHECKLIST.md"
+    discord = root / "submission" / "DISCORD_SUBMISSION.md"
+    combined = ""
+    for path in [portal, discord]:
+        if path.is_file():
+            combined += "\n" + path.read_text(encoding="utf-8", errors="replace")
+    if release_tag and release_tag not in combined:
+        errors.append(_error("entry_release_tag_missing", Path("submission/SUBMISSION_PORTAL_CHECKLIST.md"), f"entry package must mention release tag `{release_tag}`"))
+    if bundle_digest and bundle_digest not in (portal.read_text(encoding="utf-8", errors="replace") if portal.is_file() else ""):
+        errors.append(_error("entry_bundle_digest_missing", Path("submission/SUBMISSION_PORTAL_CHECKLIST.md"), f"portal checklist must mention bundle digest `{bundle_digest}`"))
+
+    return {"release_tag": release_tag, "truth_status": release_truth, "bundle_digest": bundle_digest}
+
+
+def _check_video_metadata(root: Path, errors: list[dict[str, Any]]) -> None:
+    rel = Path("submission/VIDEO_METADATA.md")
+    path = root / rel
+    if not path.is_file():
+        return
+    text = path.read_text(encoding="utf-8", errors="replace")
+    normalized = text.replace("–", "-")
+    if "1-3 minutes" not in normalized:
+        errors.append(_error("entry_video_duration_requirement", rel, "video metadata must state hard 1-3 minute requirement"))
+    if not re.search(r"1:45\s*-\s*2:15", normalized):
+        errors.append(_error("entry_video_target_duration", rel, "video metadata must state target 1:45-2:15 duration"))
+    if not re.search(r"\b(mp4|h\.264|h264)\b", normalized, re.IGNORECASE):
+        errors.append(_error("entry_video_export_format", rel, "video metadata must include common MP4/H.264 export guidance"))
+
+
+def _check_judge_qa_completion(root: Path, errors: list[dict[str, Any]]) -> None:
+    rel = Path("submission/JUDGE_QA.md")
+    path = root / rel
+    if not path.is_file():
+        return
+    text = path.read_text(encoding="utf-8", errors="replace").lower()
+    required = [
+        "algora",
+        "buyer side",
+        "seller side",
+        "stripe structural",
+        "hermes structural",
+        "nvidia/openshell structural",
+        "legitimate first bounty",
+        "viability beyond the demo",
+        "moat",
+        "production money",
+    ]
+    for phrase in required:
+        if phrase not in text:
+            errors.append(_error("judge_qa_missing_entry_answer", rel, f"judge Q&A must answer `{phrase}`"))
+
+
+def _placeholder_locations(rel: Path, text: str) -> list[dict[str, Any]]:
+    locations: list[dict[str, Any]] = []
+    for match in ENTRY_PLACEHOLDER_RE.finditer(text):
+        locations.append({"path": str(rel), "line": text.count("\n", 0, match.start()) + 1, "placeholder": match.group(0)})
+    return locations
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
 def _error(code: str, path: Path, detail: str, *, line: int | None = None) -> dict[str, Any]:

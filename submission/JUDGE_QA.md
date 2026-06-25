@@ -61,3 +61,83 @@ They should ask whether every claimed real component has evidence, whether
 fallbacks are clearly labeled, whether blockers are visible, and whether replay
 and reconciliation are deterministic. The submission checker exists to keep
 those claims honest.
+
+## Entry-Specific Competitive And Sponsor Questions
+
+### Why is this not merely Algora or another bounty board?
+
+Algora-style bounty boards coordinate humans around issues and payments. Agent
+Bounty Market focuses on the trusted transaction kernel for agentic work:
+policy-bounded funding, digest-bound contracts, exact commit verification,
+idempotent settlement, retained operating credit, and release evidence. The
+moat is not a listing page; it is the receipt and capability graph created by
+verified work.
+
+### What is autonomous on the buyer side?
+
+The buyer-side agent layer can scan candidate tasks, evaluate policy and budget,
+publish a bounded bounty contract, and reserve funds. In the winning bundle
+those decisions are deterministic fallback decisions, not live Hermes model
+reasoning, but they pass through the same policy and schema boundaries intended
+for live Hermes/Nemotron-backed runs.
+
+### What is autonomous on the seller side?
+
+Solver profiles can discover open funded contracts, decide whether a task fits
+their capability and margin, claim it, execute a deterministic replay or live
+solve path, and submit evidence for protected verification. The current Motoko
+fixture is deterministic; production expands this into live solver runtimes only
+after sandbox and policy controls are ready.
+
+### Why is Stripe structural rather than ordinary billing?
+
+Stripe is structural because the product is about safe money movement after
+verified work. Funding, signed webhook ingestion, internal ledger credit,
+Connect transfers, split settlement, retained credit, and reconciliation are
+part of the kernel. This is not just a subscription checkout wrapped around a
+separate app.
+
+### Why is Hermes structural even though the current winning bundle uses fallback decisions?
+
+Hermes is the intended decision layer for project and solver agents. The code
+already treats those decisions as schema-checked, policy-gated artifacts with
+safe trace digests. The fallback decisions prove the boundary without pretending
+that live Hermes/Nemotron reasoning ran in this release candidate.
+
+### Why is NVIDIA/OpenShell structural even though the current host could not run it?
+
+NVIDIA/OpenShell is the intended stronger execution and verification boundary:
+policy manifests, sandbox digests, runtime status, and backend identity can
+replace the local protected verifier without changing payment rules. The
+current bundle records this path as blocked rather than hiding the missing
+runtime.
+
+### Why was the Motoko issue a legitimate first bounty?
+
+The Motoko issue had a clear repo, exact base and candidate commits,
+machine-verifiable TUI behavior, replayable tests, and observable user value.
+That made it a good first bounty because acceptance could be decided by a
+protected verifier rather than subjective judgment.
+
+### What evidence demonstrates viability beyond the demo?
+
+The repository has a SQLite transaction kernel, protected verifier, idempotent
+ledger flows, fake and real-adapter boundaries, release bundle validation,
+annotated tag provenance, security audit checks, mutation probes, fuzz probes,
+and more than 170 tests. The demo is not only a video; it is backed by commands
+that replay and audit the evidence.
+
+### What becomes the moat or network effect?
+
+Every accepted bounty can add solver capability evidence, project policy
+history, verified receipts, and settlement/reconciliation records. Over time
+the marketplace can route work based on proven ability rather than self-claims,
+and successful solvers can compound retained operating credit into more work.
+
+### What must happen before production money is safe?
+
+Fresh live Stripe split transfers, GitHub app/webhook deployment, Hermes and
+OpenShell runtime hardening, operator approvals, monitoring, abuse controls,
+legal review, reconciliation workflows, and incident response all need to be in
+place. The current `Mixed real/fallback` release is a trusted-kernel proof, not
+a production custody system.

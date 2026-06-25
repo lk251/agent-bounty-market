@@ -1461,7 +1461,7 @@ def cmd_live_setup_wizard(args: argparse.Namespace) -> int:
 
 
 def cmd_submission_check(args: argparse.Namespace) -> int:
-    result = submission_check_report(Path(args.root) if args.root else None)
+    result = submission_check_report(Path(args.root) if args.root else None, entry=args.entry, final=args.final)
     print_json(result)
     return 0 if result.get("ok") else 1
 
@@ -2384,6 +2384,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     submission_check = sub.add_parser("submission-check", help="check judge-facing submission docs and bundle for unsafe claims")
     submission_check.add_argument("--root", help="repository root; defaults to current directory")
+    submission_check.add_argument("--entry", action="store_true", help="also check final hackathon entry package in draft mode")
+    submission_check.add_argument("--final", action="store_true", help="require final operator URLs/placeholders to be filled")
     submission_check.set_defaults(func=cmd_submission_check)
 
     release_audit = sub.add_parser("release-audit", help="audit release bundle, manifest, and handoff integrity")

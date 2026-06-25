@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent_bounty.submission_check import submission_check_report
+from agent_bounty.submission_check import extract_tweet_variants, submission_check_report, tweet_character_count
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -59,6 +59,73 @@ class SubmissionCheckTests(unittest.TestCase):
             self.assertIn("Mixed real/fallback", text)
             self.assertIn("fallback", text.lower())
             self.assertIn("blocked", text.lower())
+
+    def test_entry_check_passes_current_package_in_draft_mode(self):
+        report = submission_check_report(REPO_ROOT, entry=True)
+        self.assertTrue(report["ok"], report["errors"])
+        self.assertEqual(report["mode"], "entry-draft")
+        self.assertGreater(report["entry"]["placeholder_count"], 0)
+        self.assertEqual(len(report["entry"]["tweet_variants"]), 4)
+
+    def test_tweet_variants_have_measured_counts_and_required_tag(self):
+        text = (REPO_ROOT / "submission" / "TWEET.md").read_text(encoding="utf-8")
+        variants = extract_tweet_variants(text)
+        self.assertEqual(len(variants), 4)
+        for variant in variants:
+            self.assertEqual(variant["declared_count"], tweet_character_count(variant["body"]), variant["name"])
+            self.assertLessEqual(tweet_character_count(variant["body"]), 280)
+            self.assertIn("@NousResearch", variant["body"])
+            self.assertIn("Mixed real/fallback", variant["body"])
+
+    def test_entry_final_mode_rejects_operator_placeholders(self):
+        report = submission_check_report(REPO_ROOT, entry=True, final=True)
+        self.assertFalse(report["ok"])
+        self.assertIn("final_placeholder", error_codes(report))
+
+    def test_entry_missing_required_doc_fails(self):
+        with copied_submission_tree() as root:
+            (root / "submission" / "DISCORD_SUBMISSION.md").unlink()
+            report = submission_check_report(root, entry=True)
+        self.assertFalse(report["ok"])
+        self.assertIn("missing_entry_doc", error_codes(report))
+
+    def test_entry_missing_nous_tag_fails(self):
+        with copied_submission_tree() as root:
+            tweet = root / "submission" / "TWEET.md"
+            tweet.write_text(tweet.read_text(encoding="utf-8").replace("@NousResearch", "@OtherLab"), encoding="utf-8")
+            report = submission_check_report(root, entry=True)
+        self.assertFalse(report["ok"])
+        self.assertIn("tweet_missing_nous_tag", error_codes(report))
+
+    def test_entry_character_count_mismatch_fails(self):
+        with copied_submission_tree() as root:
+            tweet = root / "submission" / "TWEET.md"
+            tweet.write_text(tweet.read_text(encoding="utf-8").replace("Character count: 275", "Character count: 274", 1), encoding="utf-8")
+            report = submission_check_report(root, entry=True)
+        self.assertFalse(report["ok"])
+        self.assertIn("tweet_character_count_mismatch", error_codes(report))
+
+    def test_entry_stale_bundle_digest_fails(self):
+        with copied_submission_tree() as root:
+            checklist = root / "submission" / "SUBMISSION_PORTAL_CHECKLIST.md"
+            checklist.write_text(
+                checklist.read_text(encoding="utf-8").replace(
+                    "sha256:88beb2a882505aa33a84b39499c3e485ffdf47db389ed97dae0fcc6e41ee8219",
+                    "sha256:" + "0" * 64,
+                ),
+                encoding="utf-8",
+            )
+            report = submission_check_report(root, entry=True)
+        self.assertFalse(report["ok"])
+        self.assertIn("entry_bundle_digest_missing", error_codes(report))
+
+    def test_entry_duration_outside_requirements_fails(self):
+        with copied_submission_tree() as root:
+            video = root / "submission" / "VIDEO_METADATA.md"
+            video.write_text(video.read_text(encoding="utf-8").replace("1-3 minutes", "3-4 minutes"), encoding="utf-8")
+            report = submission_check_report(root, entry=True)
+        self.assertFalse(report["ok"])
+        self.assertIn("entry_video_duration_requirement", error_codes(report))
 
 
 def copied_submission_tree():
