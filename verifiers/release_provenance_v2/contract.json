@@ -1,0 +1,17 @@
+{
+  "schema": "release-provenance-verifier-contract-v1",
+  "verifier_id": "release_provenance_v2",
+  "verifier_version": "1.0.0",
+  "issue": "lk251/agent-bounty-market#21",
+  "requires": [
+    "release manifest schema v2",
+    "no committed self-referential release commit_sha field",
+    "production and tests do not hard-code a current RC tag",
+    "release-audit passes against the committed bundle and handoff",
+    "render-tag-message emits canonical JSON bound to manifest and bundle digests",
+    "release-audit --tag accepts an annotated tag whose message matches current provenance",
+    "release-audit --tag rejects lightweight tags",
+    "release-audit --tag rejects stale manifest digests",
+    "focused release-integrity tests pass"
+  ]
+}

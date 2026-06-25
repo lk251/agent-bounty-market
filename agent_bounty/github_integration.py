@@ -196,7 +196,21 @@ class FakeGitHubClient:
         return dict(issue)
 
     def get_issue(self, repo_full_name: str, issue_number: int) -> dict[str, Any]:
-        return dict(self.issues[(repo_full_name, int(issue_number))])
+        number = int(issue_number)
+        key = (repo_full_name, number)
+        if key not in self.issues:
+            self.issues[key] = {
+                "id": number,
+                "number": number,
+                "title": f"Issue {number}",
+                "body": "",
+                "html_url": f"https://github.test/{repo_full_name}/issues/{number}",
+                "labels": [],
+                "state": "open",
+                "updated_at": utc_now(),
+            }
+            self.next_issue_number = max(self.next_issue_number, number + 1)
+        return dict(self.issues[key])
 
     def add_issue_comment(self, repo_full_name: str, issue_number: int, body: str) -> dict[str, Any]:
         comment = {

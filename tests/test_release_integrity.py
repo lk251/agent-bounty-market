@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from agent_bounty.release_integrity import RELEASE_MANIFEST_SCHEMA, release_audit_report
+from agent_bounty.release_provenance import audit_annotated_tag, release_manifest_digest, render_tag_message
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -24,7 +25,9 @@ class ReleaseIntegrityTests(unittest.TestCase):
     def test_release_manifest_schema_and_digests_match_bundle(self):
         manifest = json.loads((REPO_ROOT / "submission" / "RELEASE_MANIFEST.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["schema"], RELEASE_MANIFEST_SCHEMA)
-        self.assertEqual(manifest["release_tag"], "hackathon-mixed-rc6")
+        self.assertRegex(manifest["release_tag"], r"^hackathon-mixed-rc[0-9]+$")
+        self.assertNotIn("commit_sha", manifest)
+        self.assertRegex(manifest["source_baseline_sha"], r"^[0-9a-f]{40}$")
         self.assertEqual(manifest["truth_status"], "Mixed real/fallback")
         committed_bundle = git_show_text("demo/bundles/winning-run/manifest.json")
         committed_truth = git_show_text("demo/bundles/winning-run/evidence/truth-matrix.json")
@@ -84,6 +87,57 @@ class ReleaseIntegrityTests(unittest.TestCase):
         self.assertFalse(report["ok"])
         self.assertIn("private_path", {error["code"] for error in report["errors"]})
 
+    def test_release_tag_message_binds_manifest_and_bundle_digests(self):
+        payload = json.loads(render_tag_message(root=REPO_ROOT, tag="test-rc"))
+        manifest = json.loads((REPO_ROOT / "submission" / "RELEASE_MANIFEST.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["schema"], "agent-bounty-release-tag-provenance-v1")
+        self.assertEqual(payload["release_tag"], "test-rc")
+        self.assertEqual(payload["release_manifest_schema"], RELEASE_MANIFEST_SCHEMA)
+        self.assertEqual(payload["release_manifest_digest"], release_manifest_digest(REPO_ROOT))
+        self.assertEqual(payload["bundle_digest"], manifest["bundle_digest"])
+        self.assertEqual(payload["truth_status"], "Mixed real/fallback")
+        self.assertEqual(payload["target_authority"], "git annotated tag object; not a self-referential committed manifest field")
+
+    def test_annotated_tag_audit_accepts_bound_provenance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = release_fixture(Path(tmp))
+            write_annotated_tag(root, "test-rc")
+            report = audit_annotated_tag(root=root, bundle_dir=root / "demo" / "bundles" / "winning-run", tag="test-rc")
+        self.assertTrue(report["ok"], report["errors"])
+        self.assertRegex(report["target_sha"], r"^[0-9a-f]{40}$")
+        self.assertRegex(report["tag_object_sha"], r"^[0-9a-f]{40}$")
+
+    def test_lightweight_tag_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = release_fixture(Path(tmp))
+            git(root, "tag", "test-rc")
+            report = audit_annotated_tag(root=root, bundle_dir=root / "demo" / "bundles" / "winning-run", tag="test-rc")
+        self.assertFalse(report["ok"])
+        self.assertIn("tag_not_annotated", {error["code"] for error in report["errors"]})
+
+    def test_tag_audit_rejects_stale_manifest_digest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = release_fixture(Path(tmp))
+            write_annotated_tag(root, "test-rc")
+            manifest_path = root / "submission" / "RELEASE_MANIFEST.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["source_baseline_note"] = "changed after tag"
+            manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            report = audit_annotated_tag(root=root, bundle_dir=root / "demo" / "bundles" / "winning-run", tag="test-rc")
+        self.assertFalse(report["ok"])
+        self.assertIn("tag_message_digest_mismatch", {error["code"] for error in report["errors"]})
+
+    def test_tag_audit_rejects_wrong_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = release_fixture(Path(tmp))
+            write_annotated_tag(root, "test-rc")
+            (root / "extra.txt").write_text("later commit\n", encoding="utf-8")
+            git(root, "add", "extra.txt")
+            git(root, "commit", "-m", "later")
+            report = audit_annotated_tag(root=root, bundle_dir=root / "demo" / "bundles" / "winning-run", tag="test-rc")
+        self.assertFalse(report["ok"])
+        self.assertIn("tag_target_not_head", {error["code"] for error in report["errors"]})
+
 
 def git_show_text(path: str) -> str | None:
     result = subprocess.run(
@@ -95,3 +149,30 @@ def git_show_text(path: str) -> str | None:
     if result.returncode == 0:
         return result.stdout
     return None
+
+
+def release_fixture(tmp: Path) -> Path:
+    root = tmp / "release"
+    shutil.copytree(BUNDLE_DIR, root / "demo" / "bundles" / "winning-run")
+    (root / "submission").mkdir(parents=True)
+    shutil.copy2(REPO_ROOT / "submission" / "RELEASE_MANIFEST.json", root / "submission" / "RELEASE_MANIFEST.json")
+    git(root, "init")
+    git(root, "config", "user.email", "release-test@example.invalid")
+    git(root, "config", "user.name", "Release Test")
+    git(root, "add", ".")
+    git(root, "commit", "-m", "release fixture")
+    return root
+
+
+def write_annotated_tag(root: Path, tag: str) -> None:
+    message = root / "tag-message.json"
+    message.write_text(render_tag_message(root=root, bundle_dir=root / "demo" / "bundles" / "winning-run", tag=tag), encoding="utf-8")
+    git(root, "tag", "-a", tag, "-F", str(message))
+    message.unlink()
+
+
+def git(root: Path, *args: str) -> str:
+    result = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise AssertionError(result.stderr or result.stdout)
+    return result.stdout

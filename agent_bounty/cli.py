@@ -74,6 +74,8 @@ from .live_setup import live_setup_wizard_report, render_live_setup_text, write_
 from .nvidia_runtime import nvidia_runtime_status_report, run_nvidia_sandbox_demo
 from .payments import FakePaymentGateway, StripePaymentGateway
 from .release_integrity import release_audit_report
+from .release_dogfood import ReleaseDogfoodError, open_release_dogfood_market, release_dogfood_report
+from .release_provenance import ReleaseProvenanceError, render_tag_message
 from .project_agent import (
     FakeProjectAgentRuntime,
     HermesCliRuntime,
@@ -1464,7 +1466,38 @@ def cmd_submission_check(args: argparse.Namespace) -> int:
 
 
 def cmd_release_audit(args: argparse.Namespace) -> int:
-    result = release_audit_report(Path(args.root) if args.root else None, Path(args.bundle) if args.bundle else None)
+    result = release_audit_report(Path(args.root) if args.root else None, Path(args.bundle) if args.bundle else None, tag=args.tag)
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_release_provenance_render_tag_message(args: argparse.Namespace) -> int:
+    try:
+        print(render_tag_message(root=Path(args.root) if args.root else None, bundle_dir=Path(args.bundle) if args.bundle else None, tag=args.tag), end="")
+    except ReleaseProvenanceError as exc:
+        print_json({"schema": "agent-bounty-release-provenance-error-v1", "ok": False, "error": str(exc)})
+        return 1
+    return 0
+
+
+def cmd_release_dogfood_issue(args: argparse.Namespace) -> int:
+    try:
+        market = open_release_dogfood_market(Path(args.db))
+        result = release_dogfood_report(
+            market,
+            candidate_repo=Path(args.candidate_repo),
+            candidate_sha=args.candidate_sha,
+            issue_number=args.issue_number,
+            base_commit=args.base_commit,
+        )
+        if args.evidence:
+            path = Path(args.evidence)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            result["evidence_path"] = str(path)
+    except (ReleaseDogfoodError, EconomicLoopError, MarketError) as exc:
+        print_json({"schema": "agent-bounty-release-provenance-dogfood-v1", "ok": False, "error": str(exc)})
+        return 1
     print_json(result)
     return 0 if result.get("ok") else 1
 
@@ -2347,7 +2380,25 @@ def build_parser() -> argparse.ArgumentParser:
     release_audit = sub.add_parser("release-audit", help="audit release bundle, manifest, and handoff integrity")
     release_audit.add_argument("--root", help="repository root; defaults to current directory")
     release_audit.add_argument("--bundle", help="bundle directory; defaults to demo/bundles/winning-run")
+    release_audit.add_argument("--tag", help="require and audit an annotated release tag against current provenance")
     release_audit.set_defaults(func=cmd_release_audit)
+
+    release_provenance = sub.add_parser("release-provenance", help="render and inspect release provenance payloads")
+    release_provenance_sub = release_provenance.add_subparsers(dest="release_provenance_command", required=True)
+    render_tag = release_provenance_sub.add_parser("render-tag-message", help="render deterministic annotated-tag message JSON")
+    render_tag.add_argument("--root", help="repository root; defaults to current directory")
+    render_tag.add_argument("--bundle", help="bundle directory; defaults to demo/bundles/winning-run")
+    render_tag.add_argument("--tag", help="release tag to bind; defaults to submission/RELEASE_MANIFEST.json release_tag")
+    render_tag.set_defaults(func=cmd_release_provenance_render_tag_message)
+
+    release_dogfood = sub.add_parser("release-dogfood-issue", help="dogfood issue #21 through retained-credit market settlement")
+    release_dogfood.add_argument("--db", required=True)
+    release_dogfood.add_argument("--candidate-repo", required=True)
+    release_dogfood.add_argument("--candidate-sha")
+    release_dogfood.add_argument("--base-commit")
+    release_dogfood.add_argument("--issue-number", type=int, default=21)
+    release_dogfood.add_argument("--evidence", help="write sanitized evidence JSON to this path")
+    release_dogfood.set_defaults(func=cmd_release_dogfood_issue)
 
     demo_reset = sub.add_parser("demo-reset", help="delete .demo state only after explicit confirmation")
     demo_reset.add_argument("--path")

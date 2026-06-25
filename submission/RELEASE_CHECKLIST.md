@@ -1,6 +1,6 @@
 # Release Checklist
 
-Release tag: `hackathon-mixed-rc6`
+Release tag: `hackathon-mixed-rc7`
 
 Truth status: `Mixed real/fallback`.
 
@@ -9,7 +9,7 @@ Truth status: `Mixed real/fallback`.
 ```bash
 nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
 nix develop --command python3 -m agent_bounty submission-check
-nix develop --command python3 -m agent_bounty release-audit
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc7
 nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
 nix develop --command python3 -m unittest discover -s tests
 nix flake check
@@ -34,7 +34,7 @@ git diff --check
 Create a local ignored backup after validation:
 
 ```bash
-nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/release-backups/hackathon-mixed-rc6.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle .demo/release-backups/hackathon-mixed-rc6
+nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/release-backups/hackathon-mixed-rc7.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle .demo/release-backups/hackathon-mixed-rc7
 ```
 
 The backup lives under `.demo/`, which is ignored. Regenerate it from the

@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from .demo_presentation import default_winning_bundle_dir, validate_bundle
 from .economic_loop import REAL_STRIPE_EVIDENCE
+from .release_provenance import ReleaseProvenanceError, audit_annotated_tag, validate_release_manifest_v2
 from .submission_check import SECRET_PATTERNS
 from .util import file_digest
 
 
 RELEASE_AUDIT_SCHEMA = "agent-bounty-release-audit-v1"
-RELEASE_MANIFEST_SCHEMA = "agent-bounty-release-manifest-v1"
-EXPECTED_CANDIDATE_SHA = "4c03e0fa02a26f1cbadbe593ae687eaa9b333d2c"
+RELEASE_MANIFEST_SCHEMA = "agent-bounty-release-manifest-v2"
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 REQUIRED_BUNDLE_FILES = [
     "manifest.json",
     "bundle.json",
@@ -32,7 +34,7 @@ SAFE_STRIPE_FILES = {
 }
 
 
-def release_audit_report(root: Path | None = None, bundle_dir: Path | None = None, *, strict_release_metadata: bool = True) -> dict[str, Any]:
+def release_audit_report(root: Path | None = None, bundle_dir: Path | None = None, *, strict_release_metadata: bool = True, tag: str | None = None) -> dict[str, Any]:
     root_path = (root or Path.cwd()).resolve()
     bundle_path = (bundle_dir or default_winning_bundle_dir()).resolve()
     if not bundle_path.is_absolute():
@@ -41,6 +43,8 @@ def release_audit_report(root: Path | None = None, bundle_dir: Path | None = Non
     validation: dict[str, Any] | None = None
     manifest: dict[str, Any] = {}
     bundle: dict[str, Any] = {}
+    release_manifest: dict[str, Any] = {}
+    tag_audit: dict[str, Any] | None = None
 
     for relative in REQUIRED_BUNDLE_FILES:
         if not (bundle_path / relative).is_file():
@@ -62,12 +66,19 @@ def release_audit_report(root: Path | None = None, bundle_dir: Path | None = Non
 
     _check_bundle_claims(bundle_path, manifest, bundle, errors)
     if strict_release_metadata:
-        _check_release_manifest(root_path, manifest, bundle, errors)
-        _check_final_handoff(root_path, manifest, bundle, errors)
+        release_manifest = _check_release_manifest(root_path, bundle_path, errors)
+        _check_final_handoff(root_path, manifest, bundle, release_manifest, errors)
+        if tag:
+            try:
+                tag_audit = audit_annotated_tag(root=root_path, bundle_dir=bundle_path, tag=tag)
+                errors.extend(tag_audit.get("errors") or [])
+            except ReleaseProvenanceError as exc:
+                errors.append(_error("tag_audit_failed", f"refs/tags/{tag}", str(exc)))
 
     return {
         "schema": RELEASE_AUDIT_SCHEMA,
         "ok": not errors,
+        "release_tag": release_manifest.get("release_tag"),
         "bundle_dir": str(bundle_path.relative_to(root_path)) if _inside(bundle_path, root_path) else str(bundle_path),
         "bundle_digest": manifest.get("bundle_digest"),
         "attestation_digest": manifest.get("attestation_digest"),
@@ -76,6 +87,7 @@ def release_audit_report(root: Path | None = None, bundle_dir: Path | None = Non
         "candidate_sha": ((bundle.get("summary") or {}).get("candidate_sha")),
         "validation_ok": bool(validation and validation.get("ok")),
         "strict_release_metadata": strict_release_metadata,
+        "tag_audit": tag_audit,
         "errors": errors,
     }
 
@@ -84,8 +96,8 @@ def _check_bundle_claims(bundle_path: Path, manifest: dict[str, Any], bundle: di
     if manifest.get("mode") != "mixed":
         errors.append(_error("mode_not_mixed", "demo/bundles/winning-run/manifest.json", "release bundle must remain mixed unless real fragments upgrade it"))
     summary = bundle.get("summary") or {}
-    if summary.get("candidate_sha") != EXPECTED_CANDIDATE_SHA:
-        errors.append(_error("candidate_sha_mismatch", "demo/bundles/winning-run/bundle.json", f"candidate SHA must be {EXPECTED_CANDIDATE_SHA}"))
+    if not (isinstance(summary.get("candidate_sha"), str) and _SHA_RE.match(summary["candidate_sha"])):
+        errors.append(_error("candidate_sha_invalid", "demo/bundles/winning-run/bundle.json", "candidate SHA must be a 40-character lowercase Git SHA"))
     dashboard = bundle_path / "dashboard.html"
     if dashboard.is_file() and "Mixed real/fallback" not in dashboard.read_text(encoding="utf-8", errors="replace"):
         errors.append(_error("missing_truth_badge", "demo/bundles/winning-run/dashboard.html", "dashboard must include Mixed real/fallback"))
@@ -117,32 +129,25 @@ def _check_bundle_claims(bundle_path: Path, manifest: dict[str, Any], bundle: di
             errors.append(_error("stripe_id_outside_safe_evidence", f"demo/bundles/winning-run/{relative}", "prior Stripe IDs must stay in safe evidence fields"))
 
 
-def _check_release_manifest(root: Path, bundle_manifest: dict[str, Any], bundle: dict[str, Any], errors: list[dict[str, Any]]) -> None:
+def _check_release_manifest(root: Path, bundle_path: Path, errors: list[dict[str, Any]]) -> dict[str, Any]:
     rel = Path("submission/RELEASE_MANIFEST.json")
     path = root / rel
     if not path.is_file():
         errors.append(_error("missing_release_manifest", str(rel), "release manifest is required"))
-        return
+        return {}
     try:
         release = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         errors.append(_error("release_manifest_invalid_json", str(rel), str(exc)))
-        return
-    if release.get("schema") != RELEASE_MANIFEST_SCHEMA:
-        errors.append(_error("release_manifest_schema", str(rel), f"schema must be {RELEASE_MANIFEST_SCHEMA}"))
-    expected = {
-        "bundle_digest": bundle_manifest.get("bundle_digest"),
-        "attestation_digest": bundle_manifest.get("attestation_digest"),
-        "truth_matrix_digest": ((bundle.get("truth_matrix") or {}).get("digest")),
-    }
-    for key, value in expected.items():
-        if release.get(key) != value:
-            errors.append(_error("release_manifest_digest_mismatch", str(rel), f"{key} must match current bundle"))
-    if release.get("truth_status") != "Mixed real/fallback":
-        errors.append(_error("release_manifest_truth", str(rel), "truth_status must be Mixed real/fallback"))
+        return {}
+    try:
+        errors.extend(validate_release_manifest_v2(root=root, bundle_dir=bundle_path))
+    except ReleaseProvenanceError as exc:
+        errors.append(_error("release_manifest_validation_failed", str(rel), str(exc)))
+    return release
 
 
-def _check_final_handoff(root: Path, bundle_manifest: dict[str, Any], bundle: dict[str, Any], errors: list[dict[str, Any]]) -> None:
+def _check_final_handoff(root: Path, bundle_manifest: dict[str, Any], bundle: dict[str, Any], release: dict[str, Any], errors: list[dict[str, Any]]) -> None:
     rel = Path("submission/FINAL_HANDOFF.md")
     path = root / rel
     if not path.is_file():
@@ -155,7 +160,7 @@ def _check_final_handoff(root: Path, bundle_manifest: dict[str, Any], bundle: di
         str(bundle_manifest.get("bundle_digest") or ""),
         str(bundle_manifest.get("attestation_digest") or ""),
         str((bundle.get("truth_matrix") or {}).get("digest") or ""),
-        "hackathon-mixed-rc6",
+        str(release.get("release_tag") or ""),
     ]
     for item in required:
         if item and item not in text:

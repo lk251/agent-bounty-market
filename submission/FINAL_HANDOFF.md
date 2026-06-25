@@ -1,6 +1,6 @@
 # Final Handoff
 
-Release candidate tag: `hackathon-mixed-rc6`
+Release candidate tag: `hackathon-mixed-rc7`
 
 This release candidate is a truthful mixed real/fallback demo package. It does
 not claim a complete sponsor-integrated live run. It packages the strongest
@@ -22,7 +22,7 @@ nix develop --command python3 -m agent_bounty demo-build-winning-run \
 
 nix develop --command python3 -m agent_bounty submission-check
 
-nix develop --command python3 -m agent_bounty release-audit
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc7
 
 nix develop --command python3 -m agent_bounty demo-rehearse \
   --mode replay \
@@ -62,7 +62,7 @@ Live setup:
 - live preflight shares the wizard blocker list:
   `python -m agent_bounty demo-preflight --mode live`
 - red-team gate: `python -m agent_bounty submission-check`
-- release gate: `python -m agent_bounty release-audit`
+- release gate: `python -m agent_bounty release-audit --tag hackathon-mixed-rc7`
 - judge Q&A: `submission/JUDGE_QA.md`
 - sponsor matrix: `submission/SPONSOR_INTEGRATION.md`
 - release checklist: `submission/RELEASE_CHECKLIST.md`
@@ -72,9 +72,9 @@ Backup bundle:
 
 ```bash
 nix develop --command python3 -m agent_bounty demo-build-winning-run \
-  --db .demo/release-backups/hackathon-mixed-rc6.sqlite3 \
+  --db .demo/release-backups/hackathon-mixed-rc7.sqlite3 \
   --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency \
-  --bundle .demo/release-backups/hackathon-mixed-rc6
+  --bundle .demo/release-backups/hackathon-mixed-rc7
 ```
 
 The backup path is intentionally under ignored `.demo/` state. Regenerate it
@@ -147,7 +147,7 @@ nix develop --command python3 -m py_compile agent_bounty/demo_presentation.py ag
 nix develop --command python3 -m unittest tests.test_release_integrity
 nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
 nix develop --command python3 -m agent_bounty submission-check
-nix develop --command python3 -m agent_bounty release-audit
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc7
 nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
 nix develop --command python3 -m agent_bounty demo-serve --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8787 --check
 nix develop --command python3 -m compileall agent_bounty tests verifiers
