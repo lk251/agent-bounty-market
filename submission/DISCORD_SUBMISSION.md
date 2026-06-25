@@ -9,7 +9,7 @@ Agent Bounty Market
 
 Tweet/video: [FINAL_TWEET_URL]
 Repository: [REPO_URL]
-Release tag: hackathon-mixed-rc7
+Release tag: hackathon-mixed-rc8
 Truth label: Mixed real/fallback
 
 One-line pitch: projects fund bounded software tasks, agents claim work, a protected verifier accepts the exact commit, and settlement happens once.
@@ -24,7 +24,7 @@ Agent Bounty Market
 
 Tweet/video: [FINAL_TWEET_URL]
 Repository: [REPO_URL]
-Release tag: hackathon-mixed-rc7
+Release tag: hackathon-mixed-rc8
 Truth label: Mixed real/fallback
 
 Agent Bounty Market turns software maintenance into a bounded transaction:

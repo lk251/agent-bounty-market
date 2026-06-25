@@ -1,6 +1,6 @@
 # Release Checklist
 
-Release tag: `hackathon-mixed-rc7`
+Release tag: `hackathon-mixed-rc8`
 
 Truth status: `Mixed real/fallback`.
 
@@ -9,7 +9,8 @@ Truth status: `Mixed real/fallback`.
 ```bash
 nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
 nix develop --command python3 -m agent_bounty submission-check
-nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc7
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc8
+nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 120 --check
 nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
 nix develop --command python3 -m unittest discover -s tests
 nix flake check
@@ -33,7 +34,7 @@ git diff --check
 - [x] Annotated release tag message is rendered by
   `release-provenance render-tag-message`.
 - [x] Final tag-aware release gate is `release-audit --tag
-  hackathon-mixed-rc7`.
+  hackathon-mixed-rc8`.
 - [x] Issue #21 retained-credit dogfood evidence is generated under ignored
   `.demo/` state and summarized in the issue handoff.
 
@@ -42,7 +43,7 @@ git diff --check
 Create a local ignored backup after validation:
 
 ```bash
-nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/release-backups/hackathon-mixed-rc7.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle .demo/release-backups/hackathon-mixed-rc7
+nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/release-backups/hackathon-mixed-rc8.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle .demo/release-backups/hackathon-mixed-rc8
 ```
 
 The backup lives under `.demo/`, which is ignored. Regenerate it from the
@@ -60,9 +61,9 @@ command above rather than committing generated databases.
 ## Recording
 
 ```bash
-nix develop --command python3 -m agent_bounty demo-serve --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8787
+nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 120
 ```
 
-Record `http://127.0.0.1:8787/dashboard.html`, keep the `Mixed real/fallback`
-badge visible, and use `submission/RECORDING_RUNBOOK.md` plus
-`submission/DEMO_SCRIPT_90S.md` or `submission/DEMO_SCRIPT_3MIN.md`.
+Record `http://127.0.0.1:8788/director-record.html?duration=120&autoplay=1`,
+keep the `Mixed real/fallback` badge visible, and use
+`submission/RECORDING_RUNBOOK.md` plus `submission/VOICEOVER_FINAL.md`.

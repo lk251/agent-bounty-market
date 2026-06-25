@@ -5,7 +5,7 @@ filled.
 
 ## Release Identity
 
-- Release tag: `hackathon-mixed-rc7`
+- Release tag: `hackathon-mixed-rc8`
 - Truth label: `Mixed real/fallback`
 - Bundle digest:
   `sha256:5ab1df5b9d1f901008c7425bebf10df9895748a77e454ea58a0fd01355625cf6`

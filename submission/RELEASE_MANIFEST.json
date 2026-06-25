@@ -1,6 +1,6 @@
 {
   "schema": "agent-bounty-release-manifest-v2",
-  "release_tag": "hackathon-mixed-rc7",
+  "release_tag": "hackathon-mixed-rc8",
   "source_baseline_sha": "72ba26b69d38ce8ca5485be943afa1b57f9d6ab5",
   "source_baseline_note": "This is the historical source baseline used to generate earlier release metadata. The immutable release target is the Git annotated tag object, not a self-referential committed manifest field.",
   "truth_status": "Mixed real/fallback",
@@ -30,7 +30,7 @@
   "validation_commands": [
     "nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run",
     "nix develop --command python3 -m agent_bounty submission-check",
-    "nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc7",
+    "nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc8",
     "nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5",
     "nix develop --command python3 -m unittest discover -s tests",
     "nix flake check"

@@ -28,25 +28,26 @@ nix develop --command python3 -m agent_bounty demo-build-winning-run \
 
 nix develop --command python3 -m agent_bounty submission-check
 
-nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc7
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc8
 
 nix develop --command python3 -m agent_bounty demo-rehearse \
   --mode replay \
   --bundle demo/bundles/winning-run \
   --repeat 5
 
-nix develop --command python3 -m agent_bounty demo-serve \
+nix develop --command python3 -m agent_bounty demo-director \
   --bundle demo/bundles/winning-run \
   --host 127.0.0.1 \
-  --port 8787 \
+  --port 8788 \
+  --duration 120 \
   --check
 ```
 
-The dashboard lives at `demo/bundles/winning-run/dashboard.html` and must show
-`Mixed real/fallback`. It includes real Hermes executable evidence, prior
-recorded-real Stripe sandbox evidence, deterministic fallback rows, and exact
-blockers for the remaining live paths. The recording cues live at
-`demo/bundles/winning-run/recording-timeline.md`.
+The director record route is
+`http://127.0.0.1:8788/director-record.html?duration=120&autoplay=1`; it and
+the fallback dashboard must show `Mixed real/fallback`. The bundle includes
+real Hermes executable evidence, prior recorded-real Stripe sandbox evidence,
+deterministic fallback rows, and exact blockers for the remaining live paths.
 
 To upgrade one component later with safe recorded evidence, use the fragment
 import flow in `docs/fragment-import.md`; it validates schemas, digests,
