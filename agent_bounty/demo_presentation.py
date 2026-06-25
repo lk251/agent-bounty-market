@@ -19,11 +19,11 @@ from .hermes_integration import hermes_status_report
 from .live_setup import live_setup_wizard_report, stripe_setup_status_report
 from .nvidia_runtime import nvidia_runtime_status_report
 from .payments import FakePaymentGateway
-from .project_agent import project_agent_status_report
+from .project_agent import DEFAULT_BASE_COMMIT, DEFAULT_FINAL_COMMIT, project_agent_status_report
 from .solver_agent import solver_agent_status_report
 from .stripe_sandbox import stripe_cli_version, stripe_package_version
 from .util import file_digest, sha256_text, stable_json, utc_now
-from .verification import ProtectedVerifierRunner
+from .verification import ProtectedVerifierRunner, receipt_payload
 
 
 PREFLIGHT_SCHEMA = "agent-bounty-demo-preflight-v1"
@@ -38,6 +38,15 @@ SERVE_REPORT_SCHEMA = "agent-bounty-demo-serve-v1"
 RESET_SCHEMA = "agent-bounty-demo-reset-v1"
 DIRECTOR_REPORT_SCHEMA = "agent-bounty-demo-director-v1"
 DIRECTOR_CUES_SCHEMA = "agent-bounty-demo-director-cues-v1"
+MOTOKO_VERIFICATION_FRAGMENT_SCHEMA = "motoko-verification-fragment-v1"
+ISSUE21_DOGFOOD_EVIDENCE_SCHEMA = "agent-bounty-issue21-dogfood-evidence-v1"
+DEFAULT_INTERMEDIATE_COMMIT = "fdf54095b5cb8aca81984993bcd38176ccadad32"
+MOTOKO_ISSUE_URL = "https://github.com/lk251/motoko/issues/1"
+ISSUE21_DOGFOOD_URL = "https://github.com/lk251/agent-bounty-market/issues/21"
+ISSUE21_DOGFOOD_CANDIDATE = "5ffb2835fec5d5fd9373b129f850aa52396bbd4a"
+ISSUE21_DOGFOOD_RECEIPT = "receipt_ecc99fd087984590ae9313933d17fa48"
+ISSUE21_DOGFOOD_VERIFIER_DIGEST = "sha256:3429d7b5a728ba3f61db2ee0a2588d292ff5fdac361dae1570188be59e250170"
+ISSUE21_DOGFOOD_SOURCE_DIGEST = "sha256:45c3ac46faca4a49a4f9dfcfc25a96f5894b0ce24a93a38eba6545d38f1aeba8"
 
 SECRET_PATTERNS = (
     "sk_test_",
@@ -56,9 +65,11 @@ PRIVATE_PATH_MARKERS = (
 REQUIRED_DASHBOARD_TEXT = (
     "Project buys work",
     "Agents choose",
+    "Motoko verifier proof",
     "GitHub work",
     "Trust",
     "Economics compound",
+    "Issue #21 dogfood",
     "Fallbacks and blockers",
     "Recording cues",
     "Verified software work became operating capital.",
@@ -263,6 +274,7 @@ def run_winning_bundle(
     start = time.monotonic()
     market = AgentBountyMarket(connect(db_path), FakePaymentGateway(), ProtectedVerifierRunner(timeout_seconds=60.0))
     demo = run_demo_economic_loop(market, motoko_repo=motoko_repo)
+    motoko_verification = build_motoko_verification_fragment(motoko_repo=motoko_repo, demo_result=demo)
     elapsed_ms = int((time.monotonic() - start) * 1000)
     snapshot = snapshot_database(market)
     truth_matrix = build_truth_matrix()
@@ -273,6 +285,8 @@ def run_winning_bundle(
         snapshot=snapshot,
         duration_ms=elapsed_ms,
         truth_matrix=truth_matrix,
+        motoko_verification=motoko_verification,
+        issue21_dogfood=build_issue21_dogfood_evidence(),
     )
     manifest = write_bundle(bundle_dir, bundle, overwrite=True)
     validation = validate_bundle(bundle_dir)
@@ -436,6 +450,8 @@ def build_bundle(
     snapshot: dict[str, list[dict[str, Any]]],
     duration_ms: int,
     truth_matrix: dict[str, Any] | None = None,
+    motoko_verification: dict[str, Any] | None = None,
+    issue21_dogfood: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     fake_provider = mode in {"local", "mixed"} or demo_result.get("provider_truth", {}).get("real_stripe_transfer_claimed") is False
     summary = summarize_demo(demo_result, snapshot, mode=mode, truth_matrix=truth_matrix)
@@ -458,7 +474,13 @@ def build_bundle(
         "timeline": build_timeline(snapshot),
         "demo_result": demo_result,
         "snapshot": snapshot,
-        "evidence": build_evidence_payloads(truth_matrix=truth_matrix, demo_result=demo_result, snapshot=snapshot),
+        "evidence": build_evidence_payloads(
+            truth_matrix=truth_matrix,
+            demo_result=demo_result,
+            snapshot=snapshot,
+            motoko_verification=motoko_verification,
+            issue21_dogfood=issue21_dogfood,
+        ),
         "redaction": {
             "secrets_included": False,
             "full_webhook_payloads_included": False,
@@ -643,6 +665,7 @@ def _sanitize_bundle_value(value: Any) -> Any:
     if not isinstance(value, str):
         return value
     replacements = [
+        ("https://github.test/", "fake-github://"),
         (str(repo_root()), "<agent-bounty-market>"),
         (str(default_motoko_repo()), "<motoko-fixture>"),
         (str(Path.home()), "<home>"),
@@ -662,7 +685,14 @@ def _first_blocker(blockers: Any) -> str | None:
     return None
 
 
-def build_evidence_payloads(*, truth_matrix: dict[str, Any] | None, demo_result: dict[str, Any], snapshot: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+def build_evidence_payloads(
+    *,
+    truth_matrix: dict[str, Any] | None,
+    demo_result: dict[str, Any],
+    snapshot: dict[str, list[dict[str, Any]]],
+    motoko_verification: dict[str, Any] | None = None,
+    issue21_dogfood: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     evidence = {
         "demo-summary": {
             "schema": "agent-bounty-demo-summary-evidence-v1",
@@ -679,24 +709,139 @@ def build_evidence_payloads(*, truth_matrix: dict[str, Any] | None, demo_result:
     }
     if truth_matrix:
         evidence["truth-matrix"] = truth_matrix
+    if motoko_verification:
+        evidence["motoko-verification-fragment"] = motoko_verification
+    if issue21_dogfood:
+        evidence["issue-21-dogfood"] = issue21_dogfood
     return evidence
+
+
+def build_motoko_verification_fragment(*, motoko_repo: Path, demo_result: dict[str, Any]) -> dict[str, Any]:
+    cases = [
+        _motoko_verification_case("baseline", motoko_repo=motoko_repo, candidate_commit=DEFAULT_BASE_COMMIT),
+        _motoko_verification_case("idle-only", motoko_repo=motoko_repo, candidate_commit=DEFAULT_INTERMEDIATE_COMMIT),
+        _motoko_verification_case("final", motoko_repo=motoko_repo, candidate_commit=DEFAULT_FINAL_COMMIT),
+    ]
+    final_case = cases[-1]
+    receipt_id = (demo_result.get("first_bounty") or {}).get("receipt_id")
+    metrics_digest = sha256_text(stable_json(final_case.get("metrics", {})))
+    safe_evidence = {
+        "candidate_sha": DEFAULT_FINAL_COMMIT,
+        "receipt_id": receipt_id,
+        "verifier_digest": final_case.get("verifier_digest"),
+        "backend_digest": final_case.get("backend_digest"),
+        "metrics_digest": metrics_digest,
+        "motoko_issue_url": MOTOKO_ISSUE_URL,
+        "cases": cases,
+        "final_payment_replay": bool((demo_result.get("allocation_replay") or {}).get("replayed")),
+        "settlement_replay_safe": bool((demo_result.get("allocation_replay") or {}).get("replayed")),
+    }
+    return {
+        "schema": MOTOKO_VERIFICATION_FRAGMENT_SCHEMA,
+        "component_id": "motoko_verification_receipt",
+        "label": "Motoko issue #1 verifier proof",
+        "truth_status": "recorded-real",
+        "source_issue": MOTOKO_ISSUE_URL,
+        "source_commit": DEFAULT_FINAL_COMMIT,
+        "source_command": "python -m agent_bounty demo-motoko-suite --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency",
+        "captured_at": utc_now(),
+        "source_digest": sha256_text(stable_json(cases)),
+        "safe_evidence": safe_evidence,
+        "evidence_digest": sha256_text(stable_json(safe_evidence)),
+        "consistency": {
+            "project": "lk251/motoko",
+            "candidate_sha": DEFAULT_FINAL_COMMIT,
+            "currency": "USD",
+            "reward_amount": 2500,
+            "receipt_id": receipt_id,
+        },
+        "blocker": None,
+    }
+
+
+def _motoko_verification_case(name: str, *, motoko_repo: Path, candidate_commit: str) -> dict[str, Any]:
+    result = ProtectedVerifierRunner(timeout_seconds=60.0).run(
+        bounty_id=f"bounty_motoko_issue_1_{name}",
+        motoko_repo=motoko_repo,
+        base_commit=DEFAULT_BASE_COMMIT,
+        candidate_commit=candidate_commit,
+    )
+    receipt = receipt_payload(
+        bounty_id=f"bounty_motoko_issue_1_{name}",
+        project_id="project_motoko",
+        issue_ref="lk251/motoko#1",
+        submission_id=f"submission_probe_{name}",
+        solver_id="solver_codex_motoko_issue_1",
+        candidate_repo_path=str(motoko_repo),
+        verifier_id="motoko_issue_1_tui_latency_v2",
+        base_commit=DEFAULT_BASE_COMMIT,
+        candidate_commit=candidate_commit,
+        result=result,
+    )
+    metrics = result.metrics.get("background_study", {}) if isinstance(result.metrics, dict) else {}
+    return {
+        "case": name,
+        "candidate_sha": candidate_commit,
+        "accepted": bool(result.accepted),
+        "verdict": "accepted" if result.accepted else "rejected",
+        "failure_reasons": receipt.get("failure_reasons", []),
+        "verifier_digest": result.verifier_digest,
+        "backend_digest": result.backend_digest,
+        "policy_digest": result.policy_digest,
+        "result_digest": receipt.get("result_digest"),
+        "metrics": {
+            "phase": metrics.get("phase"),
+            "p95_ms": metrics.get("p95_ms"),
+            "max_ms": metrics.get("max_ms"),
+            "samples": metrics.get("samples"),
+            "input_integrity": metrics.get("input_integrity"),
+            "artifact_integrity": metrics.get("artifact_integrity"),
+            "background_completed": metrics.get("background_completed"),
+            "visible_before_phase_end": metrics.get("visible_before_phase_end"),
+        },
+    }
+
+
+def build_issue21_dogfood_evidence() -> dict[str, Any]:
+    safe_evidence = {
+        "issue_url": ISSUE21_DOGFOOD_URL,
+        "candidate_sha": ISSUE21_DOGFOOD_CANDIDATE,
+        "receipt_id": ISSUE21_DOGFOOD_RECEIPT,
+        "verifier_id": "release_provenance_v2",
+        "verifier_digest": ISSUE21_DOGFOOD_VERIFIER_DIGEST,
+        "recorded_evidence_digest": ISSUE21_DOGFOOD_SOURCE_DIGEST,
+        "retained_credit_spend_replay": True,
+        "second_settlement_replay": True,
+        "truth": "deterministic retained-credit dogfood of release provenance; fake provider IDs are not Stripe or GitHub live transport",
+    }
+    return {
+        "schema": ISSUE21_DOGFOOD_EVIDENCE_SCHEMA,
+        "label": "Issue #21 retained-credit dogfood proof",
+        "source_issue": ISSUE21_DOGFOOD_URL,
+        "source_commit": ISSUE21_DOGFOOD_CANDIDATE,
+        "source_command": "python -m agent_bounty release-dogfood-issue --candidate-repo .",
+        "captured_at": utc_now(),
+        "source_digest": ISSUE21_DOGFOOD_SOURCE_DIGEST,
+        "safe_evidence": safe_evidence,
+        "evidence_digest": sha256_text(stable_json(safe_evidence)),
+    }
 
 
 def build_timeline(snapshot: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     for row in snapshot.get("funding_events", []):
-        events.append({"at": row.get("created_at"), "kind": "funding", "label": "Project treasury funded", "detail": f"{row.get('amount')} {row.get('currency')} via {row.get('gateway_event_id')}"})
+        events.append({"at": row.get("created_at"), "kind": "funding", "label": "Project treasury funded", "detail": f"{_money(row.get('amount'), row.get('currency'))} via fake funding event"})
     for row in snapshot.get("project_agent_decisions", []):
-        events.append({"at": row.get("created_at"), "kind": "project-agent", "label": f"Project agent {row.get('trusted_verdict')}", "detail": row.get("policy_reasons_json")})
+        events.append({"at": row.get("created_at"), "kind": "project-agent", "label": f"Project agent {_human_verdict(row.get('trusted_verdict'))}", "detail": _human_reasons(row.get("policy_reasons_json"))})
     for row in snapshot.get("github_issue_contracts", []):
         events.append({"at": row.get("created_at"), "kind": "github", "label": "GitHub bounty contract published", "detail": row.get("contract_digest")})
     for row in snapshot.get("solver_agent_evaluations", []):
-        events.append({"at": row.get("created_at"), "kind": "solver-agent", "label": f"Solver {row.get('trusted_verdict')}", "detail": row.get("policy_reasons_json")})
+        events.append({"at": row.get("created_at"), "kind": "solver-agent", "label": f"Solver {_human_verdict(row.get('trusted_verdict'))}", "detail": _human_reasons(row.get("policy_reasons_json"))})
     for row in snapshot.get("verification_receipts", []):
         verdict = "accepted" if int(row.get("accepted", 0)) else "rejected"
         events.append({"at": row.get("created_at"), "kind": "verification", "label": f"Verifier {verdict}", "detail": row.get("id")})
     for row in snapshot.get("settlement_allocations", []):
-        events.append({"at": row.get("created_at"), "kind": "settlement", "label": "Reward split settled", "detail": f"external {row.get('external_transfer_amount')} retained {row.get('retained_operating_amount')}"})
+        events.append({"at": row.get("created_at"), "kind": "settlement", "label": "Reward split settled", "detail": f"external {_money(row.get('external_transfer_amount'), row.get('currency'))}; retained {_money(row.get('retained_operating_amount'), row.get('currency'))}"})
     for row in snapshot.get("solver_operating_spends", []):
         events.append({"at": row.get("created_at"), "kind": "compound", "label": "Retained credit funds next bounty", "detail": row.get("target_bounty_id")})
     return sorted(events, key=lambda item: (str(item.get("at") or ""), item["kind"], item["label"]))
@@ -852,6 +997,9 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
     summary = bundle.get("summary") or {}
     snapshot = bundle.get("snapshot") or {}
     truth = bundle.get("truth_matrix") or {}
+    evidence = bundle.get("evidence") or {}
+    motoko_verification = evidence.get("motoko-verification-fragment") or {}
+    dogfood = evidence.get("issue-21-dogfood") or {}
     rows = truth.get("rows") if isinstance(truth.get("rows"), list) else []
     rows_by_id = {row.get("component_id"): row for row in rows if isinstance(row, dict)}
     bounties = snapshot.get("bounties") or []
@@ -875,10 +1023,12 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
                 ("Bounty", primary_bounty.get("title") or "unavailable in bundle"),
                 ("Issue", primary_bounty.get("issue_ref") or "unavailable"),
                 ("Reward", _money(primary_bounty.get("reward_amount"), primary_bounty.get("currency"))),
+                ("Before p95", _motoko_case_latency(motoko_verification, "baseline")),
+                ("After p95", _motoko_case_latency(motoko_verification, "final")),
             ],
             [
                 "The bundle records a real Motoko TUI responsiveness bounty as the first task.",
-                "The director uses persisted bundle data only; missing facts render as unavailable.",
+                "The verifier proof shows the baseline and idle-only fixes rejected before the final fix was accepted.",
             ],
             "Name the problem: valuable maintenance work needs funding, exact acceptance, and safe settlement.",
         ),
@@ -921,11 +1071,7 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
                 ("Receipt", _short(summary.get("receipt_id"))),
                 ("Verifier receipts", f"{len(receipts)} recorded"),
             ],
-            [
-                f"Accepted receipt: {_short(summary.get('receipt_id'))}",
-                "Bad or intermediate verifier outcomes are unavailable in this bundle unless a receipt row records them.",
-                f"Contract digest: {_short(summary.get('contract_digest'))}",
-            ],
+            _motoko_verification_bullets(motoko_verification, summary),
             "Keep this crisp: candidate-owned code cannot authorize payment.",
         ),
         _director_scene(
@@ -956,10 +1102,13 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
                 ("Retained credit", _money(summary.get("retained_operating_credit"), summary.get("currency"))),
                 ("Follow-up bounty", followup_bounty.get("title") or summary.get("second_bounty")),
                 ("Follow-up state", followup_bounty.get("state") or "unavailable"),
+                ("Dogfood issue", _short((dogfood.get("safe_evidence") or {}).get("issue_url"), keep=80)),
             ],
             [
                 f"Second bounty id: {_short(summary.get('second_bounty'))}",
-                f"Second bounty URL: {summary.get('second_bounty_url') or 'unavailable'}",
+                f"Issue #21 candidate: {_short((dogfood.get('safe_evidence') or {}).get('candidate_sha'))}",
+                f"Issue #21 receipt: {_short((dogfood.get('safe_evidence') or {}).get('receipt_id'))}",
+                f"Retained-credit replay: {_yes_no((dogfood.get('safe_evidence') or {}).get('retained_credit_spend_replay'))}; settlement replay: {_yes_no((dogfood.get('safe_evidence') or {}).get('second_settlement_replay'))}",
             ],
             "This is the compounding loop: verified software work becomes operating capital.",
         ),
@@ -1044,9 +1193,9 @@ def _decision_bullets(rows: list[dict[str, Any]], kind: str) -> list[str]:
         return [f"No {kind} decisions available in bundle."]
     bullets: list[str] = []
     for row in rows[:5]:
-        verdict = row.get("trusted_verdict") or row.get("decision") or "recorded"
-        reasons = row.get("policy_reasons_json") or row.get("reasons_json") or ""
-        bullets.append(f"{verdict}: {_short(reasons, keep=96)}")
+        verdict = _human_verdict(row.get("trusted_verdict") or row.get("decision") or "recorded")
+        reasons = _human_reasons(row.get("policy_reasons_json") or row.get("reasons_json") or "")
+        bullets.append(f"{verdict}: {_short(reasons, keep=120)}")
     if len(rows) > 5:
         bullets.append(f"{len(rows) - 5} more {kind} decisions recorded.")
     return bullets
@@ -1059,12 +1208,18 @@ def _truth_count(rows: list[dict[str, Any]], status: str) -> int:
 def _truth_bullets(rows: list[dict[str, Any]]) -> list[str]:
     if not rows:
         return ["Truth matrix unavailable in bundle."]
-    bullets = []
-    for row in rows:
-        status = row.get("status")
-        if status in {"fallback", "blocked", "recorded-real", "real"}:
-            bullets.append(f"{row.get('label')}: {status} - {row.get('blocker') or 'evidence recorded in bundle'}")
-    return bullets
+    real_count = _truth_count(rows, "real")
+    recorded_count = _truth_count(rows, "recorded-real")
+    fallback_count = _truth_count(rows, "fallback")
+    blocked_count = _truth_count(rows, "blocked")
+    blocked_labels = ", ".join(str(row.get("label")) for row in rows if row.get("status") == "blocked") or "none"
+    fallback_labels = ", ".join(str(row.get("label")) for row in rows if row.get("status") == "fallback") or "none"
+    return [
+        f"Real or recorded-real evidence rows: {real_count + recorded_count}.",
+        f"Fallback rows: {fallback_count} ({fallback_labels}).",
+        f"Blocked live paths: {blocked_count} ({_short(blocked_labels, keep=130)}).",
+        "Prior Stripe full-transfer evidence stays separate from the deterministic split-settlement fallback.",
+    ]
 
 
 def render_director_html(data: dict[str, Any], *, include_notes: bool) -> str:
@@ -1220,8 +1375,10 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
     mismatches.extend(_validate_attestation(bundle_dir, manifest, bundle))
     mismatches.extend(_validate_truth_matrix(bundle))
     mismatches.extend(_validate_consistency(bundle))
+    mismatches.extend(_validate_required_evidence(bundle))
     mismatches.extend(_validate_dashboard(bundle_dir / "dashboard.html"))
     mismatches.extend(_validate_recording_timeline(bundle_dir / "recording-timeline.md"))
+    mismatches.extend(_validate_judge_facing_assets(bundle_dir))
     mismatches.extend(_secret_scan_bundle(bundle_dir))
     mismatches.extend(_private_path_scan_bundle(bundle_dir))
     return {
@@ -1242,6 +1399,9 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
 def render_dashboard(bundle: dict[str, Any]) -> str:
     summary = bundle.get("summary", {})
     timeline = bundle.get("timeline", [])
+    evidence = bundle.get("evidence") or {}
+    motoko_verification = evidence.get("motoko-verification-fragment") or {}
+    dogfood = evidence.get("issue-21-dogfood") or {}
     badge = summary.get("mode_badge", "Unknown mode")
     status = "PASS" if summary.get("ok") else "MIXED"
     rows_by_id = {row.get("component_id"): row for row in (bundle.get("truth_matrix") or {}).get("rows", [])}
@@ -1252,9 +1412,25 @@ def render_dashboard(bundle: dict[str, Any]) -> str:
     cards = [
         ("Project buys work", [("Repository", summary.get("project")), ("Reward", _money(summary.get("reward"), summary.get("currency"))), ("Contract", _short(summary.get("contract_digest")))]),
         ("Agents choose", [("Project agent", _row_status(rows_by_id.get("project_agent_decision"))), ("Solver agent", _row_status(rows_by_id.get("solver_agent_decision"))), ("Claimed SHA", _short(summary.get("candidate_sha")))]),
+        (
+            "Motoko verifier proof",
+            [
+                ("Baseline", _motoko_case_result(motoko_verification, "baseline")),
+                ("Idle-only", _motoko_case_result(motoko_verification, "idle-only")),
+                ("Final", _motoko_case_result(motoko_verification, "final")),
+            ],
+        ),
         ("GitHub work", [("Lifecycle", _row_status(github)), ("Issue / PR", _evidence_hint(github)), ("Contract", _short(summary.get("contract_digest")))]),
         ("Trust", [("OpenShell", _row_status(openshell)), ("Receipt", _short(summary.get("receipt_id"))), ("Ledger entries", summary.get("ledger_entries"))]),
         ("Economics compound", [("External", _money(summary.get("external_transfer"), summary.get("currency"))), ("Transfer", _short(summary.get("external_transfer_id"))), ("Retained -> next", f"{_money(summary.get('retained_operating_credit'), summary.get('currency'))} / {_short(summary.get('second_bounty'))}")]),
+        (
+            "Issue #21 dogfood",
+            [
+                ("Issue", _short((dogfood.get("safe_evidence") or {}).get("issue_url"), keep=34)),
+                ("Candidate", _short((dogfood.get("safe_evidence") or {}).get("candidate_sha"))),
+                ("Receipt", _short((dogfood.get("safe_evidence") or {}).get("receipt_id"))),
+            ],
+        ),
     ]
     card_html = "\n".join(_card(title, rows) for title, rows in cards)
     warnings = [row for row in (bundle.get("truth_matrix") or {}).get("rows", []) if row.get("status") in {"fallback", "blocked"}]
@@ -1387,6 +1563,59 @@ def _validate_consistency(bundle: dict[str, Any]) -> list[str]:
     return mismatches
 
 
+def _validate_required_evidence(bundle: dict[str, Any]) -> list[str]:
+    if bundle.get("mode") != "mixed":
+        return []
+    mismatches: list[str] = []
+    evidence = bundle.get("evidence")
+    if not isinstance(evidence, dict):
+        return ["mixed bundle missing evidence map"]
+    motoko = evidence.get("motoko-verification-fragment")
+    if not isinstance(motoko, dict) or motoko.get("schema") != MOTOKO_VERIFICATION_FRAGMENT_SCHEMA:
+        mismatches.append("mixed bundle missing motoko-verification-fragment evidence")
+    else:
+        safe = motoko.get("safe_evidence") if isinstance(motoko.get("safe_evidence"), dict) else {}
+        cases = safe.get("cases")
+        if not isinstance(cases, list):
+            mismatches.append("motoko verification evidence missing case list")
+        else:
+            by_case = {case.get("case"): case for case in cases if isinstance(case, dict)}
+            if by_case.get("baseline", {}).get("accepted") is not False:
+                mismatches.append("motoko baseline case must be rejected")
+            if by_case.get("idle-only", {}).get("accepted") is not False:
+                mismatches.append("motoko idle-only case must be rejected")
+            if by_case.get("final", {}).get("accepted") is not True:
+                mismatches.append("motoko final case must be accepted")
+        if safe.get("candidate_sha") != DEFAULT_FINAL_COMMIT:
+            mismatches.append("motoko verification evidence candidate mismatch")
+        if not str(safe.get("receipt_id") or "").startswith("receipt_"):
+            mismatches.append("motoko verification evidence missing accepted receipt id")
+        if motoko.get("evidence_digest") != sha256_text(stable_json(safe)):
+            mismatches.append("motoko verification evidence digest mismatch")
+    dogfood = evidence.get("issue-21-dogfood")
+    if not isinstance(dogfood, dict) or dogfood.get("schema") != ISSUE21_DOGFOOD_EVIDENCE_SCHEMA:
+        mismatches.append("mixed bundle missing issue-21-dogfood evidence")
+    else:
+        safe = dogfood.get("safe_evidence") if isinstance(dogfood.get("safe_evidence"), dict) else {}
+        required = {
+            "issue_url": ISSUE21_DOGFOOD_URL,
+            "candidate_sha": ISSUE21_DOGFOOD_CANDIDATE,
+            "receipt_id": ISSUE21_DOGFOOD_RECEIPT,
+            "verifier_digest": ISSUE21_DOGFOOD_VERIFIER_DIGEST,
+            "recorded_evidence_digest": ISSUE21_DOGFOOD_SOURCE_DIGEST,
+        }
+        for field, expected in required.items():
+            if safe.get(field) != expected:
+                mismatches.append(f"issue #21 dogfood evidence {field} mismatch")
+        if safe.get("retained_credit_spend_replay") is not True:
+            mismatches.append("issue #21 dogfood retained-credit replay evidence missing")
+        if safe.get("second_settlement_replay") is not True:
+            mismatches.append("issue #21 dogfood settlement replay evidence missing")
+        if dogfood.get("evidence_digest") != sha256_text(stable_json(safe)):
+            mismatches.append("issue #21 dogfood evidence digest mismatch")
+    return mismatches
+
+
 def _validate_dashboard(path: Path) -> list[str]:
     if not path.exists():
         return ["dashboard.html missing"]
@@ -1400,6 +1629,34 @@ def _validate_recording_timeline(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
     required = ["# Recording Timeline", "Mode badge:", "Truth:", "00:00", "00:15", "00:35", "00:55", "01:20", "01:45", "02:05"]
     return [f"recording timeline missing required text: {item}" for item in required if item not in text]
+
+
+def _validate_judge_facing_assets(bundle_dir: Path) -> list[str]:
+    mismatches: list[str] = []
+    raw_currency = ("2500 USD", "2000 USD", "500 USD")
+    raw_labels = ("agent_declined", "policy_reasons_json", '["agent declined candidate"]', '["solver declined"]')
+    for relative in (
+        "README.md",
+        "dashboard.html",
+        "recording-timeline.md",
+        "director.html",
+        "director-record.html",
+        "director-notes.html",
+        "director-cues.json",
+    ):
+        path = bundle_dir / relative
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if "github.test" in text:
+            mismatches.append(f"judge-facing asset {relative} contains github.test URL")
+        for marker in raw_currency:
+            if marker in text:
+                mismatches.append(f"judge-facing asset {relative} contains raw minor-unit currency {marker}")
+        for marker in raw_labels:
+            if marker in text:
+                mismatches.append(f"judge-facing asset {relative} contains raw machine label {marker}")
+    return mismatches
 
 
 def _secret_scan_bundle(bundle_dir: Path) -> list[str]:
@@ -1462,10 +1719,104 @@ def _is_safe_bundle_scan_path(bundle_root: Path, path: Path, mismatches: list[st
     return True
 
 
+def _human_verdict(value: Any) -> str:
+    text = str(value or "recorded").strip().lower().replace("_", " ")
+    replacements = {
+        "agent declined": "declined",
+        "declined": "declined",
+        "approved": "approved",
+        "recorded": "recorded",
+    }
+    return replacements.get(text, text)
+
+
+def _human_reasons(value: Any) -> str:
+    if isinstance(value, str):
+        try:
+            loaded = json.loads(value)
+        except json.JSONDecodeError:
+            loaded = value
+    else:
+        loaded = value
+    if isinstance(loaded, list):
+        parts = [str(item).strip() for item in loaded if str(item).strip()]
+    elif loaded:
+        parts = [str(loaded).strip()]
+    else:
+        parts = ["No reason recorded"]
+    cleaned = []
+    for part in parts:
+        sentence = part.replace("_", " ")
+        if sentence:
+            cleaned.append(sentence[0].upper() + sentence[1:])
+    return "; ".join(cleaned)
+
+
 def _money(amount: Any, currency: Any) -> str:
     if amount is None:
         return "unknown"
-    return f"{amount} {currency or ''}".strip()
+    if not isinstance(amount, int) or isinstance(amount, bool):
+        try:
+            amount = int(amount)
+        except (TypeError, ValueError):
+            return f"{amount} {currency or ''}".strip()
+    currency_text = str(currency or "").upper()
+    major = amount // 100
+    minor = abs(amount) % 100
+    sign = "-" if amount < 0 else ""
+    if currency_text == "USD":
+        return f"{sign}${abs(major)}.{minor:02d}"
+    if currency_text == "EUR":
+        return f"{sign}€{abs(major)}.{minor:02d}"
+    suffix = f" {currency_text}" if currency_text else ""
+    return f"{sign}{abs(major)}.{minor:02d}{suffix}"
+
+
+def _yes_no(value: Any) -> str:
+    return "yes" if value is True else "no" if value is False else "unknown"
+
+
+def _motoko_cases(fragment: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    safe = fragment.get("safe_evidence") if isinstance(fragment.get("safe_evidence"), dict) else {}
+    cases = safe.get("cases")
+    if not isinstance(cases, list):
+        return {}
+    return {str(case.get("case")): case for case in cases if isinstance(case, dict)}
+
+
+def _motoko_case_latency(fragment: dict[str, Any], case_name: str) -> str:
+    case = _motoko_cases(fragment).get(case_name) or {}
+    metrics = case.get("metrics") if isinstance(case.get("metrics"), dict) else {}
+    value = metrics.get("p95_ms")
+    if value is None:
+        return "unavailable"
+    try:
+        return f"{float(value):.3f} ms"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _motoko_case_result(fragment: dict[str, Any], case_name: str) -> str:
+    case = _motoko_cases(fragment).get(case_name) or {}
+    verdict = case.get("verdict") or "unavailable"
+    return f"{verdict}; p95 {_motoko_case_latency(fragment, case_name)}"
+
+
+def _motoko_verification_bullets(fragment: dict[str, Any], summary: dict[str, Any]) -> list[str]:
+    cases = _motoko_cases(fragment)
+    if not cases:
+        return [
+            f"Accepted receipt: {_short(summary.get('receipt_id'))}",
+            f"Contract digest: {_short(summary.get('contract_digest'))}",
+        ]
+    bullets = []
+    for name, label in (("baseline", "Baseline bug"), ("idle-only", "Idle-only candidate"), ("final", "Final background-study fix")):
+        case = cases.get(name) or {}
+        reasons = case.get("failure_reasons") if isinstance(case.get("failure_reasons"), list) else []
+        reason_text = "; ".join(str(reason) for reason in reasons) if reasons else "no failure reasons"
+        bullets.append(f"{label}: {case.get('verdict') or 'unavailable'}; p95 {_motoko_case_latency(fragment, name)}; {_short(reason_text, keep=90)}")
+    bullets.append(f"Accepted receipt: {_short(summary.get('receipt_id'))}")
+    return bullets
 
 
 def _short(value: Any, *, keep: int = 18) -> str:

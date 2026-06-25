@@ -1390,3 +1390,60 @@ Remaining boundary actions:
   remaining operator placeholders;
 - close #24 after the handoff comment;
 - continue the coordinator final handoff and retag decision in issue #25.
+
+## Issue #26: Final Judge Evidence Upgrade
+
+UTC start: 2026-06-25T12:25:00Z
+
+Status: in progress; the judge-facing bundle now includes the stronger Motoko
+verifier proof and issue #21 retained-credit dogfood proof requested by the
+final goal.
+
+Implemented so far:
+
+- regenerated the Motoko issue #1 proof from protected verifier runs:
+  baseline rejected, idle-only candidate rejected, final background-study fix
+  accepted;
+- added `evidence/motoko-verification-fragment.json` to the winning bundle;
+- added `evidence/issue-21-dogfood.json` with the issue #21 URL, candidate,
+  receipt, verifier digest, recorded evidence digest, retained-credit replay,
+  and second-settlement replay fields;
+- formatted judge-facing currency as `$25.00`, `$20.00`, and `$5.00`;
+- removed `.test` URL leakage from generated bundle values and judge-facing
+  assets;
+- humanized project/solver decision labels and reasons in dashboard, timeline,
+  and director surfaces;
+- updated the director to show concrete before/after Motoko latency evidence
+  and the issue #21 retained-credit dogfood loop;
+- added validation gates for missing proof, raw minor-unit currency,
+  `github.test`, and raw machine labels in judge-facing assets;
+- updated judge Q&A, voiceover, runbook, shot list, Typeform draft answers,
+  release manifest, final handoff, and portal checklist.
+
+Current evidence:
+
+```text
+bundle digest: sha256:b24eafec20a285921501523a6aa205b72b38032b38c650cac869abe8729c1208
+attestation digest: sha256:0da84fca39e675173c423df5cba2525ba3b87d6c1342c2d2a55e094f50c0e952
+truth matrix digest: sha256:621ba84b186080774171e0f8ef3b1a69ade8874e5936ab5df403816ad12c0e39
+motoko verification evidence file: sha256:57987de6a8fba183da6acf25b148c07ec1b54f04372391c80179bc61c55ab09c
+issue #21 dogfood evidence file: sha256:b4be03d3bdb4daf4ecd2f4e77ed476b7b0a5f2de88f7c0ac7751cbb3e787d1dd
+```
+
+Validation observed so far:
+
+```text
+nix develop --command python3 -m agent_bounty demo-build-winning-run ...: ok=true
+nix develop --command python3 -m agent_bounty demo-director ... --check: ok=true
+nix develop --command python3 -m unittest tests.test_demo_director: 6 passed
+nix develop --command python3 -m unittest tests.test_demo_presentation: 14 passed
+```
+
+Remaining before closing #26:
+
+- run the standard final issue #26 gate set, including submission checks,
+  replay rehearsals, security audit, full tests, Nix check, and whitespace
+  check;
+- commit, push, comment on #26 with branch/commit/digests/validation, and close
+  #26;
+- continue to issue #27 without moving the existing rc8 tag.

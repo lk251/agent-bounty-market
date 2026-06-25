@@ -33,6 +33,11 @@ verification receipts, evidence fragments, and release-bundle provenance. The
 winning package is labeled `Mixed real/fallback` so judges can distinguish real,
 recorded-real, fallback, and blocked paths.
 
+The final recording package shows a concrete Motoko issue: baseline rejected,
+idle-only candidate rejected, final background-study fix accepted. It also
+shows issue #21 dogfooding retained operating credit into this repository's
+release-provenance verifier, with replay evidence for the spend and settlement.
+
 ## Why Useful
 
 It demonstrates a practical route from "this repo needs work" to "this exact

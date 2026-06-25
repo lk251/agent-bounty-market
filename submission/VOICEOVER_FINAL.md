@@ -19,7 +19,9 @@ for live Hermes-backed runs.
 
 The trust boundary is the center of the product. Candidate-owned code cannot
 authorize payment. A protected verifier checks the exact commit and records a
-receipt. Settlement only follows that receipt.
+receipt. The Motoko proof shows the baseline and idle-only attempts rejected,
+then the final background-study fix accepted. Settlement only follows that
+receipt.
 
 Once work is accepted, the reward is split exactly once. External transfer and
 retained operating credit are separate ledger movements, with replay-safe
@@ -27,7 +29,8 @@ idempotency and reconciliation checks.
 
 That retained credit can fund the next bounded bounty. Verified software work
 becomes operating capital, and the system gains a record of what each solver and
-project policy actually achieved.
+project policy actually achieved. Issue #21 dogfooded that retained-credit loop
+against this repository's release-provenance verifier.
 
 This demo is intentionally labeled Mixed real/fallback. Real and recorded-real
 evidence stay visible, and blocked sponsor paths stay blocked instead of being

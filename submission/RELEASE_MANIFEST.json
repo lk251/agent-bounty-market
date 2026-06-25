@@ -4,9 +4,9 @@
   "source_baseline_sha": "72ba26b69d38ce8ca5485be943afa1b57f9d6ab5",
   "source_baseline_note": "This is the historical source baseline used to generate earlier release metadata. The immutable release target is the Git annotated tag object, not a self-referential committed manifest field.",
   "truth_status": "Mixed real/fallback",
-  "bundle_digest": "sha256:5ab1df5b9d1f901008c7425bebf10df9895748a77e454ea58a0fd01355625cf6",
-  "attestation_digest": "sha256:11554b3999fe144cb804c941a3a6cb48fd53729fd8ce1c19fc05bdc6ccf6aa0b",
-  "truth_matrix_digest": "sha256:bc769442f2102ee2ddad06a84b35f6c992fef227a7b579ba71979df9922d3e07",
+  "bundle_digest": "sha256:b24eafec20a285921501523a6aa205b72b38032b38c650cac869abe8729c1208",
+  "attestation_digest": "sha256:0da84fca39e675173c423df5cba2525ba3b87d6c1342c2d2a55e094f50c0e952",
+  "truth_matrix_digest": "sha256:621ba84b186080774171e0f8ef3b1a69ade8874e5936ab5df403816ad12c0e39",
   "test_counts": {
     "focused_director_tests": "6 passed",
     "focused_release_integrity_tests": "7 passed",
@@ -63,6 +63,8 @@
     "demo/bundles/winning-run/director-cues.json",
     "demo/bundles/winning-run/evidence/database-counts.json",
     "demo/bundles/winning-run/evidence/demo-summary.json",
+    "demo/bundles/winning-run/evidence/issue-21-dogfood.json",
+    "demo/bundles/winning-run/evidence/motoko-verification-fragment.json",
     "demo/bundles/winning-run/evidence/truth-matrix.json"
   ]
 }

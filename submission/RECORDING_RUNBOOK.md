@@ -87,11 +87,15 @@ only files from the bundle directory.
    - Settlement
    - Compounding
    - Close
-4. Show the blocker/fallback statements briefly. Say that those components are not claimed as
-   live in this bundle.
-5. Use `submission/VOICEOVER_FINAL.md` as the spoken script and
+4. In the Trust boundary scene, call out the three Motoko verifier outcomes:
+   baseline rejected, idle-only rejected, final accepted.
+5. In the Compounding scene, call out issue #21 as retained-credit dogfood for
+   release provenance: candidate, receipt, verifier digest, and replay evidence.
+6. Show the blocker/fallback statements briefly. Say that those components are
+   not claimed as live in this bundle.
+7. Use `submission/VOICEOVER_FINAL.md` as the spoken script and
    `demo/bundles/winning-run/director-cues.json` as the timing source.
-6. Close on: "Verified software work became operating capital."
+8. Close on: "Verified software work became operating capital."
 
 ## Screenshot
 

@@ -37,11 +37,22 @@ Payment is based on a platform-owned protected verifier bound to exact commits,
 not on candidate-owned CI or a chat response. Tests include a malicious
 candidate that tries to forge verifier output and is rejected.
 
+The recording bundle now also includes a compact Motoko verifier proof: the
+baseline bug is rejected, the idle-only candidate is rejected, and the final
+background-study fix is accepted with a receipt tied to the exact candidate
+commit.
+
 ## 7. How do you avoid double payment?
 
 Funding, reserve, claim, verification, settlement, transfer, and retained-credit
 spend paths are idempotent. Replays return the same durable rows rather than
 moving value again.
+
+Issue #21 dogfooded this loop with retained operating credit: the recorded
+candidate `5ffb2835fec5d5fd9373b129f850aa52396bbd4a` produced receipt
+`receipt_ecc99fd087984590ae9313933d17fa48`, verifier digest
+`sha256:3429d7b5a728ba3f61db2ee0a2588d292ff5fdac361dae1570188be59e250170`,
+and replay evidence for both the retained-credit spend and second settlement.
 
 ## 8. How would this become a live Stripe run?
 

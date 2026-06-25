@@ -59,9 +59,12 @@ class DemoDirectorTests(unittest.TestCase):
         settlement_stats = stat_map(scenes["settlement"])
         compounding_stats = stat_map(scenes["compounding"])
 
-        self.assertEqual(problem_stats["Reward"], f"{summary['reward']} {summary['currency']}")
-        self.assertEqual(settlement_stats["External"], f"{summary['external_transfer']} {summary['currency']}")
-        self.assertEqual(compounding_stats["Retained credit"], f"{summary['retained_operating_credit']} {summary['currency']}")
+        self.assertEqual(problem_stats["Reward"], "$25.00")
+        self.assertIn("ms", problem_stats["Before p95"])
+        self.assertIn("ms", problem_stats["After p95"])
+        self.assertEqual(settlement_stats["External"], "$20.00")
+        self.assertEqual(compounding_stats["Retained credit"], "$5.00")
+        self.assertIn("github.com/lk251/agent-bounty-market/issues/21", compounding_stats["Dogfood issue"])
         self.assertEqual(data["bundle_digest"], bundle["bundle_content_digest"])
 
     def test_truth_badge_and_blockers_are_visible_without_private_data(self):
@@ -78,6 +81,13 @@ class DemoDirectorTests(unittest.TestCase):
             self.assertIn("blocked", html_text.lower())
             self.assertIn("Presenter Notes", html_text)
             self.assertIn("Presenter Notes", notes_text)
+            self.assertIn("Baseline bug", html_text)
+            self.assertIn("Idle-only candidate", html_text)
+            self.assertIn("Final background-study fix", html_text)
+            self.assertIn("Issue #21 candidate", html_text)
+            self.assertNotIn("2500 USD", serialized)
+            self.assertNotIn("github.test", serialized)
+            self.assertNotIn("agent_declined", serialized)
             for forbidden in ("sk_test_", "whsec_", "ghp_", "/home/", "/Users/"):
                 self.assertNotIn(forbidden, serialized)
 

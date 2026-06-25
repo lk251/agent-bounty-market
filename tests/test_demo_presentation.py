@@ -9,6 +9,9 @@ from unittest import mock
 
 from agent_bounty.demo_presentation import (
     DemoPresentationError,
+    ISSUE21_DOGFOOD_CANDIDATE,
+    ISSUE21_DOGFOOD_RECEIPT,
+    ISSUE21_DOGFOOD_URL,
     demo_preflight_report,
     live_refusal_report,
     prepare_demo_serve_report,
@@ -93,7 +96,12 @@ class DemoPresentationTests(unittest.TestCase):
             self.assertGreaterEqual(len(validation["truth_matrix"]["rows"]), 5)
             self.assertTrue((bundle_dir / "attestation.json").exists())
             self.assertTrue((bundle_dir / "evidence" / "truth-matrix.json").exists())
+            self.assertTrue((bundle_dir / "evidence" / "motoko-verification-fragment.json").exists())
+            self.assertTrue((bundle_dir / "evidence" / "issue-21-dogfood.json").exists())
             self.assertTrue((bundle_dir / "recording-timeline.md").exists())
+            evidence = json.loads((bundle_dir / "bundle.json").read_text(encoding="utf-8"))["evidence"]
+            self.assertIn("motoko-verification-fragment", evidence)
+            self.assertIn("issue-21-dogfood", evidence)
             self.assertTrue(rehearsal["ok"])
             self.assertEqual(rehearsal["repeat_count"], 3)
             self.assertEqual(len(rehearsal["stages"]), 3)
@@ -108,7 +116,8 @@ class DemoPresentationTests(unittest.TestCase):
             serve = prepare_demo_serve_report(bundle_dir=bundle_dir, host="127.0.0.1", port=8787)
             dashboard = (bundle_dir / "dashboard.html").read_text(encoding="utf-8")
             timeline = (bundle_dir / "recording-timeline.md").read_text(encoding="utf-8")
-            serialized = "\n".join(path.read_text(encoding="utf-8") for path in bundle_dir.rglob("*") if path.is_file())
+            judge_assets = ["dashboard.html", "README.md", "recording-timeline.md"]
+            serialized = "\n".join((bundle_dir / path).read_text(encoding="utf-8") for path in judge_assets)
 
             self.assertTrue(validation["ok"])
             self.assertTrue(serve["ok"])
@@ -118,12 +127,19 @@ class DemoPresentationTests(unittest.TestCase):
             self.assertIn("Mixed real/fallback", dashboard)
             self.assertIn("Fallbacks and blockers", dashboard)
             self.assertIn("Recording cues", dashboard)
+            self.assertIn("Motoko verifier proof", dashboard)
+            self.assertIn("Issue #21 dogfood", dashboard)
             self.assertIn("NVIDIA Nemotron model", dashboard)
             self.assertIn("OpenShell/NemoClaw execution", dashboard)
             self.assertIn("GitHub issue/claim/PR/result", dashboard)
             self.assertIn("Fresh split Stripe Connect Transfer", dashboard)
             self.assertIn("00:00", timeline)
             self.assertIn("02:05", timeline)
+            self.assertNotIn("2500 USD", serialized)
+            self.assertNotIn("2000 USD", serialized)
+            self.assertNotIn("500 USD", serialized)
+            self.assertNotIn("github.test", serialized)
+            self.assertNotIn("agent_declined", serialized)
             self.assertNotIn("sk_test_", serialized)
             self.assertNotIn("whsec_", serialized)
             self.assertNotIn("ghp_", serialized)
@@ -163,6 +179,8 @@ class DemoPresentationTests(unittest.TestCase):
                 "evidence/database-counts.json",
                 "evidence/demo-summary.json",
                 "evidence/truth-matrix.json",
+                "evidence/motoko-verification-fragment.json",
+                "evidence/issue-21-dogfood.json",
             ]
             for relative in stable_files:
                 self.assertEqual((first / relative).read_text(encoding="utf-8"), (second / relative).read_text(encoding="utf-8"), relative)
@@ -214,6 +232,31 @@ class DemoPresentationTests(unittest.TestCase):
             self.assertIn("consistency currency does not match allocation", validation["mismatches"])
             self.assertIn("consistency receipt does not match allocation", validation["mismatches"])
             self.assertIn("secret-like pattern whsec_ found in evidence/leak.txt", validation["mismatches"])
+
+    def test_winning_bundle_requires_judge_evidence_and_clean_assets(self):
+        if not MOTOKO_REPO.exists():
+            self.skipTest("external Motoko issue #1 fixture repo is unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle_dir = Path(tmp) / "winning-run"
+            run_winning_bundle(db_path=Path(tmp) / "market.sqlite3", motoko_repo=MOTOKO_REPO, bundle_dir=bundle_dir)
+            bundle = json.loads((bundle_dir / "bundle.json").read_text(encoding="utf-8"))
+            motoko = bundle["evidence"]["motoko-verification-fragment"]
+            dogfood = bundle["evidence"]["issue-21-dogfood"]
+            cases = {case["case"]: case for case in motoko["safe_evidence"]["cases"]}
+
+            self.assertFalse(cases["baseline"]["accepted"])
+            self.assertFalse(cases["idle-only"]["accepted"])
+            self.assertTrue(cases["final"]["accepted"])
+            self.assertEqual(dogfood["safe_evidence"]["issue_url"], ISSUE21_DOGFOOD_URL)
+            self.assertEqual(dogfood["safe_evidence"]["candidate_sha"], ISSUE21_DOGFOOD_CANDIDATE)
+            self.assertEqual(dogfood["safe_evidence"]["receipt_id"], ISSUE21_DOGFOOD_RECEIPT)
+
+            dashboard = bundle_dir / "dashboard.html"
+            dashboard.write_text(dashboard.read_text(encoding="utf-8").replace("$25.00", "2500 USD", 1), encoding="utf-8")
+            validation = validate_bundle(bundle_dir)
+
+        self.assertFalse(validation["ok"])
+        self.assertIn("judge-facing asset dashboard.html contains raw minor-unit currency 2500 USD", validation["mismatches"])
 
     def test_rehearsal_replay_requires_existing_default_bundle(self):
         with tempfile.TemporaryDirectory() as tmp:
