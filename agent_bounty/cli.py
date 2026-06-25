@@ -76,6 +76,7 @@ from .payments import FakePaymentGateway, StripePaymentGateway
 from .release_integrity import release_audit_report
 from .release_dogfood import ReleaseDogfoodError, open_release_dogfood_market, release_dogfood_report
 from .release_provenance import ReleaseProvenanceError, render_tag_message
+from .security_audit import security_audit_report
 from .project_agent import (
     FakeProjectAgentRuntime,
     HermesCliRuntime,
@@ -1504,6 +1505,12 @@ def cmd_release_dogfood_issue(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def cmd_security_audit(args: argparse.Namespace) -> int:
+    result = security_audit_report(Path(args.root) if args.root else None, full=args.full)
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def cmd_demo_reset(args: argparse.Namespace) -> int:
     try:
         result = reset_demo_state(Path(args.path) if args.path else None, yes=args.yes)
@@ -2384,6 +2391,13 @@ def build_parser() -> argparse.ArgumentParser:
     release_audit.add_argument("--bundle", help="bundle directory; defaults to demo/bundles/winning-run")
     release_audit.add_argument("--tag", help="require and audit an annotated release tag against current provenance")
     release_audit.set_defaults(func=cmd_release_audit)
+
+    security_audit = sub.add_parser("security-audit", help="run trusted-kernel security audit checks")
+    security_audit.add_argument("--root", help="repository root; defaults to current directory")
+    security_audit_mode = security_audit.add_mutually_exclusive_group()
+    security_audit_mode.add_argument("--quick", action="store_true", help="run bounded CI-suitable checks")
+    security_audit_mode.add_argument("--full", action="store_true", help="run longer randomized checks plus history scan")
+    security_audit.set_defaults(func=cmd_security_audit)
 
     release_provenance = sub.add_parser("release-provenance", help="render and inspect release provenance payloads")
     release_provenance_sub = release_provenance.add_subparsers(dest="release_provenance_command", required=True)

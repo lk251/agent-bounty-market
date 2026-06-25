@@ -825,6 +825,7 @@ def _safe_filename(name: str) -> str:
 
 def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
     manifest_path = bundle_dir / "manifest.json"
+    bundle_root = bundle_dir.resolve()
     if not manifest_path.exists():
         raise DemoPresentationError(f"bundle manifest missing: {manifest_path}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -832,7 +833,10 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
         raise DemoPresentationError("bundle manifest schema mismatch")
     mismatches: list[str] = []
     for relative, expected in manifest.get("files", {}).items():
-        path = bundle_dir / relative
+        path, path_error = _safe_bundle_child(bundle_root, relative)
+        if path_error:
+            mismatches.append(path_error)
+            continue
         if not path.exists():
             mismatches.append(f"missing {relative}")
             continue
@@ -1038,7 +1042,10 @@ def _validate_recording_timeline(path: Path) -> list[str]:
 
 def _secret_scan_bundle(bundle_dir: Path) -> list[str]:
     mismatches: list[str] = []
+    bundle_root = bundle_dir.resolve()
     for path in sorted(bundle_dir.rglob("*")):
+        if not _is_safe_bundle_scan_path(bundle_root, path, mismatches):
+            continue
         if not path.is_file():
             continue
         try:
@@ -1053,7 +1060,10 @@ def _secret_scan_bundle(bundle_dir: Path) -> list[str]:
 
 def _private_path_scan_bundle(bundle_dir: Path) -> list[str]:
     mismatches: list[str] = []
+    bundle_root = bundle_dir.resolve()
     for path in sorted(bundle_dir.rglob("*")):
+        if not _is_safe_bundle_scan_path(bundle_root, path, mismatches):
+            continue
         if not path.is_file():
             continue
         try:
@@ -1064,6 +1074,30 @@ def _private_path_scan_bundle(bundle_dir: Path) -> list[str]:
             if marker in text:
                 mismatches.append(f"private path marker {marker} found in {path.relative_to(bundle_dir)}")
     return mismatches
+
+
+def _safe_bundle_child(bundle_root: Path, relative: Any) -> tuple[Path, str | None]:
+    raw = str(relative)
+    rel = Path(raw)
+    if rel.is_absolute() or ".." in rel.parts:
+        return bundle_root / "__forbidden__", f"manifest path escapes bundle: {raw}"
+    resolved = (bundle_root / rel).resolve()
+    if resolved != bundle_root and bundle_root not in resolved.parents:
+        return resolved, f"manifest path escapes bundle: {raw}"
+    return resolved, None
+
+
+def _is_safe_bundle_scan_path(bundle_root: Path, path: Path, mismatches: list[str]) -> bool:
+    try:
+        resolved = path.resolve()
+        display = path.relative_to(bundle_root)
+    except ValueError:
+        display = path.name
+        resolved = path.resolve()
+    if resolved != bundle_root and bundle_root not in resolved.parents:
+        mismatches.append(f"bundle path escapes via symlink: {display}")
+        return False
+    return True
 
 
 def _money(amount: Any, currency: Any) -> str:

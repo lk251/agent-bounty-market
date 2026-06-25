@@ -1100,3 +1100,132 @@ Final boundary actions completed:
 - commented on #19 and coordinator #20 with the final tag, commit, clone result,
   digests, commands, submission files, and remaining blockers;
 - closed #19 after the final handoff comment.
+
+## Issue #21: Release Provenance V2 Dogfood
+
+UTC start: 2026-06-25T02:09:00Z
+UTC end: 2026-06-25T03:01:00Z
+
+Status: completed; the release-provenance defect was funded and solved through
+the retained-credit market path as a real second dogfood bounty.
+
+Implemented:
+
+- added `agent_bounty.release_dogfood`, a protected issue dogfood flow that
+  opens a funded internal bounty, verifies the current candidate commit, records
+  the accepted receipt, allocates the reward, and spends retained operating
+  credit into the follow-up release provenance project;
+- added `python -m agent_bounty release-dogfood-issue`;
+- moved release provenance authority from mutable committed self-reference to
+  an immutable annotated tag object with a deterministic tag-message payload;
+- added release provenance v2 tests for tag binding, stale-manifest rejection,
+  lightweight-tag rejection, wrong-target rejection, dogfood settlement, and
+  rejected-candidate refusal;
+- created and pushed annotated tag `hackathon-mixed-rc7`.
+
+Dogfood evidence:
+
+```text
+candidate: 5ffb2835fec5d5fd9373b129f850aa52396bbd4a
+evidence: .demo/release-provenance-dogfood-final2.json
+evidence digest: sha256:45c3ac46faca4a49a4f9dfcfc25a96f5894b0ce24a93a38eba6545d38f1aeba8
+receipt: receipt_ecc99fd087984590ae9313933d17fa48
+verifier digest: sha256:3429d7b5a728ba3f61db2ee0a2588d292ff5fdac361dae1570188be59e250170
+tag: hackathon-mixed-rc7
+tag object: fcacab705f3e79b59fcf98acf90489427afe1a4f
+```
+
+Fresh-clone validation:
+
+```bash
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc7
+nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+```
+
+Observed results:
+
+- release-audit with tag: `ok=true`;
+- replay rehearsal: 5/5 validations passed;
+- full test suite: 164 passed, 2 skipped;
+- `nix flake check`: all checks passed.
+
+Final boundary actions completed:
+
+- committed and pushed issue #21 changes;
+- pushed annotated tag `hackathon-mixed-rc7`;
+- commented on #21 with dogfood evidence and validation;
+- closed #21 after the handoff comment.
+
+## Issue #22: Security Audit
+
+UTC start: 2026-06-25T03:07:00Z
+
+Status: completed locally; quick and full security-audit commands and the
+recurring release gate pass before commit.
+
+Implemented so far:
+
+- added `agent_bounty.security_audit`, a dependency-free adversarial audit
+  harness for trusted-kernel invariants;
+- added `python -m agent_bounty security-audit --quick|--full`;
+- added randomized model checks that recompute ledger/account invariants from
+  first principles after each operation;
+- added mutation probes for settlement replay, rejected-work settlement,
+  unfunded reserve, idempotency-argument drift, receipt binding, Stripe
+  signature rejection, fake real-fragment IDs, fragment downgrade, bundle path
+  escape, and annotated-tag digest mismatch;
+- added malformed-input fuzz probes for GitHub markers, Stripe signatures,
+  evidence fragments, and release provenance;
+- added content-safe secret scanning that reports only kind, severity, path,
+  line, commit, and digest;
+- fixed confirmed P1 `ABM-SEC-001`: release bundle validation and release audit
+  could touch manifest paths or symlink targets outside the bundle;
+- documented the audit in `docs/SECURITY_AUDIT.md`;
+- added regression tests for bundle path escapes and the audit report contract.
+
+Audit evidence before commit:
+
+```text
+security-audit --quick: ok=true, mutation 10/10, model seeds 0-7, 20 steps each, fuzz cases 40
+security-audit --full: ok=true, mutation 10/10, model seeds 0-39, 50 steps each, fuzz cases 200
+secret scan: fail_count=0; private-path warnings are digest-only and expected for local demo docs/tests
+release recommendation: pass
+fixed P1: ABM-SEC-001
+open P0/P1: none
+```
+
+Validation run:
+
+```bash
+nix develop --command python3 -m unittest tests.test_demo_presentation tests.test_security_audit
+nix develop --command python3 -m unittest tests.test_release_integrity tests.test_security_audit
+nix develop --command python3 -m agent_bounty security-audit --quick
+nix develop --command python3 -m agent_bounty security-audit --full
+nix develop --command python3 -m agent_bounty submission-check
+nix develop --command python3 -m agent_bounty release-audit
+nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
+nix develop --command python3 -m unittest discover -s tests
+nix flake check
+git diff --check
+```
+
+Observed results:
+
+- focused demo/security tests: 15 passed;
+- focused release/security tests: 16 passed;
+- quick security audit: `ok=true`;
+- full security audit: `ok=true`.
+- submission-check: `ok=true`, no errors;
+- release-audit: `ok=true`, no errors;
+- replay rehearsal: 5/5 validations passed, p95 3 ms;
+- full test suite: 170 passed, 2 skipped;
+- `nix flake check`: all checks passed;
+- diff whitespace check: clean.
+
+Remaining boundary actions:
+
+- commit and push issue #22 changes;
+- comment on #22 with findings, fixes, validation, and pointer to #23;
+- close #22 only after all required gates pass.

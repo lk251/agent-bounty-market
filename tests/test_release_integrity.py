@@ -9,6 +9,7 @@ from pathlib import Path
 
 from agent_bounty.release_integrity import RELEASE_MANIFEST_SCHEMA, release_audit_report
 from agent_bounty.release_provenance import audit_annotated_tag, release_manifest_digest, render_tag_message
+from agent_bounty.util import file_digest, stable_json
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -86,6 +87,36 @@ class ReleaseIntegrityTests(unittest.TestCase):
             report = release_audit_report(REPO_ROOT, copied, strict_release_metadata=False)
         self.assertFalse(report["ok"])
         self.assertIn("private_path", {error["code"] for error in report["errors"]})
+
+    def test_release_audit_refuses_manifest_path_escape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            copied = Path(tmp) / "winning-run"
+            shutil.copytree(BUNDLE_DIR, copied)
+            outside = Path(tmp) / "outside.txt"
+            outside.write_text("outside\n", encoding="utf-8")
+            manifest_path = copied / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["files"]["../outside.txt"] = file_digest(outside)
+            manifest_path.write_text(stable_json(manifest) + "\n", encoding="utf-8")
+
+            report = release_audit_report(REPO_ROOT, copied, strict_release_metadata=False)
+
+        self.assertFalse(report["ok"])
+        self.assertIn("manifest_path_escape", {error["code"] for error in report["errors"]})
+
+    def test_release_audit_refuses_symlink_escape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            copied = Path(tmp) / "winning-run"
+            shutil.copytree(BUNDLE_DIR, copied)
+            outside = Path(tmp) / "outside-secret.txt"
+            outside.write_text("sk_test_" + "1234567890ABCDEF" + "\n", encoding="utf-8")
+            (copied / "evidence" / "outside-link.txt").symlink_to(outside)
+
+            report = release_audit_report(REPO_ROOT, copied, strict_release_metadata=False)
+
+        self.assertFalse(report["ok"])
+        self.assertIn("bundle_path_escape", {error["code"] for error in report["errors"]})
+        self.assertNotIn("outside-secret", json.dumps(report, sort_keys=True))
 
     def test_release_tag_message_binds_manifest_and_bundle_digests(self):
         payload = json.loads(render_tag_message(root=REPO_ROOT, tag="test-rc"))

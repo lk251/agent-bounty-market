@@ -93,6 +93,7 @@ def release_audit_report(root: Path | None = None, bundle_dir: Path | None = Non
 
 
 def _check_bundle_claims(bundle_path: Path, manifest: dict[str, Any], bundle: dict[str, Any], errors: list[dict[str, Any]]) -> None:
+    bundle_root = bundle_path.resolve()
     if manifest.get("mode") != "mixed":
         errors.append(_error("mode_not_mixed", "demo/bundles/winning-run/manifest.json", "release bundle must remain mixed unless real fragments upgrade it"))
     summary = bundle.get("summary") or {}
@@ -104,15 +105,20 @@ def _check_bundle_claims(bundle_path: Path, manifest: dict[str, Any], bundle: di
 
     listed = manifest.get("files") if isinstance(manifest.get("files"), dict) else {}
     for relative, expected_digest in listed.items():
-        path = bundle_path / str(relative)
+        path, path_error = _safe_bundle_child(bundle_root, relative)
+        if path_error:
+            errors.append(_error("manifest_path_escape", f"demo/bundles/winning-run/{relative}", path_error))
+            continue
         if path.is_file() and file_digest(path) != expected_digest:
             errors.append(_error("manifest_digest_mismatch", f"demo/bundles/winning-run/{relative}", "manifest digest does not match file content"))
 
     stripe_ids = {str(value) for value in REAL_STRIPE_EVIDENCE.values() if isinstance(value, str) and "_" in value}
     for path in sorted(bundle_path.rglob("*")):
+        safe_to_read, relative = _safe_bundle_scan_path(bundle_root, path, errors)
+        if not safe_to_read:
+            continue
         if not path.is_file():
             continue
-        relative = str(path.relative_to(bundle_path))
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
@@ -127,6 +133,30 @@ def _check_bundle_claims(bundle_path: Path, manifest: dict[str, Any], bundle: di
             errors.append(_error("unsafe_stripe_payload", f"demo/bundles/winning-run/{relative}", "checkout URLs and raw webhook payloads must not appear"))
         if relative not in SAFE_STRIPE_FILES and any(stripe_id in text for stripe_id in stripe_ids):
             errors.append(_error("stripe_id_outside_safe_evidence", f"demo/bundles/winning-run/{relative}", "prior Stripe IDs must stay in safe evidence fields"))
+
+
+def _safe_bundle_child(bundle_root: Path, relative: Any) -> tuple[Path, str | None]:
+    raw = str(relative)
+    rel = Path(raw)
+    if rel.is_absolute() or ".." in rel.parts:
+        return bundle_root / "__forbidden__", f"manifest path escapes bundle: {raw}"
+    resolved = (bundle_root / rel).resolve()
+    if resolved != bundle_root and bundle_root not in resolved.parents:
+        return resolved, f"manifest path escapes bundle: {raw}"
+    return resolved, None
+
+
+def _safe_bundle_scan_path(bundle_root: Path, path: Path, errors: list[dict[str, Any]]) -> tuple[bool, str]:
+    try:
+        resolved = path.resolve()
+        display = str(path.relative_to(bundle_root))
+    except ValueError:
+        resolved = path.resolve()
+        display = path.name
+    if resolved != bundle_root and bundle_root not in resolved.parents:
+        errors.append(_error("bundle_path_escape", f"demo/bundles/winning-run/{display}", "bundle path escapes via symlink"))
+        return False, display
+    return True, display
 
 
 def _check_release_manifest(root: Path, bundle_path: Path, errors: list[dict[str, Any]]) -> dict[str, Any]:

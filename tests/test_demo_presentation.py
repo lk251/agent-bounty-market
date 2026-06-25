@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -225,6 +226,35 @@ class DemoPresentationTests(unittest.TestCase):
                 reset_demo_state(Path(tmp), yes=False)
             with self.assertRaises(DemoPresentationError):
                 reset_demo_state(Path(tmp), yes=True)
+
+    def test_bundle_manifest_refuses_paths_outside_bundle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle_dir = Path(tmp) / "winning-run"
+            shutil.copytree(Path(__file__).resolve().parents[1] / "demo" / "bundles" / "winning-run", bundle_dir)
+            outside = Path(tmp) / "outside.txt"
+            outside.write_text("not bundle content\n", encoding="utf-8")
+            manifest_path = bundle_dir / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["files"]["../outside.txt"] = file_digest(outside)
+            manifest_path.write_text(stable_json(manifest) + "\n", encoding="utf-8")
+
+            validation = validate_bundle(bundle_dir)
+
+        self.assertFalse(validation["ok"])
+        self.assertIn("manifest path escapes bundle: ../outside.txt", validation["mismatches"])
+
+    def test_bundle_scanners_refuse_symlink_escape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle_dir = Path(tmp) / "winning-run"
+            shutil.copytree(Path(__file__).resolve().parents[1] / "demo" / "bundles" / "winning-run", bundle_dir)
+            outside = Path(tmp) / "outside-secret.txt"
+            outside.write_text("whsec_should_not_be_read\n", encoding="utf-8")
+            (bundle_dir / "evidence" / "outside-link.txt").symlink_to(outside)
+
+            validation = validate_bundle(bundle_dir)
+
+        self.assertFalse(validation["ok"])
+        self.assertIn("bundle path escapes via symlink: evidence/outside-link.txt", validation["mismatches"])
 
 
 def _rewrite_bundle_and_manifest(bundle_dir: Path, bundle: dict) -> None:
