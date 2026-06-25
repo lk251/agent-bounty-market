@@ -96,6 +96,31 @@ Current truth status:
 The dashboard must show `Mixed real/fallback`. A fallback or fake-provider
 component cannot be relabeled as live without failing validation.
 
+## Release Provenance v2
+
+Release provenance is now tag-authoritative:
+
+- `submission/RELEASE_MANIFEST.json` records stable bundle digests and the
+  intended release tag.
+- The manifest intentionally does not record a self-referential current commit
+  SHA. The annotated Git tag target is the immutable release pointer.
+- The canonical tag message is rendered with:
+
+```bash
+nix develop --command python3 -m agent_bounty release-provenance render-tag-message --tag hackathon-mixed-rc7
+```
+
+- The final release gate is:
+
+```bash
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc7
+```
+
+Issue #21 was dogfooded through the local market core with retained operating
+credit. The sanitized evidence is generated under ignored `.demo/` state and
+reported in the issue handoff instead of being committed, because it binds to
+the exact candidate SHA it verifies.
+
 ## Current Blockers
 
 1. NVIDIA/Nemotron:

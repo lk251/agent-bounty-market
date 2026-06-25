@@ -28,6 +28,14 @@ git diff --check
   `4c03e0fa02a26f1cbadbe593ae687eaa9b333d2c`.
 - [x] Bundle has no secret-like strings or private `/home/...` paths.
 - [x] Prior Stripe IDs remain in safe evidence fields only.
+- [x] Release manifest v2 records stable bundle digests and no self-referential
+  current commit SHA.
+- [x] Annotated release tag message is rendered by
+  `release-provenance render-tag-message`.
+- [x] Final tag-aware release gate is `release-audit --tag
+  hackathon-mixed-rc7`.
+- [x] Issue #21 retained-credit dogfood evidence is generated under ignored
+  `.demo/` state and summarized in the issue handoff.
 
 ## Backup Bundle
 
