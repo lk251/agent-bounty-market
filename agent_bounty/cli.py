@@ -73,6 +73,12 @@ from .hermes_integration import (
 )
 from .live_setup import live_setup_wizard_report, render_live_setup_text, write_live_setup_runbook
 from .nvidia_runtime import nvidia_runtime_status_report, run_nvidia_sandbox_demo
+from .operator_submission import (
+    DEFAULT_FINALIZER_OUTPUT,
+    DEFAULT_OPERATOR_STATE_PATH,
+    finalize_submission,
+    video_check_report,
+)
 from .payments import FakePaymentGateway, StripePaymentGateway
 from .release_integrity import release_audit_report
 from .release_dogfood import ReleaseDogfoodError, open_release_dogfood_market, release_dogfood_report
@@ -1503,7 +1509,35 @@ def cmd_live_setup_wizard(args: argparse.Namespace) -> int:
 
 
 def cmd_submission_check(args: argparse.Namespace) -> int:
-    result = submission_check_report(Path(args.root) if args.root else None, entry=args.entry, final=args.final)
+    result = submission_check_report(
+        Path(args.root) if args.root else None,
+        entry=args.entry,
+        final=args.final,
+        prepost=args.prepost,
+        state=Path(args.state) if args.state else None,
+    )
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_submission_finalize(args: argparse.Namespace) -> int:
+    result = finalize_submission(
+        state_path=Path(args.state),
+        output_dir=Path(args.output),
+        root=Path(args.root) if args.root else None,
+        check=args.check,
+        manual_media_report=Path(args.manual_media_report) if args.manual_media_report else None,
+    )
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_video_check(args: argparse.Namespace) -> int:
+    result = video_check_report(
+        Path(args.file),
+        manual_report=Path(args.manual_report) if args.manual_report else None,
+        require_audio=not args.no_require_audio,
+    )
     print_json(result)
     return 0 if result.get("ok") else 1
 
@@ -2435,8 +2469,24 @@ def build_parser() -> argparse.ArgumentParser:
     submission_check = sub.add_parser("submission-check", help="check judge-facing submission docs and bundle for unsafe claims")
     submission_check.add_argument("--root", help="repository root; defaults to current directory")
     submission_check.add_argument("--entry", action="store_true", help="also check final hackathon entry package in draft mode")
+    submission_check.add_argument("--prepost", action="store_true", help="require local operator state before posting, excluding final tweet/confirmation URLs")
     submission_check.add_argument("--final", action="store_true", help="require final operator URLs/placeholders to be filled")
+    submission_check.add_argument("--state", help="local ignored operator state file for prepost/final checks")
     submission_check.set_defaults(func=cmd_submission_check)
+
+    submission_finalize = sub.add_parser("submission-finalize", help="render local ignored final tweet, Discord, Typeform, portal, and media reports")
+    submission_finalize.add_argument("--root", help="repository root; defaults to current directory")
+    submission_finalize.add_argument("--state", default=str(DEFAULT_OPERATOR_STATE_PATH))
+    submission_finalize.add_argument("--output", default=str(DEFAULT_FINALIZER_OUTPUT))
+    submission_finalize.add_argument("--manual-media-report", help="operator-attested media report JSON when ffprobe is unavailable")
+    submission_finalize.add_argument("--check", action="store_true", help="validate and report without writing output files")
+    submission_finalize.set_defaults(func=cmd_submission_finalize)
+
+    video_check = sub.add_parser("video-check", help="validate a final MP4 with ffprobe or a manual attested report")
+    video_check.add_argument("--file", required=True)
+    video_check.add_argument("--manual-report", help="manual attested media report JSON when ffprobe is unavailable")
+    video_check.add_argument("--no-require-audio", action="store_true", help="do not require an audio stream")
+    video_check.set_defaults(func=cmd_video_check)
 
     release_audit = sub.add_parser("release-audit", help="audit release bundle, manifest, and handoff integrity")
     release_audit.add_argument("--root", help="repository root; defaults to current directory")

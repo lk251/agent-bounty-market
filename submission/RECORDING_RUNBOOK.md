@@ -3,6 +3,8 @@
 Goal: record the strongest truthful hackathon demo without implying that blocked
 components ran live.
 
+Release tag: `hackathon-mixed-rc9`.
+
 ## Build And Validate
 
 ```bash

@@ -55,6 +55,7 @@ ENTRY_REQUIRED_DOCS = [
     Path("submission/TYPEFORM_FINAL.md"),
     Path("submission/VIDEO_METADATA.md"),
     Path("submission/SUBMISSION_PORTAL_CHECKLIST.md"),
+    Path("submission/OPERATOR_FINALIZATION.md"),
 ]
 ENTRY_TRUTH_FILES = [
     Path("submission/TWEET.md"),
@@ -62,6 +63,7 @@ ENTRY_TRUTH_FILES = [
     Path("submission/TYPEFORM_FINAL.md"),
     Path("submission/VIDEO_METADATA.md"),
     Path("submission/SUBMISSION_PORTAL_CHECKLIST.md"),
+    Path("submission/OPERATOR_FINALIZATION.md"),
 ]
 ENTRY_PLACEHOLDER_RE = re.compile(r"\[[A-Z][A-Z0-9_ /.-]*\]|\b(?:TODO|TBD|TO_BE_FILLED)\b")
 TWEET_BLOCK_RE = re.compile(
@@ -75,11 +77,18 @@ TWEET_LIMIT = 280
 ULTRA_SHORT_LIMIT = 180
 
 
-def submission_check_report(root: Path | None = None, *, entry: bool = False, final: bool = False) -> dict[str, Any]:
+def submission_check_report(
+    root: Path | None = None,
+    *,
+    entry: bool = False,
+    final: bool = False,
+    prepost: bool = False,
+    state: Path | None = None,
+) -> dict[str, Any]:
     root_path = (root or Path.cwd()).resolve()
     errors: list[dict[str, Any]] = []
     checked_files = _candidate_files(root_path)
-    if final:
+    if final or prepost:
         entry = True
 
     for doc in REQUIRED_DOCS:
@@ -90,12 +99,12 @@ def submission_check_report(root: Path | None = None, *, entry: bool = False, fi
     _check_sponsor_table(root_path, errors)
     _check_demo_scripts(root_path, errors)
     _check_forbidden_text(root_path, checked_files, errors)
-    entry_report = _check_entry_package(root_path, final=final, errors=errors) if entry else None
+    entry_report = _check_entry_package(root_path, final=final, prepost=prepost, state=state, errors=errors) if entry else None
 
     result = {
         "schema": SCHEMA,
         "ok": not errors,
-        "mode": "entry-final" if final else "entry-draft" if entry else "standard",
+        "mode": "entry-final" if final else "entry-prepost" if prepost else "entry-draft" if entry else "standard",
         "checked_files": [str(path.relative_to(root_path)) for path in checked_files],
         "required_docs": [str(path) for path in REQUIRED_DOCS],
         "required_truth_files": [str(path) for path in REQUIRED_TRUTH_FILES],
@@ -174,7 +183,14 @@ def _check_forbidden_text(root: Path, files: list[Path], errors: list[dict[str, 
                     errors.append(_error("secret_like_text", rel, "secret-like value must not appear in submission artifacts", line=line_no))
 
 
-def _check_entry_package(root: Path, *, final: bool, errors: list[dict[str, Any]]) -> dict[str, Any]:
+def _check_entry_package(
+    root: Path,
+    *,
+    final: bool,
+    prepost: bool,
+    state: Path | None,
+    errors: list[dict[str, Any]],
+) -> dict[str, Any]:
     placeholders: list[dict[str, Any]] = []
     for doc in ENTRY_REQUIRED_DOCS:
         path = root / doc
@@ -194,16 +210,19 @@ def _check_entry_package(root: Path, *, final: bool, errors: list[dict[str, Any]
     _check_video_metadata(root, errors)
     _check_judge_qa_completion(root, errors)
 
-    if final and placeholders:
+    operator_report = _check_operator_state(root, final=final, prepost=prepost, state=state, errors=errors)
+
+    if final and placeholders and state is None:
         for placeholder in placeholders:
             errors.append(_error("final_placeholder", Path(placeholder["path"]), f"final mode cannot contain placeholder `{placeholder['placeholder']}`", line=placeholder["line"]))
 
     return {
         "schema": ENTRY_SCHEMA,
-        "mode": "final" if final else "draft",
+        "mode": "final" if final else "prepost" if prepost else "draft",
         "required_docs": [str(path) for path in ENTRY_REQUIRED_DOCS],
         "tweet_variants": tweet_variants,
         "release": release,
+        "operator": operator_report,
         "placeholder_count": len(placeholders),
         "placeholders": placeholders[:50],
     }
@@ -258,7 +277,36 @@ def extract_tweet_variants(text: str) -> list[dict[str, Any]]:
 
 
 def tweet_character_count(text: str) -> int:
-    return len(text)
+    from .operator_submission import x_character_count
+
+    return x_character_count(text)
+
+
+def _check_operator_state(
+    root: Path,
+    *,
+    final: bool,
+    prepost: bool,
+    state: Path | None,
+    errors: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if not (final or prepost or state is not None):
+        return None
+    if state is None:
+        errors.append(_error("operator_state_missing", Path(".demo/operator-submission.json"), "operator state is required for prepost/final checks"))
+        return {
+            "schema": "agent-bounty-operator-state-report-v1",
+            "ok": False,
+            "mode": "final" if final else "prepost",
+            "errors": [{"code": "operator_state_missing", "path": ".demo/operator-submission.json", "detail": "operator state is required"}],
+        }
+    from .operator_submission import operator_state_report
+
+    report = operator_state_report(state, root=root, mode="final" if final else "prepost")
+    if not report.get("ok"):
+        for error in report.get("errors", []):
+            errors.append(_error("operator_" + str(error.get("code", "invalid")), Path(str(error.get("path", state))), str(error.get("detail", "operator state invalid"))))
+    return report
 
 
 def _before_url_placeholder(text: str) -> str:

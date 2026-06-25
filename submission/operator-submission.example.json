@@ -1,0 +1,17 @@
+{
+  "schema": "agent-bounty-operator-submission-state-v1",
+  "repo_url": "https://github.com/OWNER/REPOSITORY",
+  "video_file_path": "/absolute/path/to/final-video.mp4",
+  "video_filename": "agent-bounty-market-hackathon-YYYYMMDD.mp4",
+  "team_name": "[TEAM_NAME]",
+  "team_member_names": [
+    "[TEAM_MEMBER_NAME]"
+  ],
+  "contact_email_or_handle": "[CONTACT_EMAIL_OR_HANDLE]",
+  "final_tweet_url": "",
+  "discord_confirmation_path": "",
+  "typeform_confirmation_path": "",
+  "bundle_backup_path": "/absolute/path/to/local/bundle-backup",
+  "manual_media_report_path": "",
+  "submission_timestamp": ""
+}

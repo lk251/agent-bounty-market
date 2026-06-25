@@ -5,19 +5,21 @@ filled.
 
 ## Release Identity
 
-- Release tag: `hackathon-mixed-rc8`
+- Release tag: `hackathon-mixed-rc9`
 - Truth label: `Mixed real/fallback`
 - Bundle digest:
-  `sha256:b24eafec20a285921501523a6aa205b72b38032b38c650cac869abe8729c1208`
+  `sha256:75d57c2c7ff81fdcec1f7abfa4a071a3cae52eab61b00f48bc7dcf5f6929e08f`
 - Attestation digest:
-  `sha256:0da84fca39e675173c423df5cba2525ba3b87d6c1342c2d2a55e094f50c0e952`
+  `sha256:7b1c94b779a62d5ac64fc1d9bce713689cda4978b824280a20f7f33cf8589a9e`
 - Truth matrix digest:
-  `sha256:621ba84b186080774171e0f8ef3b1a69ade8874e5936ab5df403816ad12c0e39`
+  `sha256:a704f3e1a90d141c0f9c92bef2c4656cef92b5abf93bdeb1abfd9ed342530bc1`
 
 ## Before Recording
 
 - Run `nix develop --command python3 -m agent_bounty submission-check --entry`.
 - Run `nix develop --command python3 -m agent_bounty release-audit`.
+- Copy `submission/operator-submission.example.json` to
+  `.demo/operator-submission.json` and fill repo/team/video fields.
 - Start dashboard with the recording command in `submission/RELEASE_MANIFEST.json`.
 - Hide unrelated terminal windows and private material.
 - Prepare the concise tweet and Discord message.
@@ -25,7 +27,13 @@ filled.
 ## Before Tweeting
 
 - Export `[FINAL_VIDEO_FILENAME]` as MP4/H.264.
-- Confirm duration is within 1-3 minutes and ideally 1:45-2:15.
+- Run `nix develop --command python3 -m agent_bounty video-check --file
+  [FINAL_VIDEO_FILE_PATH]`.
+- Run `nix develop --command python3 -m agent_bounty submission-finalize
+  --state .demo/operator-submission.json --output .demo/final-submission
+  --check`.
+- Run `nix develop --command python3 -m agent_bounty submission-check --entry
+  --prepost --state .demo/operator-submission.json`.
 - Confirm `@NousResearch` appears in the tweet.
 - Confirm `Mixed real/fallback` appears in the tweet or visible video context.
 - Confirm optional sponsor tags are truthful in context.
@@ -60,7 +68,8 @@ filled.
 Run this after all placeholders are filled:
 
 ```bash
-nix develop --command python3 -m agent_bounty submission-check --entry --final
+nix develop --command python3 -m agent_bounty submission-finalize --state .demo/operator-submission.json --output .demo/final-submission
+nix develop --command python3 -m agent_bounty submission-check --entry --final --state .demo/operator-submission.json
 ```
 
 Expected before final posting: draft mode passes, final mode fails only because

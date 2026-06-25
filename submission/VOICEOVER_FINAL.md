@@ -1,5 +1,7 @@
 # Final Voiceover
 
+Release tag: `hackathon-mixed-rc9`.
+
 Target length: 120 seconds. Keep the visible truth badge in frame throughout.
 
 ## Script

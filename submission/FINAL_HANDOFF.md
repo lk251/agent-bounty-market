@@ -1,6 +1,6 @@
 # Final Handoff
 
-Release candidate tag: `hackathon-mixed-rc8`
+Release candidate tag: `hackathon-mixed-rc9`
 
 This release candidate is a truthful mixed real/fallback demo package. It does
 not claim a complete sponsor-integrated live run. It packages the strongest
@@ -21,8 +21,17 @@ nix develop --command python3 -m agent_bounty demo-build-winning-run \
   --bundle demo/bundles/winning-run
 
 nix develop --command python3 -m agent_bounty submission-check
+nix develop --command python3 -m agent_bounty submission-check --entry
+nix develop --command python3 -m agent_bounty submission-finalize \
+  --state .demo/operator-submission.json \
+  --output .demo/final-submission \
+  --check
+nix develop --command python3 -m agent_bounty submission-check \
+  --entry \
+  --prepost \
+  --state .demo/operator-submission.json
 
-nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc8
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc9
 
 nix develop --command python3 -m agent_bounty demo-rehearse \
   --mode replay \
@@ -67,7 +76,11 @@ Live setup:
 - live preflight shares the wizard blocker list:
   `python -m agent_bounty demo-preflight --mode live`
 - red-team gate: `python -m agent_bounty submission-check`
-- release gate: `python -m agent_bounty release-audit --tag hackathon-mixed-rc8`
+- operator gate: `python -m agent_bounty submission-finalize --state
+  .demo/operator-submission.json --output .demo/final-submission --check`
+- prepost gate: `python -m agent_bounty submission-check --entry --prepost
+  --state .demo/operator-submission.json`
+- release gate: `python -m agent_bounty release-audit --tag hackathon-mixed-rc9`
 - judge Q&A: `submission/JUDGE_QA.md`
 - sponsor matrix: `submission/SPONSOR_INTEGRATION.md`
 - release checklist: `submission/RELEASE_CHECKLIST.md`
@@ -77,9 +90,9 @@ Backup bundle:
 
 ```bash
 nix develop --command python3 -m agent_bounty demo-build-winning-run \
-  --db .demo/release-backups/hackathon-mixed-rc8.sqlite3 \
+  --db .demo/release-backups/hackathon-mixed-rc9.sqlite3 \
   --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency \
-  --bundle .demo/release-backups/hackathon-mixed-rc8
+  --bundle .demo/release-backups/hackathon-mixed-rc9
 ```
 
 The backup path is intentionally under ignored `.demo/` state. Regenerate it
@@ -112,13 +125,13 @@ Release provenance is now tag-authoritative:
 - The canonical tag message is rendered with:
 
 ```bash
-nix develop --command python3 -m agent_bounty release-provenance render-tag-message --tag hackathon-mixed-rc8
+nix develop --command python3 -m agent_bounty release-provenance render-tag-message --tag hackathon-mixed-rc9
 ```
 
 - The final release gate is:
 
 ```bash
-nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc8
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc9
 ```
 
 Issue #21 was dogfooded through the local market core with retained operating
@@ -177,7 +190,10 @@ nix develop --command python3 -m py_compile agent_bounty/demo_presentation.py ag
 nix develop --command python3 -m unittest tests.test_release_integrity
 nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
 nix develop --command python3 -m agent_bounty submission-check
-nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc8
+nix develop --command python3 -m agent_bounty submission-check --entry
+nix develop --command python3 -m agent_bounty submission-finalize --state .demo/operator-submission.json --output .demo/final-submission --check
+nix develop --command python3 -m agent_bounty submission-check --entry --prepost --state .demo/operator-submission.json
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc9
 nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
 nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 120 --check
 nix develop --command python3 -m compileall agent_bounty tests verifiers
@@ -190,15 +206,19 @@ Observed before final commit:
 
 ```text
 focused release-integrity tests: 7 passed
+focused operator/submission tests: 29 passed
 winning bundle validation: ok=true, mode=mixed, truth=mixed-real-fallback
 submission-check: ok=true, errors=[]
+submission-check --entry: ok=true, placeholders remain by design
+submission-finalize --check: ok=true, six local output files
+submission-check --entry --prepost --state .demo/operator-submission.json: ok=true
 release-audit: ok=true, errors=[]
 replay rehearsal: 5/5 validations passed
 director check: ok=true, url=http://127.0.0.1:8788/director.html?duration=120
-bundle digest: sha256:b24eafec20a285921501523a6aa205b72b38032b38c650cac869abe8729c1208
-attestation digest: sha256:0da84fca39e675173c423df5cba2525ba3b87d6c1342c2d2a55e094f50c0e952
-truth matrix digest: sha256:621ba84b186080774171e0f8ef3b1a69ade8874e5936ab5df403816ad12c0e39
-full suite: 184 tests passed, 2 skipped
+bundle digest: sha256:75d57c2c7ff81fdcec1f7abfa4a071a3cae52eab61b00f48bc7dcf5f6929e08f
+attestation digest: sha256:7b1c94b779a62d5ac64fc1d9bce713689cda4978b824280a20f7f33cf8589a9e
+truth matrix digest: sha256:a704f3e1a90d141c0f9c92bef2c4656cef92b5abf93bdeb1abfd9ed342530bc1
+full suite: 200 tests passed, 2 skipped
 nix flake check: all checks passed
 ```
 
@@ -224,6 +244,8 @@ Use `submission/RECORDING_RUNBOOK.md`. Serve director mode with
 - [x] Currency/receipt consistency drift is rejected.
 - [x] Secret-like bundle contents are rejected.
 - [x] Prior real Stripe sandbox evidence is referenced.
+- [x] Operator finalizer, media QC, conservative tweet counting, and prepost
+  state checks added.
 - [x] Full tests pass.
 - [x] Nix flake check passes.
 - [ ] Complete sponsor-integrated live run captured.
