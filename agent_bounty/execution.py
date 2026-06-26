@@ -2,20 +2,26 @@ from __future__ import annotations
 
 import json
 import os
-import pty
 import shutil
 import signal
 import subprocess
 import tempfile
 import time
-import fcntl
 import struct
-import termios
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
 
 from .util import sha256_bytes, stable_json, utc_now
+
+if os.name == "posix":
+    import fcntl
+    import pty
+    import termios
+else:
+    fcntl = None
+    pty = None
+    termios = None
 
 
 SENSITIVE_ENV_PREFIXES = (
@@ -276,6 +282,8 @@ class LocalIsolatedProcessBackend(ExecutionBackend):
         rows: int = 24,
         cols: int = 120,
     ) -> BackendPtySession:
+        if pty is None:
+            raise BackendUnavailable("PTY execution is only available on POSIX platforms")
         tempdir = tempfile.TemporaryDirectory(prefix="agent-bounty-backend-", dir=str(self.temp_root) if self.temp_root else None)
         tmp_path = Path(tempdir.name)
         run_env = self.scrub_env(env)
@@ -317,6 +325,8 @@ class LocalIsolatedProcessBackend(ExecutionBackend):
 
 
 def set_winsz(fd: int, rows: int, cols: int) -> None:
+    if fcntl is None or termios is None:
+        raise BackendUnavailable("terminal window sizing is only available on POSIX platforms")
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
 
