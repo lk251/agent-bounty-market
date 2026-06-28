@@ -1,6 +1,10 @@
 # Final Handoff
 
-Release candidate tag: `hackathon-mixed-rc10`
+Intended release candidate tag: `hackathon-mixed-rc10`
+
+`hackathon-mixed-rc10` has not been created on HB2. The tag should be created
+only after the Linux/Nix release gate, operator pre/post state check, and final
+release audit all pass on the immutable release commit.
 
 This release candidate is a truthful mixed real/fallback demo package. It does
 not claim a complete sponsor-integrated live run. It packages the strongest
@@ -138,6 +142,68 @@ Issue #21 was dogfooded through the local market core with retained operating
 credit. The sanitized evidence is generated under ignored `.demo/` state and
 reported in the issue handoff instead of being committed, because it binds to
 the exact candidate SHA it verifies.
+
+## Issue #29 Handoff Status
+
+Issue #29 is implemented on local branch `codex/issue-29-story-flywheel`, but it
+is not fully closed out from HB2 because the final gate requires missing local
+release infrastructure.
+
+Implementation commits prepared before this status note:
+
+- `bfc5b96` - issue #29 story/flywheel implementation, regenerated bundle, and
+  updated submission copy.
+- `9da51ab` - HB2 native-Windows validation fixes and release handoff updates.
+
+No commits have been pushed, no issue comment has been posted, and issue #29 has
+not been closed from this machine.
+
+Settlement shown on screen:
+
+- reward: `$25.00`
+- solver wallet operating credit: `$20.00`
+- human/operator payout through the Stripe settlement path: `$5.00`
+
+Wording replacements made:
+
+- the old idle verifier shorthand was replaced in judge-facing copy with
+  original/superficial/final verifier language.
+- the old reward/cap internal error was replaced with project spending-cap
+  language.
+- the old remaining-reserve internal error was replaced with project reserve
+  language.
+- the old alternatives-decline subtitle was replaced with project-agent funding
+  and verifier-backed work language.
+
+Proof commands:
+
+```bash
+STALE_RE="$(printf '%s|' \
+  'idle''-only' \
+  'Idle''-only' \
+  'Reward exceeds maximum ''bounty amount' \
+  'reward exceeds maximum ''bounty amount' \
+  'Minimum remaining reserve ''would be violated' \
+  'minimum remaining reserve ''would be violated' \
+  'Policy and budget select one bounded bounty while alternatives ''can decline' \
+  'alternatives ''can decline')"
+rg -n "${STALE_RE%|}" README.md submission demo/bundles/winning-run
+rg -n "Operating credit|Operator payout|external_transfer_amount|retained_operating_amount" demo/bundles/winning-run/dashboard.html demo/bundles/winning-run/bundle.json submission/DEMO_SCRIPT.md submission/JUDGE_QA.md
+```
+
+The first command should return no judge-facing stale wording. The second should
+show the reversed `$25 / $20 / $5` split and the persisted
+`external_transfer_amount=500`, `retained_operating_amount=2000` evidence.
+
+Remaining issue #29 gate:
+
+- Run the required Nix commands on a machine with Nix and the Motoko fixture.
+- Generate or provide `.demo/operator-submission.json` before the `--prepost`
+  gate.
+- Create the immutable annotated `hackathon-mixed-rc10` tag only after all
+  release checks pass.
+- Push the branch/tag, comment on issue #29 with the final validation evidence,
+  and close issue #29 only after that completion gate is satisfied.
 
 ## Current Blockers
 
