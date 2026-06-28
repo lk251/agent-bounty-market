@@ -155,8 +155,8 @@ Implementation commits prepared before this status note:
   updated submission copy.
 - `9da51ab` - HB2 native-Windows validation fixes and release handoff updates.
 
-No commits have been pushed, no issue comment has been posted, and issue #29 has
-not been closed from this machine.
+The branch has been pushed for HB3 to finish. No issue comment has been posted,
+and issue #29 has not been closed from this machine.
 
 Settlement shown on screen:
 
