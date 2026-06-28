@@ -9,12 +9,13 @@
   "truth_matrix_digest": "sha256:a704f3e1a90d141c0f9c92bef2c4656cef92b5abf93bdeb1abfd9ed342530bc1",
   "test_counts": {
     "focused_director_tests": "6 passed",
-    "focused_release_integrity_tests": "pending on Linux/Nix release host",
-    "focused_operator_and_submission_tests": "pending operator state for prepost gate",
+    "focused_release_integrity_tests": "14 passed, 1 symlink-privilege skip on HB2 native Windows",
+    "focused_operator_and_submission_tests": "operator/submission focused tests pass on HB2; real prepost gate still requires operator state",
     "focused_submission_tests": "standard and entry draft checks pass on HB2; prepost requires operator state",
-    "full_suite": "blocked on HB2 native Windows by missing Nix/WSL POSIX runtime, missing Motoko fixture, and Windows sqlite temp-file unlink semantics",
+    "full_suite": "HB2 native Windows: 200 passed, 17 skipped; full Linux/Nix release gate still pending",
     "replay_rehearsal": "5/5 validations passed",
     "director_check": "passed",
+    "security_audit_quick": "passed",
     "nix_flake_check": "blocked on HB2: native nix unavailable and no WSL distro installed"
   },
   "fresh_clone_status": {

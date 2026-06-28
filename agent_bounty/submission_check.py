@@ -105,9 +105,9 @@ def submission_check_report(
         "schema": SCHEMA,
         "ok": not errors,
         "mode": "entry-final" if final else "entry-prepost" if prepost else "entry-draft" if entry else "standard",
-        "checked_files": [str(path.relative_to(root_path)) for path in checked_files],
-        "required_docs": [str(path) for path in REQUIRED_DOCS],
-        "required_truth_files": [str(path) for path in REQUIRED_TRUTH_FILES],
+        "checked_files": [path.relative_to(root_path).as_posix() for path in checked_files],
+        "required_docs": [path.as_posix() for path in REQUIRED_DOCS],
+        "required_truth_files": [path.as_posix() for path in REQUIRED_TRUTH_FILES],
         "required_sponsor_rows": REQUIRED_SPONSOR_ROWS,
         "errors": errors,
     }
@@ -219,7 +219,7 @@ def _check_entry_package(
     return {
         "schema": ENTRY_SCHEMA,
         "mode": "final" if final else "prepost" if prepost else "draft",
-        "required_docs": [str(path) for path in ENTRY_REQUIRED_DOCS],
+        "required_docs": [path.as_posix() for path in ENTRY_REQUIRED_DOCS],
         "tweet_variants": tweet_variants,
         "release": release,
         "operator": operator_report,

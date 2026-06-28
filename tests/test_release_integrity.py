@@ -110,7 +110,12 @@ class ReleaseIntegrityTests(unittest.TestCase):
             shutil.copytree(BUNDLE_DIR, copied)
             outside = Path(tmp) / "outside-secret.txt"
             outside.write_text("sk_test_" + "1234567890ABCDEF" + "\n", encoding="utf-8")
-            (copied / "evidence" / "outside-link.txt").symlink_to(outside)
+            try:
+                (copied / "evidence" / "outside-link.txt").symlink_to(outside)
+            except OSError as exc:
+                if getattr(exc, "winerror", None) == 1314:
+                    self.skipTest("symlink creation requires Windows developer mode or privilege")
+                raise
 
             report = release_audit_report(REPO_ROOT, copied, strict_release_metadata=False)
 

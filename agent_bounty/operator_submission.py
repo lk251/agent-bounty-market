@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -214,8 +216,15 @@ def video_check_report(
     if ffprobe:
         summary["ffprobe_available"] = True
         metadata, probe_errors = _ffprobe_metadata(path, ffprobe)
-        errors.extend(probe_errors)
-        summary["metadata"] = metadata
+        if probe_errors and manual_report:
+            manual = _load_manual_media_report(manual_report)
+            summary["manual_report"] = _safe_manual_report_summary(manual_report, manual)
+            summary["ffprobe_errors"] = probe_errors
+            errors.extend(manual["errors"])
+            summary["metadata"] = manual["metadata"]
+        else:
+            errors.extend(probe_errors)
+            summary["metadata"] = metadata
     elif manual_report:
         manual = _load_manual_media_report(manual_report)
         summary["manual_report"] = _safe_manual_report_summary(manual_report, manual)
@@ -409,8 +418,11 @@ def _validate_safe_local_path(field: str, value: str, errors: list[dict[str, Any
 
 
 def _ffprobe_metadata(path: Path, ffprobe: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    ffprobe_cmd = shlex.split(ffprobe, posix=(os.name != "nt"))
+    if os.name == "nt" and len(ffprobe_cmd) == 1 and ffprobe_cmd[0].lower().endswith(".py"):
+        ffprobe_cmd.insert(0, sys.executable)
     cmd = [
-        ffprobe,
+        *ffprobe_cmd,
         "-v",
         "error",
         "-print_format",

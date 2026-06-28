@@ -206,20 +206,22 @@ Observed on HB2 before final commit:
 
 ```text
 focused director tests: 6 passed
-focused demo presentation tests: 13 passed; 1 native-Windows symlink privilege error
-py_compile on touched modules/tests: passed
+focused release-integrity tests: 14 passed; 1 native-Windows symlink privilege skip
+focused story/operator/submission tests: passed on HB2 native Windows
+py_compile on agent_bounty/verifiers/tests: passed
 winning bundle validation: ok=true, mode=mixed, truth=mixed-real-fallback
 submission-check: ok=true, errors=[]
 submission-check --entry: ok=true, placeholders remain by design
 submission-check --entry --prepost: blocked without .demo/operator-submission.json
 release-audit: ok=true, errors=[]
 release-audit --tag hackathon-mixed-rc10: pending annotated tag creation on the final release commit
+security-audit --quick: ok=true
 replay rehearsal: 5/5 validations passed
 director check: ok=true, url=http://127.0.0.1:8788/director.html?duration=120
 bundle digest: sha256:1765bb2e57ed2e8c0d198591e6f52b77439f33266ca49fbaa02410f836dbedf4
 attestation digest: sha256:5c4703fc9c929198df97eae12a5d5c83310d736dd76edce64308f8a9eaba04d1
 truth matrix digest: sha256:a704f3e1a90d141c0f9c92bef2c4656cef92b5abf93bdeb1abfd9ed342530bc1
-full suite: blocked on HB2 native Windows by missing Nix/WSL POSIX runtime, missing Motoko fixture, and Windows sqlite temp-file unlink semantics
+full native HB2 suite: 200 tests passed, 17 skipped
 nix flake check: blocked on HB2 because native nix is unavailable and no WSL distro is installed
 ```
 
@@ -249,6 +251,7 @@ Use `submission/RECORDING_RUNBOOK.md`. Serve director mode with
   state checks added.
 - [x] HB2 replay, director, submission draft, release audit, and focused tests
   pass where the local native-Windows environment can exercise them.
+- [x] Full native HB2 unittest suite passes.
 - [ ] Full Linux/Nix test suite passes for rc10.
 - [ ] Nix flake check passes for rc10.
 - [ ] Complete sponsor-integrated live run captured.

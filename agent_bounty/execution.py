@@ -258,7 +258,17 @@ class LocalIsolatedProcessBackend(ExecutionBackend):
             except subprocess.TimeoutExpired:
                 timed_out = True
                 kill_process_group(proc)
-                stdout, stderr = proc.communicate(timeout=2.0)
+                try:
+                    stdout, stderr = proc.communicate(timeout=2.0)
+                except subprocess.TimeoutExpired as exc:
+                    stdout = exc.output or b""
+                    stderr = exc.stderr or b""
+                    with _suppress_all():
+                        if proc.stdout:
+                            proc.stdout.close()
+                    with _suppress_all():
+                        if proc.stderr:
+                            proc.stderr.close()
             finished_at = utc_now()
             return BackendResult(
                 stdout=bounded(stdout or b"", max_output_bytes),
@@ -344,12 +354,21 @@ def kill_process_group(proc: subprocess.Popen) -> None:
                 os.killpg(proc.pid, signal.SIGKILL)
     else:
         with _suppress_all():
+            subprocess.run(
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+            )
+        with _suppress_all():
             proc.terminate()
         try:
             proc.wait(timeout=1.0)
         except subprocess.TimeoutExpired:
             with _suppress_all():
                 proc.kill()
+            with _suppress_all():
+                proc.wait(timeout=1.0)
 
 
 class OpenShellBackend(ExecutionBackend):

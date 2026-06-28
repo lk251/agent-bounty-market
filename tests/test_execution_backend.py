@@ -80,6 +80,8 @@ class ExecutionBackendTests(unittest.TestCase):
                 max_output_bytes=10_000,
             )
             self.assertTrue(result.timed_out)
+            if os.name != "posix":
+                return
             if pid_file.exists():
                 pid = int(pid_file.read_text())
                 deadline = time.monotonic() + 3.0
@@ -114,6 +116,8 @@ class ExecutionBackendTests(unittest.TestCase):
             self.assertIn(b"truncated", result.stdout)
 
     def test_pty_session_uses_backend_boundary(self):
+        if os.name != "posix":
+            self.skipTest("PTY execution requires a POSIX runtime")
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             script = tmp_path / "pty_probe.py"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 import re
 import shutil
@@ -45,6 +46,10 @@ SECRET_PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
 
 class SecurityAuditError(RuntimeError):
     pass
+
+
+def _temporary_directory() -> tempfile.TemporaryDirectory:
+    return tempfile.TemporaryDirectory(ignore_cleanup_errors=(os.name == "nt"))
 
 
 class AuditVerifierRunner:
@@ -155,7 +160,7 @@ def run_model_checks(*, seed_count: int, steps: int) -> dict[str, Any]:
 
 def _model_check_seed(seed: int, steps: int) -> None:
     rng = random.Random(seed)
-    with tempfile.TemporaryDirectory() as tmp:
+    with _temporary_directory() as tmp:
         db_path = Path(tmp) / "market.sqlite3"
         market = AgentBountyMarket(connect(db_path), FakePaymentGateway(), AuditVerifierRunner())
         contexts = [_Context(index=idx) for idx in range(3)]
@@ -330,7 +335,7 @@ def _accepted_market(tmp: Path, *, candidate: str = "accept-candidate") -> tuple
 
 
 def _probe_duplicate_settlement_replay() -> dict[str, Any]:
-    with tempfile.TemporaryDirectory() as tmp:
+    with _temporary_directory() as tmp:
         market, bounty_id, _solver_id = _accepted_market(Path(tmp))
         first = allocate_accepted_reward(market, bounty_id=bounty_id, idempotency_key="settle:probe")
         count = market.conn.execute("SELECT COUNT(*) FROM ledger_entries").fetchone()[0]
@@ -342,7 +347,7 @@ def _probe_duplicate_settlement_replay() -> dict[str, Any]:
 
 
 def _probe_rejected_work_cannot_settle() -> dict[str, Any]:
-    with tempfile.TemporaryDirectory() as tmp:
+    with _temporary_directory() as tmp:
         market, bounty_id, _solver_id = _accepted_market(Path(tmp), candidate="reject-candidate")
         try:
             allocate_accepted_reward(market, bounty_id=bounty_id, idempotency_key="settle:rejected")
@@ -352,7 +357,7 @@ def _probe_rejected_work_cannot_settle() -> dict[str, Any]:
 
 
 def _probe_negative_reserve_denied() -> dict[str, Any]:
-    with tempfile.TemporaryDirectory() as tmp:
+    with _temporary_directory() as tmp:
         market = AgentBountyMarket(connect(Path(tmp) / "market.sqlite3"), FakePaymentGateway(), AuditVerifierRunner())
         market.create_project(project_id="project_empty", name="empty", currency="USD")
         market.set_budget_policy(project_id="project_empty", max_bounty_amount=500, monthly_budget=500, human_approval_threshold=500, allowed_issue_classes=["probe"])
@@ -365,7 +370,7 @@ def _probe_negative_reserve_denied() -> dict[str, Any]:
 
 
 def _probe_changed_idempotency_denied() -> dict[str, Any]:
-    with tempfile.TemporaryDirectory() as tmp:
+    with _temporary_directory() as tmp:
         market = AgentBountyMarket(connect(Path(tmp) / "market.sqlite3"), FakePaymentGateway(), AuditVerifierRunner())
         market.create_project(project_id="project_idem", name="idem", currency="USD")
         market.set_budget_policy(project_id="project_idem", max_bounty_amount=500, monthly_budget=500, human_approval_threshold=500, allowed_issue_classes=["probe"])
@@ -378,7 +383,7 @@ def _probe_changed_idempotency_denied() -> dict[str, Any]:
 
 
 def _probe_candidate_receipt_binding() -> dict[str, Any]:
-    with tempfile.TemporaryDirectory() as tmp:
+    with _temporary_directory() as tmp:
         market, _bounty_id, _solver_id = _accepted_market(Path(tmp), candidate="accept-bound")
         row = market.conn.execute("SELECT candidate_commit, receipt_json FROM verification_receipts ORDER BY created_at DESC LIMIT 1").fetchone()
         receipt = json.loads(row["receipt_json"])
@@ -388,7 +393,7 @@ def _probe_candidate_receipt_binding() -> dict[str, Any]:
 
 
 def _probe_bad_stripe_signature_denied() -> dict[str, Any]:
-    with tempfile.TemporaryDirectory() as tmp:
+    with _temporary_directory() as tmp:
         conn = connect(Path(tmp) / "market.sqlite3")
         payload = b'{"id":"evt_bad","type":"payment_intent.succeeded","livemode":false,"data":{"object":{"id":"pi_bad"}}}'
         try:
@@ -407,7 +412,7 @@ def _probe_real_fragment_fake_id_denied() -> dict[str, Any]:
 
 
 def _probe_fragment_downgrade_denied(root: Path) -> dict[str, Any]:
-    with tempfile.TemporaryDirectory() as tmp:
+    with _temporary_directory() as tmp:
         bundle_dir = Path(tmp) / "bundle"
         shutil.copytree(root / "demo" / "bundles" / "winning-run", bundle_dir)
         real = _base_fragment(truth_status="recorded-real", safe_evidence={"transfer": "tr_recorded"})
@@ -430,7 +435,7 @@ def _probe_fragment_downgrade_denied(root: Path) -> dict[str, Any]:
 
 
 def _probe_bundle_escape_denied(root: Path) -> dict[str, Any]:
-    with tempfile.TemporaryDirectory() as tmp:
+    with _temporary_directory() as tmp:
         bundle_dir = Path(tmp) / "bundle"
         shutil.copytree(root / "demo" / "bundles" / "winning-run", bundle_dir)
         outside = Path(tmp) / "outside.txt"
@@ -446,7 +451,7 @@ def _probe_bundle_escape_denied(root: Path) -> dict[str, Any]:
 
 
 def _probe_release_tag_digest_mismatch_denied(root: Path) -> dict[str, Any]:
-    with tempfile.TemporaryDirectory() as tmp:
+    with _temporary_directory() as tmp:
         fixture = Path(tmp) / "release"
         shutil.copytree(root / "demo" / "bundles" / "winning-run", fixture / "demo" / "bundles" / "winning-run")
         (fixture / "submission").mkdir()
@@ -528,15 +533,32 @@ def run_fuzz_probes(root: Path, *, cases: int) -> dict[str, Any]:
 
 def run_filesystem_probes(root: Path) -> dict[str, Any]:
     probes = [_probe_bundle_escape_denied(root)]
-    with tempfile.TemporaryDirectory() as tmp:
+    with _temporary_directory() as tmp:
         bundle_dir = Path(tmp) / "bundle"
         shutil.copytree(root / "demo" / "bundles" / "winning-run", bundle_dir)
         outside = Path(tmp) / "outside.txt"
         outside.write_text("whsec_should_not_be_read\n", encoding="utf-8")
-        (bundle_dir / "evidence" / "outside-link.txt").symlink_to(outside)
+        try:
+            (bundle_dir / "evidence" / "outside-link.txt").symlink_to(outside)
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == 1314:
+                return {
+                    "schema": "agent-bounty-security-filesystem-v1",
+                    "ok": bool(probes),
+                    "manifest_escape": probes[0],
+                    "symlink_escape_blocked": None,
+                    "symlink_probe": "unavailable: Windows symlink creation requires developer mode or privilege",
+                }
+            raise
         validation = validate_bundle(bundle_dir)
         symlink_ok = not validation["ok"] and any("bundle path escapes via symlink" in item for item in validation["mismatches"])
-    return {"schema": "agent-bounty-security-filesystem-v1", "ok": bool(probes and symlink_ok), "manifest_escape": probes[0], "symlink_escape_blocked": symlink_ok}
+    return {
+        "schema": "agent-bounty-security-filesystem-v1",
+        "ok": bool(probes and symlink_ok),
+        "manifest_escape": probes[0],
+        "symlink_escape_blocked": symlink_ok,
+        "symlink_probe": "executed",
+    }
 
 
 def scan_for_secrets(root: Path, *, include_history: bool, history_limit: int) -> dict[str, Any]:

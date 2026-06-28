@@ -292,7 +292,12 @@ class DemoPresentationTests(unittest.TestCase):
             shutil.copytree(Path(__file__).resolve().parents[1] / "demo" / "bundles" / "winning-run", bundle_dir)
             outside = Path(tmp) / "outside-secret.txt"
             outside.write_text("whsec_should_not_be_read\n", encoding="utf-8")
-            (bundle_dir / "evidence" / "outside-link.txt").symlink_to(outside)
+            try:
+                (bundle_dir / "evidence" / "outside-link.txt").symlink_to(outside)
+            except OSError as exc:
+                if getattr(exc, "winerror", None) == 1314:
+                    self.skipTest("symlink creation requires Windows developer mode or privilege")
+                raise
 
             validation = validate_bundle(bundle_dir)
 

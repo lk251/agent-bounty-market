@@ -535,7 +535,7 @@ class HermesCliRuntime:
             "AGENT_BOUNTY_PROJECT_AGENT": "1",
         }
         proc = subprocess.run(
-            shlex.split(self.command),
+            shlex.split(self.command, posix=(os.name != "nt")),
             input=stable_json(request),
             capture_output=True,
             text=True,
