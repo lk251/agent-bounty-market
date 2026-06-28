@@ -841,7 +841,7 @@ def _check_spend_policy(
     if balance < amount:
         reasons.append("insufficient retained operating balance")
     if balance - amount < int(policy.get("minimum_remaining_reserve_cents", 0)):
-        reasons.append("minimum remaining reserve would be violated")
+        reasons.append("solver operating reserve floor would be violated")
     if reasons:
         raise EconomicLoopError("; ".join(reasons))
 

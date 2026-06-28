@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from agent_bounty.operator_submission import MANUAL_MEDIA_REPORT_SCHEMA, OPERATOR_STATE_SCHEMA
 from agent_bounty.submission_check import extract_tweet_variants, submission_check_report, tweet_character_count
 
 
@@ -26,6 +27,22 @@ class SubmissionCheckTests(unittest.TestCase):
             report = submission_check_report(root)
         self.assertFalse(report["ok"])
         self.assertIn("banned_term", error_codes(report))
+
+    def test_issue_29_stale_judge_phrases_fail(self):
+        stale_phrases = [
+            "idle-only",
+            "Reward exceeds maximum bounty amount",
+            "Minimum remaining reserve would be violated",
+            "Policy and budget select one bounded bounty while alternatives can decline",
+            "alternatives can decline",
+        ]
+        for phrase in stale_phrases:
+            with self.subTest(phrase=phrase), copied_submission_tree() as root:
+                target = root / "submission" / "SUBMISSION.md"
+                target.write_text(target.read_text(encoding="utf-8") + f"\n{phrase}\n", encoding="utf-8")
+                report = submission_check_report(root)
+            self.assertFalse(report["ok"], phrase)
+            self.assertIn("banned_term", error_codes(report))
 
     def test_missing_limitations_and_truth_status_fail(self):
         with copied_submission_tree() as root:
@@ -67,6 +84,16 @@ class SubmissionCheckTests(unittest.TestCase):
         self.assertEqual(report["mode"], "entry-draft")
         self.assertGreater(report["entry"]["placeholder_count"], 0)
         self.assertEqual(len(report["entry"]["tweet_variants"]), 4)
+
+    def test_entry_prepost_uses_default_ignored_operator_state(self):
+        with copied_submission_tree() as root:
+            write_default_operator_state(root)
+            report = submission_check_report(root, entry=True, prepost=True)
+
+        self.assertTrue(report["ok"], report["errors"])
+        self.assertEqual(report["mode"], "entry-prepost")
+        self.assertEqual(report["entry"]["operator"]["mode"], "prepost")
+        self.assertTrue(report["entry"]["operator"]["ok"])
 
     def test_tweet_variants_have_measured_counts_and_required_tag(self):
         text = (REPO_ROOT / "submission" / "TWEET.md").read_text(encoding="utf-8")
@@ -150,6 +177,50 @@ def copied_submission_tree():
             temp.cleanup()
 
     return _Context()
+
+
+def write_default_operator_state(root: Path) -> None:
+    demo = root / ".demo"
+    demo.mkdir()
+    video = demo / "agent-bounty-market-hackathon-test.mp4"
+    video.write_bytes(b"fake mp4 bytes")
+    manual = demo / "manual-media.json"
+    manual.write_text(
+        json.dumps(
+            {
+                "schema": MANUAL_MEDIA_REPORT_SCHEMA,
+                "duration_seconds": 120,
+                "container": "mp4",
+                "video_codec": "h264",
+                "audio_codec": "aac",
+                "width": 1920,
+                "height": 1080,
+                "frame_rate": 30,
+                "audio_stream_present": True,
+                "attested_by": "operator",
+                "created_at": "2026-06-28T00:00:00Z",
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    state = {
+        "schema": OPERATOR_STATE_SCHEMA,
+        "repo_url": "https://github.com/lk251/agent-bounty-market",
+        "video_file_path": str(video),
+        "video_filename": video.name,
+        "team_name": "Bounty Market Test Team",
+        "team_member_names": ["Alice Example"],
+        "contact_email_or_handle": "alice@example.invalid",
+        "final_tweet_url": "",
+        "discord_confirmation_path": "",
+        "typeform_confirmation_path": "",
+        "bundle_backup_path": str(demo / "bundle-backup"),
+        "manual_media_report_path": str(manual),
+        "submission_timestamp": "2026-06-28T00:00:00Z",
+    }
+    (demo / "operator-submission.json").write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def error_codes(report: dict) -> set[str]:

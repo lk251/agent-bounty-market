@@ -8,11 +8,11 @@ filled.
 - Release tag: `hackathon-mixed-rc10`
 - Truth label: `Mixed real/fallback`
 - Bundle digest:
-  `sha256:1765bb2e57ed2e8c0d198591e6f52b77439f33266ca49fbaa02410f836dbedf4`
+  `sha256:c6f777af7f96dfe4ab24d5277afb9f372d01251c99b12b089c156907821f74fc`
 - Attestation digest:
-  `sha256:5c4703fc9c929198df97eae12a5d5c83310d736dd76edce64308f8a9eaba04d1`
+  `sha256:3b858055f31df566e3827900137ad75f8c89486128675ed87130bbcc295ef703`
 - Truth matrix digest:
-  `sha256:a704f3e1a90d141c0f9c92bef2c4656cef92b5abf93bdeb1abfd9ed342530bc1`
+  `sha256:d719c1fe6858b5c8a609dfea4eaf2904c61ee3969e8f5aeb0c4e1d03b2bcbb9d`
 
 ## Before Recording
 
@@ -33,7 +33,7 @@ filled.
   --state .demo/operator-submission.json --output .demo/final-submission
   --check`.
 - Run `nix develop --command python3 -m agent_bounty submission-check --entry
-  --prepost --state .demo/operator-submission.json`.
+  --prepost`.
 - Confirm `@NousResearch` appears in the tweet.
 - Confirm `Mixed real/fallback` appears in the tweet or visible video context.
 - Confirm optional sponsor tags are truthful in context.

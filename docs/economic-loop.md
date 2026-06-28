@@ -6,11 +6,11 @@ settlement and bounded internal operating credit without double-counting money.
 ```text
 accepted verifier receipt
 -> solver earned balance
--> split allocation:
-   external transfer portion
+-> solver-side wallet split:
+   human/operator payout through the Stripe settlement path
    retained solver operating credit
    optional platform fee
--> retained credit funds a second allowlisted project bounty
+-> retained solver operating credit funds a second allowlisted project bounty
 ```
 
 The default implementation is deterministic and uses fake external transfer
@@ -26,7 +26,8 @@ recorded in `docs/chatgpt-pro-stripe-blocker-report.md`; the
 - No consent means full external transfer by default.
 - Retained credit is an internal liability/operating balance, not money in an
   AI bank account.
-- Only the external portion creates a payout/transfer record.
+- Only the human/operator payout portion creates a Stripe payout/transfer
+  record.
 - Solver operating spend is policy-gated by project, repo, issue class,
   verifier, currency, max spend, human approval threshold, and available
   retained balance.

@@ -11,7 +11,7 @@ nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/
 nix develop --command python3 -m agent_bounty submission-check
 nix develop --command python3 -m agent_bounty submission-check --entry
 nix develop --command python3 -m agent_bounty submission-finalize --state .demo/operator-submission.json --output .demo/final-submission --check
-nix develop --command python3 -m agent_bounty submission-check --entry --prepost --state .demo/operator-submission.json
+nix develop --command python3 -m agent_bounty submission-check --entry --prepost
 nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc10
 nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 120 --check
 nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5

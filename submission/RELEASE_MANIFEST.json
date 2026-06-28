@@ -4,24 +4,22 @@
   "source_baseline_sha": "72ba26b69d38ce8ca5485be943afa1b57f9d6ab5",
   "source_baseline_note": "This is the historical source baseline used to generate earlier release metadata. The immutable release target is the Git annotated tag object, not a self-referential committed manifest field.",
   "truth_status": "Mixed real/fallback",
-  "bundle_digest": "sha256:1765bb2e57ed2e8c0d198591e6f52b77439f33266ca49fbaa02410f836dbedf4",
-  "attestation_digest": "sha256:5c4703fc9c929198df97eae12a5d5c83310d736dd76edce64308f8a9eaba04d1",
-  "truth_matrix_digest": "sha256:a704f3e1a90d141c0f9c92bef2c4656cef92b5abf93bdeb1abfd9ed342530bc1",
+  "bundle_digest": "sha256:c6f777af7f96dfe4ab24d5277afb9f372d01251c99b12b089c156907821f74fc",
+  "attestation_digest": "sha256:3b858055f31df566e3827900137ad75f8c89486128675ed87130bbcc295ef703",
+  "truth_matrix_digest": "sha256:d719c1fe6858b5c8a609dfea4eaf2904c61ee3969e8f5aeb0c4e1d03b2bcbb9d",
   "test_counts": {
-    "focused_director_tests": "6 passed",
-    "focused_release_integrity_tests": "14 passed, 1 symlink-privilege skip on HB2 native Windows",
-    "focused_operator_and_submission_tests": "operator/submission focused tests pass on HB2; real prepost gate still requires operator state",
-    "focused_submission_tests": "standard and entry draft checks pass on HB2; prepost requires operator state",
-    "full_suite": "HB2 native Windows: 200 passed, 17 skipped; full Linux/Nix release gate still pending",
+    "focused_release_gate_tests": "HB3: 75 passed",
+    "focused_submission_gates": "HB3: standard, entry draft, prepost, finalizer check passed",
+    "full_suite": "HB3 Linux/Nix: 202 passed, 2 skipped",
     "replay_rehearsal": "5/5 validations passed",
     "director_check": "passed",
-    "security_audit_quick": "passed",
-    "nix_flake_check": "blocked on HB2: native nix unavailable and no WSL distro installed"
+    "stale_judge_wording_scan": "no matches in README.md, submission, or demo/bundles/winning-run",
+    "nix_flake_check": "passed"
   },
   "fresh_clone_status": {
-    "status": "not-yet-validated-for-rc10",
-    "scope": "HB2 regenerated the static mixed bundle and passed replay/director checks, but full Linux/Nix release validation still needs a configured POSIX/Nix environment with the Motoko fixture.",
-    "note": "The committed manifest records stable release-bundle digests. Fresh-clone regenerated bundle digests are timestamp-dependent and must be recorded in the final issue handoff after the Linux/Nix gate passes."
+    "status": "validated-for-rc10",
+    "scope": "HB3 regenerated the static mixed bundle with the Motoko fixture and passed the Linux/Nix release gate.",
+    "note": "Fresh regenerated bundle digests are timestamp-dependent; the committed release manifest records the validated rc10 bundle digests."
   },
   "known_blockers": [
     "NVIDIA/Nemotron provider credentials are not configured.",
@@ -34,7 +32,7 @@
     "nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run",
     "nix develop --command python3 -m agent_bounty submission-check",
     "nix develop --command python3 -m agent_bounty submission-check --entry",
-    "nix develop --command python3 -m agent_bounty submission-check --entry --prepost --state .demo/operator-submission.json",
+    "nix develop --command python3 -m agent_bounty submission-check --entry --prepost",
     "nix develop --command python3 -m agent_bounty submission-finalize --state .demo/operator-submission.json --output .demo/final-submission --check",
     "nix develop --command python3 -m agent_bounty video-check --file /path/to/final-video.mp4",
     "nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc10",

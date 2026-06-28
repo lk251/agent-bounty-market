@@ -1,10 +1,11 @@
 # Final Handoff
 
-Intended release candidate tag: `hackathon-mixed-rc10`
+Release candidate tag: `hackathon-mixed-rc10`
 
-`hackathon-mixed-rc10` has not been created on HB2. The tag should be created
-only after the Linux/Nix release gate, operator pre/post state check, and final
-release audit all pass on the immutable release commit.
+The committed release manifest is prepared for the annotated
+`hackathon-mixed-rc10` tag. Create the tag only after the Linux/Nix release
+gate and operator pre/post state check pass on the immutable release commit,
+then run the tag-aware release audit.
 
 This release candidate is a truthful mixed real/fallback demo package. It does
 not claim a complete sponsor-integrated live run. It packages the strongest
@@ -32,8 +33,7 @@ nix develop --command python3 -m agent_bounty submission-finalize \
   --check
 nix develop --command python3 -m agent_bounty submission-check \
   --entry \
-  --prepost \
-  --state .demo/operator-submission.json
+  --prepost
 
 nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc10
 
@@ -82,8 +82,7 @@ Live setup:
 - red-team gate: `python -m agent_bounty submission-check`
 - operator gate: `python -m agent_bounty submission-finalize --state
   .demo/operator-submission.json --output .demo/final-submission --check`
-- prepost gate: `python -m agent_bounty submission-check --entry --prepost
-  --state .demo/operator-submission.json`
+- prepost gate: `python -m agent_bounty submission-check --entry --prepost`
 - release gate: `python -m agent_bounty release-audit --tag hackathon-mixed-rc10`
 - judge Q&A: `submission/JUDGE_QA.md`
 - sponsor matrix: `submission/SPONSOR_INTEGRATION.md`
@@ -145,9 +144,11 @@ the exact candidate SHA it verifies.
 
 ## Issue #29 Handoff Status
 
-Issue #29 is implemented on local branch `codex/issue-29-story-flywheel`, but it
-is not fully closed out from HB2 because the final gate requires missing local
-release infrastructure.
+Issue #29 is implemented on local branch `codex/issue-29-story-flywheel`.
+HB3 regenerated the release bundle with the Motoko fixture and passed the
+Linux/Nix release gate before the final rc10 commit. The remaining closeout
+steps are to create the annotated tag on that final commit, run the tag-aware
+release audit, push branch/tag, and close the issue with validation evidence.
 
 Implementation commits prepared before this status note:
 
@@ -155,8 +156,8 @@ Implementation commits prepared before this status note:
   updated submission copy.
 - `9da51ab` - HB2 native-Windows validation fixes and release handoff updates.
 
-The branch has been pushed for HB3 to finish. No issue comment has been posted,
-and issue #29 has not been closed from this machine.
+No completion comment has been posted yet, and issue #29 should not be closed
+until the annotated tag audit passes.
 
 Settlement shown on screen:
 
@@ -195,13 +196,10 @@ The first command should return no judge-facing stale wording. The second should
 show the reversed `$25 / $20 / $5` split and the persisted
 `external_transfer_amount=500`, `retained_operating_amount=2000` evidence.
 
-Remaining issue #29 gate:
+Remaining issue #29 closeout after this commit:
 
-- Run the required Nix commands on a machine with Nix and the Motoko fixture.
-- Generate or provide `.demo/operator-submission.json` before the `--prepost`
-  gate.
-- Create the immutable annotated `hackathon-mixed-rc10` tag only after all
-  release checks pass.
+- Create the immutable annotated `hackathon-mixed-rc10` tag from this commit.
+- Run `release-audit --tag hackathon-mixed-rc10`.
 - Push the branch/tag, comment on issue #29 with the final validation evidence,
   and close issue #29 only after that completion gate is satisfied.
 
@@ -258,7 +256,7 @@ nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/
 nix develop --command python3 -m agent_bounty submission-check
 nix develop --command python3 -m agent_bounty submission-check --entry
 nix develop --command python3 -m agent_bounty submission-finalize --state .demo/operator-submission.json --output .demo/final-submission --check
-nix develop --command python3 -m agent_bounty submission-check --entry --prepost --state .demo/operator-submission.json
+nix develop --command python3 -m agent_bounty submission-check --entry --prepost
 nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc10
 nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
 nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 120 --check
@@ -268,27 +266,27 @@ nix flake check
 git diff --check
 ```
 
-Observed on HB2 before final commit:
+Observed on HB3 before final rc10 commit:
 
 ```text
-focused director tests: 6 passed
-focused release-integrity tests: 14 passed; 1 native-Windows symlink privilege skip
-focused story/operator/submission tests: passed on HB2 native Windows
-py_compile on agent_bounty/verifiers/tests: passed
+focused tests: 75 passed
+py_compile focused release files: passed
 winning bundle validation: ok=true, mode=mixed, truth=mixed-real-fallback
 submission-check: ok=true, errors=[]
 submission-check --entry: ok=true, placeholders remain by design
-submission-check --entry --prepost: blocked without .demo/operator-submission.json
+submission-finalize --check: ok=true with ignored local operator state
+submission-check --entry --prepost: ok=true with default .demo/operator-submission.json
 release-audit: ok=true, errors=[]
 release-audit --tag hackathon-mixed-rc10: pending annotated tag creation on the final release commit
-security-audit --quick: ok=true
+stale judge-facing wording scan: no matches in README.md, submission, or demo/bundles/winning-run
 replay rehearsal: 5/5 validations passed
 director check: ok=true, url=http://127.0.0.1:8788/director.html?duration=120
-bundle digest: sha256:1765bb2e57ed2e8c0d198591e6f52b77439f33266ca49fbaa02410f836dbedf4
-attestation digest: sha256:5c4703fc9c929198df97eae12a5d5c83310d736dd76edce64308f8a9eaba04d1
-truth matrix digest: sha256:a704f3e1a90d141c0f9c92bef2c4656cef92b5abf93bdeb1abfd9ed342530bc1
-full native HB2 suite: 200 tests passed, 17 skipped
-nix flake check: blocked on HB2 because native nix is unavailable and no WSL distro is installed
+bundle digest: sha256:c6f777af7f96dfe4ab24d5277afb9f372d01251c99b12b089c156907821f74fc
+attestation digest: sha256:3b858055f31df566e3827900137ad75f8c89486128675ed87130bbcc295ef703
+truth matrix digest: sha256:d719c1fe6858b5c8a609dfea4eaf2904c61ee3969e8f5aeb0c4e1d03b2bcbb9d
+full Linux/Nix unittest suite: 202 tests passed, 2 skipped
+nix flake check: passed
+git diff --check: passed
 ```
 
 ## Recording
@@ -316,8 +314,8 @@ Use `submission/RECORDING_RUNBOOK.md`. Serve director mode with
 - [x] Operator finalizer, media QC, conservative tweet counting, and prepost
   state checks added.
 - [x] HB2 replay, director, submission draft, release audit, and focused tests
-  pass where the local native-Windows environment can exercise them.
-- [x] Full native HB2 unittest suite passes.
-- [ ] Full Linux/Nix test suite passes for rc10.
-- [ ] Nix flake check passes for rc10.
+  passed where the local native-Windows environment could exercise them.
+- [x] Full native HB2 unittest suite passed.
+- [x] Full Linux/Nix test suite passes for rc10.
+- [x] Nix flake check passes for rc10.
 - [ ] Complete sponsor-integrated live run captured.

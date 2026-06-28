@@ -55,8 +55,7 @@ nix develop --command python3 -m agent_bounty submission-finalize \
 
 nix develop --command python3 -m agent_bounty submission-check \
   --entry \
-  --prepost \
-  --state .demo/operator-submission.json
+  --prepost
 ```
 
 This validates the local state, video report, conservative X/Twitter character

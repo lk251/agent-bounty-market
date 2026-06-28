@@ -279,11 +279,13 @@ fallback backend. Real Hermes/OpenShell/NemoClaw execution remains gated. See
 ## Economic Loop
 
 The split settlement path proves `earn -> retain -> spend`: an accepted solver
-reward can be split into an external transfer portion and a retained operating
-credit portion, then the retained credit can fund a second allowlisted bounty.
+reward can become solver wallet operating credit plus a smaller human/operator
+payout through the Stripe settlement path. The project issuer controls the
+verifier-backed bounty budget; after acceptance, the solver-side wallet policy
+controls the split. Operating credit can fund a second allowlisted bounty.
 Retention requires explicit operator consent; without consent the default is a
-full external transfer. Retained credit is an internal liability/operating
-balance, not an external account controlled by an agent.
+full payout. Retained credit is an internal liability/operating balance, not an
+external account controlled by an agent.
 
 Run the deterministic proof:
 

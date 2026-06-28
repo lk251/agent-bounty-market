@@ -39,6 +39,14 @@ BANNED_TERMS = [
     (re.compile(r"\bend-to-end live\b", re.IGNORECASE), "avoid implying every sponsor integration ran live"),
     (re.compile(r"\bAI bank account\b", re.IGNORECASE), "retained credit is an internal ledger, not an account owned by an AI"),
     (re.compile(r"\bescrow\b", re.IGNORECASE), "avoid legal custody terminology"),
+    (re.compile(r"\bidle-only\b", re.IGNORECASE), "use original/superficial/final verifier wording instead of the old idle-only shorthand"),
+    (re.compile(r"\breward exceeds maximum bounty amount\b", re.IGNORECASE), "use project spending-cap language instead of the old internal reward error"),
+    (re.compile(r"\bminimum remaining reserve would be violated\b", re.IGNORECASE), "use reserve-floor language instead of the old internal reserve error"),
+    (
+        re.compile(r"\bPolicy and budget select one bounded bounty while alternatives can decline\b", re.IGNORECASE),
+        "use clear project-agent funding and verifier-backed work language",
+    ),
+    (re.compile(r"\balternatives can decline\b", re.IGNORECASE), "use clear project-agent funding and verifier-backed work language"),
 ]
 SECRET_PATTERNS = [
     re.compile(r"\b(?:sk|rk)_(?:test|live)_[A-Za-z0-9_-]{8,}\b"),
@@ -293,6 +301,12 @@ def _check_operator_state(
     if not (final or prepost or state is not None):
         return None
     if state is None:
+        state = root / ".demo" / "operator-submission.json"
+    else:
+        state = state.expanduser()
+        if not state.is_absolute():
+            state = root / state
+    if not state.is_file():
         errors.append(_error("operator_state_missing", Path(".demo/operator-submission.json"), "operator state is required for prepost/final checks"))
         return {
             "schema": "agent-bounty-operator-state-report-v1",
