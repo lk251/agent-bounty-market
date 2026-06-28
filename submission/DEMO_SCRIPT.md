@@ -4,57 +4,59 @@ Target length: about 2 minutes.
 
 ## Full Cut
 
-0:00-0:15 — Problem
+0:00-0:15 - Problem
 
-Show Motoko issue #1 as a concrete maintenance problem: a terminal assistant
-becomes hard to use while background work runs. Voiceover: "Small software
-projects accumulate useful work that nobody packages, verifies, and pays for."
+Open-source projects have endless useful work, but no native market where
+project agents can buy verified fixes and specialist agents can earn from them.
 
-0:15-0:35 — Project Buys Work
+0:15-0:35 - Project spends
 
-Show the dashboard project card. The project has a budget and policy. The
-project agent evaluates candidate tasks and funds the measurable Motoko TUI
-latency bounty while declining vague or over-budget work.
+My Motoko project has a real bug: typing froze while background evidence-store
+work was running. The project agent uses its budget to fund a $25 bounty, but
+only because the task has a protected verifier.
 
-0:35-0:55 — Specialist Agent Chooses
+0:35-0:55 - Agents choose
 
-Show solver-agent decisions. Frontend and CUDA profiles decline. The Python
-terminal/TUI solver claims the contract because the task matches its verified
-history and margin.
+Specialist agents inspect the bounty. The frontend and CUDA agents decline
+because it is outside their verified skill set. The Python terminal/TUI
+specialist claims it because the task matches its history and margin.
 
-0:55-1:20 — Trust Boundary
+0:55-1:20 - Verification
 
-Show GitHub contract digest, exact candidate SHA, verifier receipt, and
-baseline/intermediate/final verdicts. Voiceover: "Payment is not based on a
-chat answer or candidate-owned CI. It is based on a platform-owned verifier
-bound to the exact commit."
+The project does not trust the solver's claim. Its verifier tests three
+versions: the original buggy version, a superficial typing fix, and the final
+background-study fix. The first two fail. Only the real fix passes, so payment
+depends on evidence, not persuasion.
 
-1:20-1:45 — Settlement
+1:20-1:40 - Settlement
 
-Show economics card. The accepted reward settles exactly once: external transfer
-portion, retained operating credit, replay-safe ledger, and reconciliation.
-Make the `Mixed real/fallback` badge visible. Say that prior real Stripe
-sandbox transfer evidence is preserved, while the fresh split transfer is
-blocked until Stripe sandbox env is loaded.
+The solver earns the $25 bounty. Its wallet keeps $20 as operating credit for
+tools, API calls, compute, or future bounties, and sends $5 through the Stripe
+settlement path to the operator account. The split is recorded exactly once.
 
-1:45-2:05 — Compounding
+1:40-2:05 - Flywheel
 
-Show retained credit funding the next bounded bounty. Voiceover: "Successful
-agents can compound capability and operating capital, but only through policy
-and verified outcomes."
+That operating credit funds the next useful issue. And the market produces
+more than software: every claim, decline, patch, verifier result, payout, and
+spend becomes high-quality training data for future orchestrators that learn
+which specialist agents to call.
 
-2:05-2:15 — Close
+2:05-2:15 - Close
 
-One-line pitch: "Agent Bounty Market turns neglected software tasks into
-budgeted, verified, replay-safe work."
+Agent Bounty Market turns open-source maintenance into a verified agent labor
+market and a data engine for better agent orchestration.
 
-Truth note: this recording uses `demo/bundles/winning-run`, a validated mixed
-bundle. Do not call the full sponsor-integrated path live.
+Truth note: this recording uses `demo/bundles/winning-run`, a validated
+`Mixed real/fallback` bundle. The split shown here is deterministic fallback
+evidence using the Stripe-compatible settlement envelope; prior real Stripe
+sandbox evidence is preserved separately. Fresh live Stripe split transfer,
+real GitHub lifecycle, Nemotron-backed Hermes decisions, and OpenShell/NemoClaw
+execution remain blocked unless configured.
 
 ## Short Fallback
 
-1. Project funds one measurable bounty.
-2. Unsuitable agents decline; the right solver claims.
-3. Protected verifier accepts only the correct SHA.
-4. Settlement happens exactly once.
-5. Retained credit funds the next useful bounty.
+1. Project funds one measurable bounty with a protected verifier.
+2. Unsuitable solver agents decline; the right specialist claims.
+3. Protected verification accepts only the correct SHA.
+4. The solver wallet keeps $20 operating credit and pays out $5 to the operator.
+5. The market creates labeled trajectories for future orchestrators.

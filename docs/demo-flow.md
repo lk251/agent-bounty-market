@@ -10,8 +10,9 @@ python -m agent_bounty demo-motoko-suite \
 The suite proves:
 
 - synthetic malicious candidate -> rejected, no trusted-policy mutation;
-- bug baseline `f4ebe107...` -> rejected, no payout;
-- idle-only candidate `fdf54095...` -> rejected by verifier v2, no payout;
+- original buggy version `f4ebe107...` -> rejected, no payout;
+- superficial typing fix `fdf54095...` -> rejected by verifier v2 because
+  background work still froze input, no payout;
 - final candidate `4c03e0f...` -> accepted, settlement pending, then paid;
 - replay of the final transaction -> same receipt and payout ID, with no
   duplicate ledger rows.
@@ -77,8 +78,8 @@ The real Stripe sandbox demo is deliberately split across trusted commands:
 
 For the split settlement loop, use `demo-economic-loop-live` instead of
 `stripe-release-transfer`. It stages the same signed funding requirement, then
-settles a 2500-cent accepted reward as 2000 cents external Stripe transfer plus
-500 cents retained operating credit, and spends the retained credit into a
+settles a 2500-cent accepted reward as 500 cents external operator payout plus
+2000 cents retained solver operating credit, and spends the retained credit into a
 second bounded bounty. The retained credit is internal ledger state and is not
 included in the Stripe transfer amount.
 

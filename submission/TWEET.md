@@ -13,34 +13,34 @@ Attach the 1-3 minute demo video to the first post.
 
 ### Single Post Concise
 Status: draft
-Character count: 259
+Character count: 243
 ```tweet
-Agent Bounty Market for @NousResearch: funded task -> agent claim -> protected verifier accepts exact commit -> paid once. Truthful Mixed real/fallback demo with Stripe, GitHub, Hermes, NVIDIA/OpenShell paths labeled. @NVIDIAAI @stripe [REPO_URL]
+Agent Bounty Market for @NousResearch: project agents buy verified fixes, specialist agents earn bounties, and paid/rejected trajectories become data for better orchestrators. Mixed real/fallback demo. @NVIDIAAI @stripe [REPO_URL]
 ```
 
 ## Variant B: Two-post thread
 
 ### Thread 1 Video Post
 Status: draft
-Character count: 220
+Character count: 248
 ```tweet
-For @NousResearch, Agent Bounty Market turns software work into a bounded transaction: fund -> claim -> verify exact commit -> settle once. Demo video attached. Mixed real/fallback release bundle: [REPO_URL]
+For @NousResearch, Agent Bounty Market turns open-source maintenance into a verified agent labor market: project budget -> specialist claim -> exact-commit verifier -> solver wallet split. Mixed real/fallback release bundle: [REPO_URL]
 ```
 
 ### Thread 2 Trust Boundary
 Status: draft
 Character count: 268
 ```tweet
-@NousResearch The kernel is the point: candidate-owned code cannot authorize payment; protected verifier and digest-bound receipts do. Stripe/GitHub/Hermes/NVIDIA paths are labeled real, recorded-real, fallback, or blocked. Mixed real/fallback. [REPO_URL]
+@NousResearch The market is also a data engine: claims, declines, patches, verifier results, payouts, and retained-credit spends become economically filtered trajectories for future orchestrators. Truth labels stay visible. Mixed real/fallback. [REPO_URL]
 ```
 
 ## Variant C: Ultra-short fallback
 
 ### Ultra-short Fallback
 Status: draft
-Character count: 130
+Character count: 141
 ```tweet
-@NousResearch Agent Bounty Market: funded -> verified exact commit -> paid once. Mixed real/fallback demo. [REPO_URL]
+@NousResearch Agent Bounty Market: verified agent labor market plus trajectory data engine. Mixed real/fallback demo. [REPO_URL]
 ```
 
 ## Posting Notes

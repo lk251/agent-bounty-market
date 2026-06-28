@@ -892,8 +892,8 @@ def run_demo_economic_loop(
     market: AgentBountyMarket,
     *,
     motoko_repo: Path | None,
-    external_transfer_amount: int = 2000,
-    retained_operating_amount: int = 500,
+    external_transfer_amount: int = 500,
+    retained_operating_amount: int = 2000,
     platform_fee_amount: int = 0,
 ) -> dict[str, Any]:
     solver_demo = run_demo_solver_motoko(market, motoko_repo=motoko_repo)
@@ -1029,7 +1029,7 @@ def setup_live_split_bounty(market: AgentBountyMarket, *, reward_amount: int, cu
     market.create_bounty(
         bounty_id=DEFAULT_FIRST_BOUNTY_ID,
         project_id="project_motoko",
-        title="Eliminate idle Motoko TUI typing latency",
+        title="Eliminate Motoko TUI background-study typing freeze",
         reward_amount=reward_amount,
         currency=currency,
         base_commit=DEFAULT_BASE_COMMIT,
@@ -1049,8 +1049,8 @@ def run_demo_economic_loop_live(
     client: StripeClient | None,
     reward_amount: int = 2500,
     currency: str = "EUR",
-    external_transfer_amount: int = 2000,
-    retained_operating_amount: int = 500,
+    external_transfer_amount: int = 500,
+    retained_operating_amount: int = 2000,
     platform_fee_amount: int = 0,
 ) -> dict[str, Any]:
     blockers = stripe_split_blockers(config)

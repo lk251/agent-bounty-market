@@ -41,6 +41,9 @@ DIRECTOR_CUES_SCHEMA = "agent-bounty-demo-director-cues-v1"
 MOTOKO_VERIFICATION_FRAGMENT_SCHEMA = "motoko-verification-fragment-v1"
 ISSUE21_DOGFOOD_EVIDENCE_SCHEMA = "agent-bounty-issue21-dogfood-evidence-v1"
 DEFAULT_INTERMEDIATE_COMMIT = "fdf54095b5cb8aca81984993bcd38176ccadad32"
+MOTOKO_ORIGINAL_CASE = "original-buggy-version"
+MOTOKO_SUPERFICIAL_CASE = "superficial-typing-fix"
+MOTOKO_FINAL_CASE = "final-background-study-fix"
 MOTOKO_ISSUE_URL = "https://github.com/lk251/motoko/issues/1"
 ISSUE21_DOGFOOD_URL = "https://github.com/lk251/agent-bounty-market/issues/21"
 ISSUE21_DOGFOOD_CANDIDATE = "5ffb2835fec5d5fd9373b129f850aa52396bbd4a"
@@ -63,25 +66,25 @@ PRIVATE_PATH_MARKERS = (
     "/Users/",
 )
 REQUIRED_DASHBOARD_TEXT = (
-    "Project buys work",
+    "Project spends",
     "Agents choose",
     "Motoko verifier proof",
     "GitHub work",
     "Trust",
-    "Economics compound",
+    "Solver wallet split",
     "Issue #21 dogfood",
     "Fallbacks and blockers",
     "Recording cues",
-    "Verified software work became operating capital.",
+    "data engine for better agent orchestration",
 )
 RECORDING_STAGES = (
-    ("00:00", "Problem", "A real project has useful work that needs funding, verification, and settlement."),
-    ("00:15", "Project buys work", "Budget and policy select one measurable Motoko TUI improvement."),
-    ("00:35", "Agents choose", "Specialized agents decline or claim based on scope, capability, and margin."),
-    ("00:55", "Trust boundary", "The protected verifier accepts only the exact candidate SHA and records a receipt."),
-    ("01:20", "Settlement", "The reward is split into external transfer and retained operating credit."),
-    ("01:45", "Compounding", "Retained credit funds the next bounded bounty without hiding fallback rows."),
-    ("02:05", "Close", "Verified software work became operating capital."),
+    ("00:00", "Problem", "Open-source projects need a native market where project agents can buy verified fixes and specialist agents can earn from them."),
+    ("00:15", "Project spends", "The project agent uses its budget to fund a $25 Motoko bounty because the task has a protected verifier."),
+    ("00:35", "Agents choose", "Frontend and CUDA specialists decline; the Python terminal/TUI specialist claims the task because it matches history and margin."),
+    ("00:55", "Verification", "The verifier rejects the original bug and superficial typing fix, then accepts only the final background-study fix."),
+    ("01:20", "Settlement", "The solver earns $25; its wallet keeps $20 as operating credit and sends $5 through the Stripe settlement path to the operator account."),
+    ("01:40", "Flywheel", "Every claim, decline, patch, verifier result, payout, and spend becomes high-quality training data for future orchestrators."),
+    ("02:05", "Close", "Agent Bounty Market is a verified agent labor market and a data engine for better agent orchestration."),
 )
 
 
@@ -718,9 +721,9 @@ def build_evidence_payloads(
 
 def build_motoko_verification_fragment(*, motoko_repo: Path, demo_result: dict[str, Any]) -> dict[str, Any]:
     cases = [
-        _motoko_verification_case("baseline", motoko_repo=motoko_repo, candidate_commit=DEFAULT_BASE_COMMIT),
-        _motoko_verification_case("idle-only", motoko_repo=motoko_repo, candidate_commit=DEFAULT_INTERMEDIATE_COMMIT),
-        _motoko_verification_case("final", motoko_repo=motoko_repo, candidate_commit=DEFAULT_FINAL_COMMIT),
+        _motoko_verification_case(MOTOKO_ORIGINAL_CASE, motoko_repo=motoko_repo, candidate_commit=DEFAULT_BASE_COMMIT),
+        _motoko_verification_case(MOTOKO_SUPERFICIAL_CASE, motoko_repo=motoko_repo, candidate_commit=DEFAULT_INTERMEDIATE_COMMIT),
+        _motoko_verification_case(MOTOKO_FINAL_CASE, motoko_repo=motoko_repo, candidate_commit=DEFAULT_FINAL_COMMIT),
     ]
     final_case = cases[-1]
     receipt_id = (demo_result.get("first_bounty") or {}).get("receipt_id")
@@ -832,7 +835,9 @@ def build_timeline(snapshot: dict[str, list[dict[str, Any]]]) -> list[dict[str, 
     for row in snapshot.get("funding_events", []):
         events.append({"at": row.get("created_at"), "kind": "funding", "label": "Project treasury funded", "detail": f"{_money(row.get('amount'), row.get('currency'))} via fake funding event"})
     for row in snapshot.get("project_agent_decisions", []):
-        events.append({"at": row.get("created_at"), "kind": "project-agent", "label": f"Project agent {_human_verdict(row.get('trusted_verdict'))}", "detail": _human_reasons(row.get("policy_reasons_json"))})
+        verdict = _human_verdict(row.get("trusted_verdict"))
+        label = "Project agent funded verifier-backed bounty" if verdict == "approved" else "Project policy left candidate unfunded"
+        events.append({"at": row.get("created_at"), "kind": "project-agent", "label": label, "detail": _human_reasons(row.get("policy_reasons_json"))})
     for row in snapshot.get("github_issue_contracts", []):
         events.append({"at": row.get("created_at"), "kind": "github", "label": "GitHub bounty contract published", "detail": row.get("contract_digest")})
     for row in snapshot.get("solver_agent_evaluations", []):
@@ -841,7 +846,7 @@ def build_timeline(snapshot: dict[str, list[dict[str, Any]]]) -> list[dict[str, 
         verdict = "accepted" if int(row.get("accepted", 0)) else "rejected"
         events.append({"at": row.get("created_at"), "kind": "verification", "label": f"Verifier {verdict}", "detail": row.get("id")})
     for row in snapshot.get("settlement_allocations", []):
-        events.append({"at": row.get("created_at"), "kind": "settlement", "label": "Reward split settled", "detail": f"external {_money(row.get('external_transfer_amount'), row.get('currency'))}; retained {_money(row.get('retained_operating_amount'), row.get('currency'))}"})
+        events.append({"at": row.get("created_at"), "kind": "settlement", "label": "Solver wallet split recorded", "detail": f"operating credit {_money(row.get('retained_operating_amount'), row.get('currency'))}; operator payout {_money(row.get('external_transfer_amount'), row.get('currency'))}"})
     for row in snapshot.get("solver_operating_spends", []):
         events.append({"at": row.get("created_at"), "kind": "compound", "label": "Retained credit funds next bounty", "detail": row.get("target_bounty_id")})
     return sorted(events, key=lambda item: (str(item.get("at") or ""), item["kind"], item["label"]))
@@ -1016,35 +1021,36 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
         _director_scene(
             "problem",
             "Problem",
-            "Useful repo work should become a packaged, verifiable transaction.",
+            "Open-source projects need a native market for verified software work.",
             badge,
             durations[0],
             [
                 ("Bounty", primary_bounty.get("title") or "unavailable in bundle"),
                 ("Issue", primary_bounty.get("issue_ref") or "unavailable"),
                 ("Reward", _money(primary_bounty.get("reward_amount"), primary_bounty.get("currency"))),
-                ("Before p95", _motoko_case_latency(motoko_verification, "baseline")),
-                ("After p95", _motoko_case_latency(motoko_verification, "final")),
+                ("Before p95", _motoko_case_latency(motoko_verification, MOTOKO_ORIGINAL_CASE)),
+                ("After p95", _motoko_case_latency(motoko_verification, MOTOKO_FINAL_CASE)),
             ],
             [
-                "The bundle records a real Motoko TUI responsiveness bounty as the first task.",
-                "The verifier proof shows the baseline and idle-only fixes rejected before the final fix was accepted.",
+                "Open-source projects have endless useful work, but no native market where project agents can buy verified fixes.",
+                "Specialist solver agents need a way to earn from evidence-backed work, not persuasion.",
             ],
-            "Name the problem: valuable maintenance work needs funding, exact acceptance, and safe settlement.",
+            "Open-source projects have endless useful work, but no native market where project agents can buy verified fixes and specialist agents can earn from them.",
         ),
         _director_scene(
-            "project-buys-work",
-            "Project buys work",
-            "Policy and budget select one bounded bounty while alternatives can decline.",
+            "project-spends",
+            "Project spends",
+            "The project agent funds the measurable issue with a verifier; vague or unaffordable work is left unfunded.",
             badge,
             durations[1],
             [
                 ("Project", summary.get("project")),
+                ("Reward", _money(summary.get("reward"), summary.get("currency"))),
                 ("Contract digest", _short(summary.get("contract_digest"))),
                 ("Project decisions", f"{len(project_decisions)} recorded"),
             ],
             _decision_bullets(project_decisions, "project"),
-            "Point at the digest-bound contract and policy-bounded reward.",
+            "My Motoko project has a real bug: typing froze while background evidence-store work was running. The project agent uses its budget to fund a $25 bounty, but only because the task has a protected verifier.",
         ),
         _director_scene(
             "agents-choose",
@@ -1058,12 +1064,12 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
                 ("Candidate SHA", _short(summary.get("candidate_sha"))),
             ],
             _decision_bullets(solver_evals, "solver"),
-            "Explain that fallback decisions are schema-checked and policy-gated, not hidden as live reasoning.",
+            "Specialist agents inspect the bounty. The frontend and CUDA agents decline because it is outside their verified skill set. The Python terminal/TUI specialist claims it because the task matches its history and margin.",
         ),
         _director_scene(
-            "trust-boundary",
-            "Trust boundary",
-            "Payment waits for a protected verifier receipt bound to the exact candidate.",
+            "verification",
+            "Verification",
+            "Evidence, not persuasion, decides whether payment can happen.",
             badge,
             durations[3],
             [
@@ -1072,50 +1078,53 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
                 ("Verifier receipts", f"{len(receipts)} recorded"),
             ],
             _motoko_verification_bullets(motoko_verification, summary),
-            "Keep this crisp: candidate-owned code cannot authorize payment.",
+            "The project does not trust the solver's claim. Its verifier tests the original buggy version, a superficial typing fix, and the final background-study fix. Only the real fix passes.",
         ),
         _director_scene(
             "settlement",
             "Settlement",
-            "Accepted work is split exactly once into external transfer and retained operating credit.",
+            "The solver-side wallet decides how accepted reward becomes operating credit and operator payout.",
             badge,
             durations[4],
             [
                 ("Reward", _money(allocation.get("reward_amount"), allocation.get("currency"))),
-                ("External", _money(allocation.get("external_transfer_amount"), allocation.get("currency"))),
-                ("Retained", _money(allocation.get("retained_operating_amount"), allocation.get("currency"))),
+                ("Operating credit", _money(allocation.get("retained_operating_amount"), allocation.get("currency"))),
+                ("Operator payout", _money(allocation.get("external_transfer_amount"), allocation.get("currency"))),
             ],
             [
                 f"Transfer provider: {allocation.get('transfer_provider') or 'unavailable'}",
                 f"Transfer truth: {((allocation.get('split') or {}).get('truth') or 'unavailable')}",
+                "Deterministic fallback split uses a Stripe-compatible settlement envelope; prior real Stripe sandbox evidence is preserved separately.",
                 f"Ledger entries: {summary.get('ledger_entries')}",
             ],
-            "Say that fake external IDs stay visibly fake; only recorded real Stripe IDs are labeled real.",
+            "The solver earns the $25 bounty. Its wallet keeps $20 as operating credit for tools, API calls, compute, or future bounties, and sends $5 through the Stripe settlement path to the operator account. The split is recorded exactly once.",
         ),
         _director_scene(
-            "compounding",
-            "Compounding",
-            "Retained credit funds the second bounded bounty without hiding fallback rows.",
+            "flywheel",
+            "Flywheel",
+            "Paid and rejected market outcomes become training data for better orchestrators.",
             badge,
             durations[5],
             [
-                ("Retained credit", _money(summary.get("retained_operating_credit"), summary.get("currency"))),
+                ("Operating credit", _money(summary.get("retained_operating_credit"), summary.get("currency"))),
                 ("Follow-up bounty", followup_bounty.get("title") or summary.get("second_bounty")),
                 ("Follow-up state", followup_bounty.get("state") or "unavailable"),
                 ("Dogfood issue", _short((dogfood.get("safe_evidence") or {}).get("issue_url"), keep=80)),
             ],
             [
+                "Every claim, decline, patch, verifier result, payout, and spend becomes a labeled trajectory.",
+                "Economic outcomes filter the data: paid accepted work is high-signal, rejected work is negative signal.",
                 f"Second bounty id: {_short(summary.get('second_bounty'))}",
                 f"Issue #21 candidate: {_short((dogfood.get('safe_evidence') or {}).get('candidate_sha'))}",
                 f"Issue #21 receipt: {_short((dogfood.get('safe_evidence') or {}).get('receipt_id'))}",
                 f"Retained-credit replay: {_yes_no((dogfood.get('safe_evidence') or {}).get('retained_credit_spend_replay'))}; settlement replay: {_yes_no((dogfood.get('safe_evidence') or {}).get('second_settlement_replay'))}",
             ],
-            "This is the compounding loop: verified software work becomes operating capital.",
+            "That operating credit funds the next useful issue. The market also produces high-quality training data for future orchestrators that learn which specialist agents to call.",
         ),
         _director_scene(
             "close",
             "Close",
-            "Verified software work became operating capital.",
+            "A verified agent labor market and a data engine for better agent orchestration.",
             badge,
             durations[6],
             [
@@ -1124,7 +1133,7 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
                 ("Fallback/blocked rows", _truth_count(rows, "fallback") + _truth_count(rows, "blocked")),
             ],
             _truth_bullets(rows),
-            "Close on usefulness, viability, and the sponsor architecture without all-live claims.",
+            "Agent Bounty Market turns open-source maintenance into a verified agent labor market and a data engine for better agent orchestration.",
         ),
     ]
     start = 0
@@ -1195,7 +1204,11 @@ def _decision_bullets(rows: list[dict[str, Any]], kind: str) -> list[str]:
     for row in rows[:5]:
         verdict = _human_verdict(row.get("trusted_verdict") or row.get("decision") or "recorded")
         reasons = _human_reasons(row.get("policy_reasons_json") or row.get("reasons_json") or "")
-        bullets.append(f"{verdict}: {_short(reasons, keep=120)}")
+        if kind == "project":
+            prefix = "funded" if verdict == "approved" else "not funded"
+        else:
+            prefix = verdict
+        bullets.append(f"{prefix}: {_short(reasons, keep=120)}")
     if len(rows) > 5:
         bullets.append(f"{len(rows) - 5} more {kind} decisions recorded.")
     return bullets
@@ -1219,6 +1232,7 @@ def _truth_bullets(rows: list[dict[str, Any]]) -> list[str]:
         f"Fallback rows: {fallback_count} ({fallback_labels}).",
         f"Blocked live paths: {blocked_count} ({_short(blocked_labels, keep=130)}).",
         "Prior Stripe full-transfer evidence stays separate from the deterministic split-settlement fallback.",
+        "The market is also a data engine: paid, verified fixes become supervised trajectories for training the next orchestrator.",
     ]
 
 
@@ -1410,19 +1424,19 @@ def render_dashboard(bundle: dict[str, Any]) -> str:
     stripe_split = rows_by_id.get("stripe_split_transfer", {})
     timeline_plan = build_recording_timeline(bundle)
     cards = [
-        ("Project buys work", [("Repository", summary.get("project")), ("Reward", _money(summary.get("reward"), summary.get("currency"))), ("Contract", _short(summary.get("contract_digest")))]),
+        ("Project spends", [("Repository", summary.get("project")), ("Reward", _money(summary.get("reward"), summary.get("currency"))), ("Contract", _short(summary.get("contract_digest")))]),
         ("Agents choose", [("Project agent", _row_status(rows_by_id.get("project_agent_decision"))), ("Solver agent", _row_status(rows_by_id.get("solver_agent_decision"))), ("Claimed SHA", _short(summary.get("candidate_sha")))]),
         (
             "Motoko verifier proof",
             [
-                ("Baseline", _motoko_case_result(motoko_verification, "baseline")),
-                ("Idle-only", _motoko_case_result(motoko_verification, "idle-only")),
-                ("Final", _motoko_case_result(motoko_verification, "final")),
+                ("Original buggy version", _motoko_case_result(motoko_verification, MOTOKO_ORIGINAL_CASE)),
+                ("Superficial typing fix", _motoko_case_result(motoko_verification, MOTOKO_SUPERFICIAL_CASE)),
+                ("Final background-study fix", _motoko_case_result(motoko_verification, MOTOKO_FINAL_CASE)),
             ],
         ),
         ("GitHub work", [("Lifecycle", _row_status(github)), ("Issue / PR", _evidence_hint(github)), ("Contract", _short(summary.get("contract_digest")))]),
         ("Trust", [("OpenShell", _row_status(openshell)), ("Receipt", _short(summary.get("receipt_id"))), ("Ledger entries", summary.get("ledger_entries"))]),
-        ("Economics compound", [("External", _money(summary.get("external_transfer"), summary.get("currency"))), ("Transfer", _short(summary.get("external_transfer_id"))), ("Retained -> next", f"{_money(summary.get('retained_operating_credit'), summary.get('currency'))} / {_short(summary.get('second_bounty'))}")]),
+        ("Solver wallet split", [("Operator payout", _money(summary.get("external_transfer"), summary.get("currency"))), ("Transfer", _short(summary.get("external_transfer_id"))), ("Operating credit -> next", f"{_money(summary.get('retained_operating_credit'), summary.get('currency'))} / {_short(summary.get('second_bounty'))}")]),
         (
             "Issue #21 dogfood",
             [
@@ -1468,8 +1482,8 @@ li{{margin:8px 0}} li span{{display:block;color:#555;margin-top:2px;line-height:
 @media(max-width:1500px){{.grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}
 @media(max-width:1050px){{header{{flex-direction:column}}.grid,.split{{grid-template-columns:1fr}}.badge{{white-space:normal}}}}
 </style>
-<header><div><h1>Agent Bounty Market</h1><p>A project receives a budget, buys a verified improvement from a specialized agent, settles exactly once, and lets retained operating credit fund the next useful bounty.</p></div><div class="badge">{html.escape(str(badge))} · {status}</div></header>
-<main><section class="grid">{card_html}</section><section class="split"><div><h2>Fallbacks and blockers</h2><ol>{warning_html}</ol></div><div><h2>Recording cues</h2><ol>{cue_html}</ol></div></section><h2>Timeline</h2><ol>{timeline_html}</ol><p class="final">Verified software work became operating capital.</p></main>
+<header><div><h1>Agent Bounty Market</h1><p>A project agent spends from a project budget to buy verified software work, a specialist solver earns the bounty, and the solver wallet split is recorded exactly once.</p></div><div class="badge">{html.escape(str(badge))} · {status}</div></header>
+<main><section class="grid">{card_html}</section><section class="split"><div><h2>Fallbacks and blockers</h2><ol>{warning_html}</ol></div><div><h2>Recording cues</h2><ol>{cue_html}</ol></div></section><h2>Timeline</h2><ol>{timeline_html}</ol><p class="final">Agent Bounty Market turns open-source maintenance into a verified agent labor market and a data engine for better agent orchestration.</p></main>
 </html>
 """
 
@@ -1580,12 +1594,12 @@ def _validate_required_evidence(bundle: dict[str, Any]) -> list[str]:
             mismatches.append("motoko verification evidence missing case list")
         else:
             by_case = {case.get("case"): case for case in cases if isinstance(case, dict)}
-            if by_case.get("baseline", {}).get("accepted") is not False:
-                mismatches.append("motoko baseline case must be rejected")
-            if by_case.get("idle-only", {}).get("accepted") is not False:
-                mismatches.append("motoko idle-only case must be rejected")
-            if by_case.get("final", {}).get("accepted") is not True:
-                mismatches.append("motoko final case must be accepted")
+            if by_case.get(MOTOKO_ORIGINAL_CASE, {}).get("accepted") is not False:
+                mismatches.append("motoko original buggy version case must be rejected")
+            if by_case.get(MOTOKO_SUPERFICIAL_CASE, {}).get("accepted") is not False:
+                mismatches.append("motoko superficial typing fix case must be rejected")
+            if by_case.get(MOTOKO_FINAL_CASE, {}).get("accepted") is not True:
+                mismatches.append("motoko final background-study fix case must be accepted")
         if safe.get("candidate_sha") != DEFAULT_FINAL_COMMIT:
             mismatches.append("motoko verification evidence candidate mismatch")
         if not str(safe.get("receipt_id") or "").startswith("receipt_"):
@@ -1627,7 +1641,7 @@ def _validate_recording_timeline(path: Path) -> list[str]:
     if not path.exists():
         return ["recording-timeline.md missing"]
     text = path.read_text(encoding="utf-8")
-    required = ["# Recording Timeline", "Mode badge:", "Truth:", "00:00", "00:15", "00:35", "00:55", "01:20", "01:45", "02:05"]
+    required = ["# Recording Timeline", "Mode badge:", "Truth:", "00:00", "00:15", "00:35", "00:55", "01:20", "01:40", "02:05"]
     return [f"recording timeline missing required text: {item}" for item in required if item not in text]
 
 
@@ -1635,6 +1649,16 @@ def _validate_judge_facing_assets(bundle_dir: Path) -> list[str]:
     mismatches: list[str] = []
     raw_currency = ("2500 USD", "2000 USD", "500 USD")
     raw_labels = ("agent_declined", "policy_reasons_json", '["agent declined candidate"]', '["solver declined"]')
+    stale_phrases = (
+        "idle-only",
+        "Idle-only",
+        "Reward exceeds maximum bounty amount",
+        "reward exceeds maximum bounty amount",
+        "Minimum remaining reserve would be violated",
+        "minimum remaining reserve would be violated",
+        "Policy and budget select one bounded bounty while alternatives can decline",
+        "alternatives can decline",
+    )
     for relative in (
         "README.md",
         "dashboard.html",
@@ -1656,6 +1680,9 @@ def _validate_judge_facing_assets(bundle_dir: Path) -> list[str]:
         for marker in raw_labels:
             if marker in text:
                 mismatches.append(f"judge-facing asset {relative} contains raw machine label {marker}")
+        for marker in stale_phrases:
+            if marker in text:
+                mismatches.append(f"judge-facing asset {relative} contains stale presentation phrase {marker}")
     return mismatches
 
 
@@ -1746,7 +1773,15 @@ def _human_reasons(value: Any) -> str:
         parts = ["No reason recorded"]
     cleaned = []
     for part in parts:
-        sentence = part.replace("_", " ")
+        normalized = part.strip().lower().replace("_", " ")
+        replacements = {
+            "agent declined candidate": "not funded: vague, unverifiable, or outside project policy",
+            "reward exceeds maximum bounty amount": "estimated funding need is above the project spending cap",
+            "minimum remaining reserve would be violated": "project budget would not leave the required reserve",
+            "trusted policy approved bounded spend": "trusted project policy approved a verifier-backed bounty",
+            "trusted policy approved bounded spend; minimum remaining reserve would be violated": "project policy approved a verifier-backed bounty, then budget reserve blocked the candidate",
+        }
+        sentence = replacements.get(normalized, part).replace("_", " ")
         if sentence:
             cleaned.append(sentence[0].upper() + sentence[1:])
     return "; ".join(cleaned)
@@ -1810,7 +1845,11 @@ def _motoko_verification_bullets(fragment: dict[str, Any], summary: dict[str, An
             f"Contract digest: {_short(summary.get('contract_digest'))}",
         ]
     bullets = []
-    for name, label in (("baseline", "Baseline bug"), ("idle-only", "Idle-only candidate"), ("final", "Final background-study fix")):
+    for name, label in (
+        (MOTOKO_ORIGINAL_CASE, "Original buggy version"),
+        (MOTOKO_SUPERFICIAL_CASE, "Superficial typing fix"),
+        (MOTOKO_FINAL_CASE, "Final background-study fix"),
+    ):
         case = cases.get(name) or {}
         reasons = case.get("failure_reasons") if isinstance(case.get("failure_reasons"), list) else []
         reason_text = "; ".join(str(reason) for reason in reasons) if reasons else "no failure reasons"

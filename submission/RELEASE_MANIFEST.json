@@ -1,25 +1,26 @@
 {
   "schema": "agent-bounty-release-manifest-v2",
-  "release_tag": "hackathon-mixed-rc9",
+  "release_tag": "hackathon-mixed-rc10",
   "source_baseline_sha": "72ba26b69d38ce8ca5485be943afa1b57f9d6ab5",
   "source_baseline_note": "This is the historical source baseline used to generate earlier release metadata. The immutable release target is the Git annotated tag object, not a self-referential committed manifest field.",
   "truth_status": "Mixed real/fallback",
-  "bundle_digest": "sha256:75d57c2c7ff81fdcec1f7abfa4a071a3cae52eab61b00f48bc7dcf5f6929e08f",
-  "attestation_digest": "sha256:7b1c94b779a62d5ac64fc1d9bce713689cda4978b824280a20f7f33cf8589a9e",
+  "bundle_digest": "sha256:1765bb2e57ed2e8c0d198591e6f52b77439f33266ca49fbaa02410f836dbedf4",
+  "attestation_digest": "sha256:5c4703fc9c929198df97eae12a5d5c83310d736dd76edce64308f8a9eaba04d1",
   "truth_matrix_digest": "sha256:a704f3e1a90d141c0f9c92bef2c4656cef92b5abf93bdeb1abfd9ed342530bc1",
   "test_counts": {
     "focused_director_tests": "6 passed",
-    "focused_release_integrity_tests": "7 passed",
-    "focused_operator_and_submission_tests": "29 passed",
-    "focused_submission_tests": "14 passed",
-    "full_suite": "200 passed, 2 skipped",
+    "focused_release_integrity_tests": "pending on Linux/Nix release host",
+    "focused_operator_and_submission_tests": "pending operator state for prepost gate",
+    "focused_submission_tests": "standard and entry draft checks pass on HB2; prepost requires operator state",
+    "full_suite": "blocked on HB2 native Windows by missing Nix/WSL POSIX runtime, missing Motoko fixture, and Windows sqlite temp-file unlink semantics",
     "replay_rehearsal": "5/5 validations passed",
-    "nix_flake_check": "passed"
+    "director_check": "passed",
+    "nix_flake_check": "blocked on HB2: native nix unavailable and no WSL distro installed"
   },
   "fresh_clone_status": {
-    "status": "validated-after-final-tag",
-    "scope": "Fresh clone from GitHub at the final tag, followed by documented bundle rebuild, five-run replay, full unittest suite, and nix flake check.",
-    "note": "The committed manifest records stable release-bundle digests. Fresh-clone regenerated bundle digests are timestamp-dependent and are recorded in the issue #19 and coordinator handoff comments."
+    "status": "not-yet-validated-for-rc10",
+    "scope": "HB2 regenerated the static mixed bundle and passed replay/director checks, but full Linux/Nix release validation still needs a configured POSIX/Nix environment with the Motoko fixture.",
+    "note": "The committed manifest records stable release-bundle digests. Fresh-clone regenerated bundle digests are timestamp-dependent and must be recorded in the final issue handoff after the Linux/Nix gate passes."
   },
   "known_blockers": [
     "NVIDIA/Nemotron provider credentials are not configured.",
@@ -35,7 +36,7 @@
     "nix develop --command python3 -m agent_bounty submission-check --entry --prepost --state .demo/operator-submission.json",
     "nix develop --command python3 -m agent_bounty submission-finalize --state .demo/operator-submission.json --output .demo/final-submission --check",
     "nix develop --command python3 -m agent_bounty video-check --file /path/to/final-video.mp4",
-    "nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc9",
+    "nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc10",
     "nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5",
     "nix develop --command python3 -m unittest discover -s tests",
     "nix flake check"

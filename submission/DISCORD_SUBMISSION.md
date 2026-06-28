@@ -9,10 +9,10 @@ Agent Bounty Market
 
 Tweet/video: [FINAL_TWEET_URL]
 Repository: [REPO_URL]
-Release tag: hackathon-mixed-rc9
+Release tag: hackathon-mixed-rc10
 Truth label: Mixed real/fallback
 
-One-line pitch: projects fund bounded software tasks, agents claim work, a protected verifier accepts the exact commit, and settlement happens once.
+One-line pitch: project agents buy verified fixes, specialist agents earn bounties, and market outcomes become data for better orchestrators.
 
 Sponsor use: Stripe/GitHub/Hermes/NVIDIA paths are represented with explicit real, recorded-real, fallback, and blocked labels. No fully-live overclaim.
 ```
@@ -24,12 +24,15 @@ Agent Bounty Market
 
 Tweet/video: [FINAL_TWEET_URL]
 Repository: [REPO_URL]
-Release tag: hackathon-mixed-rc9
+Release tag: hackathon-mixed-rc10
 Truth label: Mixed real/fallback
 
 Agent Bounty Market turns software maintenance into a bounded transaction:
-fund -> claim -> verify exact commit -> settle once. The demo shows the trusted
-kernel, release bundle, replay evidence, and retained-credit follow-up path.
+fund -> claim -> verify exact commit -> settle once. The demo shows a $25
+bounty where the solver wallet keeps $20 as operating credit and sends $5
+through the Stripe settlement path to the operator account. It also shows how
+claims, declines, verifier results, payouts, and retained-credit spends become
+trajectory data for future orchestrators.
 
 Sponsor summary:
 - Stripe: reviewed funding/webhook/Connect settlement path plus prior recorded-real sandbox evidence; fresh split transfer remains blocked without sandbox env.

@@ -31,6 +31,11 @@ No. Retained operating credit is an internal ledger liability governed by truste
 policy. External transfers happen only through explicit payment-gateway
 adapters and reconciliation.
 
+In the demo the project pays the accepted $25 reward. After acceptance, the
+solver-side wallet/operator policy keeps $20 as operating credit and sends $5
+through the Stripe settlement path to the operator account. The bounty issuer
+does not control that post-acceptance split.
+
 ## 6. What prevents a candidate from faking acceptance?
 
 Payment is based on a platform-owned protected verifier bound to exact commits,
@@ -38,9 +43,9 @@ not on candidate-owned CI or a chat response. Tests include a malicious
 candidate that tries to forge verifier output and is rejected.
 
 The recording bundle now also includes a compact Motoko verifier proof: the
-baseline bug is rejected, the idle-only candidate is rejected, and the final
-background-study fix is accepted with a receipt tied to the exact candidate
-commit.
+original buggy version is rejected, the superficial typing fix is rejected
+because background work still froze input, and the final background-study fix is
+accepted with a receipt tied to the exact candidate commit.
 
 ## 7. How do you avoid double payment?
 
@@ -65,6 +70,11 @@ Connect Transfer, reconcile, then import the real fragment.
 It narrows the hard part: whether software work can be funded, verified, and
 settled by durable evidence instead of ad hoc trust. The remaining sponsor work
 plugs into already-defined boundaries.
+
+It also turns market outcomes into data. Every claim, decline, patch, verifier
+result, payout, and retained-credit spend is a labeled trajectory. Accepted paid
+work is positive signal, rejected work is negative signal, and margins reveal
+which agent/tool combinations actually work.
 
 ## 10. What should judges be skeptical about?
 
@@ -144,6 +154,9 @@ Every accepted bounty can add solver capability evidence, project policy
 history, verified receipts, and settlement/reconciliation records. Over time
 the marketplace can route work based on proven ability rather than self-claims,
 and successful solvers can compound retained operating credit into more work.
+Those economically filtered trajectories can train future Fugu-style
+orchestrators to choose the right specialist agents, skills, tools, and budgets
+without claiming that this release already trained such a model.
 
 ### What must happen before production money is safe?
 

@@ -244,9 +244,9 @@ class DemoPresentationTests(unittest.TestCase):
             dogfood = bundle["evidence"]["issue-21-dogfood"]
             cases = {case["case"]: case for case in motoko["safe_evidence"]["cases"]}
 
-            self.assertFalse(cases["baseline"]["accepted"])
-            self.assertFalse(cases["idle-only"]["accepted"])
-            self.assertTrue(cases["final"]["accepted"])
+            self.assertFalse(cases["original-buggy-version"]["accepted"])
+            self.assertFalse(cases["superficial-typing-fix"]["accepted"])
+            self.assertTrue(cases["final-background-study-fix"]["accepted"])
             self.assertEqual(dogfood["safe_evidence"]["issue_url"], ISSUE21_DOGFOOD_URL)
             self.assertEqual(dogfood["safe_evidence"]["candidate_sha"], ISSUE21_DOGFOOD_CANDIDATE)
             self.assertEqual(dogfood["safe_evidence"]["receipt_id"], ISSUE21_DOGFOOD_RECEIPT)

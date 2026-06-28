@@ -48,8 +48,8 @@ python -m agent_bounty demo-economic-loop-live \
   --db .demo/live-economic.sqlite3 \
   --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency \
   --currency EUR \
-  --external-transfer-cents 2000 \
-  --retained-operating-cents 500
+  --external-transfer-cents 500 \
+  --retained-operating-cents 2000
 ```
 
 If the database has not yet received a signed Stripe funding webhook, this
@@ -72,8 +72,8 @@ Split an already accepted bounty:
 python -m agent_bounty economic-loop allocate \
   --db .demo/economic-loop.sqlite3 \
   --bounty-id bounty_motoko_issue_1 \
-  --external-transfer-cents 2000 \
-  --retained-operating-cents 500 \
+  --external-transfer-cents 500 \
+  --retained-operating-cents 2000 \
   --retention-consent
 ```
 
@@ -85,7 +85,7 @@ python -m agent_bounty economic-loop spend-retained \
   --solver-id solver_python_terminal_tui \
   --target-project-id project_motoko_retained_credit \
   --repo lk251/motoko \
-  --amount-cents 500 \
+  --amount-cents 2000 \
   --verifier-id economic_loop_fixture_verifier_v1
 ```
 

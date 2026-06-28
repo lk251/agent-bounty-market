@@ -40,11 +40,11 @@ class DemoDirectorTests(unittest.TestCase):
                 [scene["title"] for scene in cues["scenes"]],
                 [
                     "Problem",
-                    "Project buys work",
+                    "Project spends",
                     "Agents choose",
-                    "Trust boundary",
+                    "Verification",
                     "Settlement",
-                    "Compounding",
+                    "Flywheel",
                     "Close",
                 ],
             )
@@ -57,14 +57,15 @@ class DemoDirectorTests(unittest.TestCase):
 
         problem_stats = stat_map(scenes["problem"])
         settlement_stats = stat_map(scenes["settlement"])
-        compounding_stats = stat_map(scenes["compounding"])
+        flywheel_stats = stat_map(scenes["flywheel"])
 
         self.assertEqual(problem_stats["Reward"], "$25.00")
         self.assertIn("ms", problem_stats["Before p95"])
         self.assertIn("ms", problem_stats["After p95"])
-        self.assertEqual(settlement_stats["External"], "$20.00")
-        self.assertEqual(compounding_stats["Retained credit"], "$5.00")
-        self.assertIn("github.com/lk251/agent-bounty-market/issues/21", compounding_stats["Dogfood issue"])
+        self.assertEqual(settlement_stats["Operator payout"], "$5.00")
+        self.assertEqual(settlement_stats["Operating credit"], "$20.00")
+        self.assertEqual(flywheel_stats["Operating credit"], "$20.00")
+        self.assertIn("github.com/lk251/agent-bounty-market/issues/21", flywheel_stats["Dogfood issue"])
         self.assertEqual(data["bundle_digest"], bundle["bundle_content_digest"])
 
     def test_truth_badge_and_blockers_are_visible_without_private_data(self):
@@ -81,8 +82,8 @@ class DemoDirectorTests(unittest.TestCase):
             self.assertIn("blocked", html_text.lower())
             self.assertIn("Presenter Notes", html_text)
             self.assertIn("Presenter Notes", notes_text)
-            self.assertIn("Baseline bug", html_text)
-            self.assertIn("Idle-only candidate", html_text)
+            self.assertIn("Original buggy version", html_text)
+            self.assertIn("Superficial typing fix", html_text)
             self.assertIn("Final background-study fix", html_text)
             self.assertIn("Issue #21 candidate", html_text)
             self.assertNotIn("2500 USD", serialized)

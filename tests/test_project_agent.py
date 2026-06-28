@@ -137,7 +137,7 @@ class ProjectAgentTests(unittest.TestCase):
             self.assertGreaterEqual(len([verdict for verdict in verdicts if verdict != "approved"]), 3)
             overspend = next(row for row in result["decisions"] if "policy-overspend" in row["proposal"]["risk_flags"])
             self.assertEqual(overspend["trusted_verdict"], "declined")
-            self.assertIn("reward exceeds maximum bounty amount", overspend["policy_reasons"])
+            self.assertIn("estimated funding need is above the project spending cap", overspend["policy_reasons"])
 
     def test_policy_unallowlisted_missing_verifier_and_human_threshold_paths(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -33,10 +33,11 @@ verification receipts, evidence fragments, and release-bundle provenance. The
 winning package is labeled `Mixed real/fallback` so judges can distinguish real,
 recorded-real, fallback, and blocked paths.
 
-The final recording package shows a concrete Motoko issue: baseline rejected,
-idle-only candidate rejected, final background-study fix accepted. It also
-shows issue #21 dogfooding retained operating credit into this repository's
-release-provenance verifier, with replay evidence for the spend and settlement.
+The final recording package shows a concrete Motoko issue: original buggy
+version rejected, superficial typing fix rejected, final background-study fix
+accepted. It also shows issue #21 dogfooding retained operating credit into
+this repository's release-provenance verifier, with replay evidence for the
+spend and settlement.
 
 ## Why Useful
 
@@ -49,7 +50,9 @@ output, or social claims authorize payment.
 Projects fund bounties. Solvers earn after accepted receipts. The platform can
 charge a success fee and optionally let trusted retained operating credit fund
 more work, bounded by policy. The moat is a growing graph of verified work,
-solver capability records, project policies, and replayable receipts.
+solver capability records, project policies, replayable receipts, and
+economically filtered trajectories that can train future orchestrators to pick
+the right specialist agents, skills, tools, and budgets.
 
 ## Nous / Hermes Use
 

@@ -34,8 +34,8 @@ Status: draft until `[FINAL_VIDEO_FILENAME]` and `[FINAL_TWEET_URL]` are filled.
 ## Visual Checks
 
 - `Mixed real/fallback` mode badge visible.
-- Director scenes present: Problem, Project buys work, Agents choose, Trust
-  boundary, Settlement, Compounding, Close.
+- Director scenes present: Problem, Project spends, Agents choose,
+  Verification, Settlement, Flywheel, Close.
 - No terminal window exposes secrets, raw webhook payloads, private prompts,
   personal files, browser sessions, or unrelated home-directory content.
 - Repository URL and release tag are readable.

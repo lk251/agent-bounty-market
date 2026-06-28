@@ -425,8 +425,8 @@ class EconomicLoopTests(unittest.TestCase):
 
             self.assertTrue(result["ok"])
             self.assertFalse(result["provider_truth"]["real_stripe_transfer_claimed"])
-            self.assertEqual(result["allocation"]["external_transfer_amount"], 2000)
-            self.assertEqual(result["allocation"]["retained_operating_amount"], 500)
+            self.assertEqual(result["allocation"]["external_transfer_amount"], 500)
+            self.assertEqual(result["allocation"]["retained_operating_amount"], 2000)
             self.assertTrue(result["retained_credit_spend_replay"]["replayed"])
             self.assertTrue(str(result["second_bounty"]["contract_digest"]).startswith("sha256:"))
 
@@ -480,10 +480,10 @@ class EconomicLoopTests(unittest.TestCase):
 
             self.assertTrue(completed["ok"])
             self.assertEqual(completed["stage"], "complete")
-            self.assertEqual(completed["allocation"]["external_transfer_amount"], 2000)
-            self.assertEqual(completed["allocation"]["retained_operating_amount"], 500)
+            self.assertEqual(completed["allocation"]["external_transfer_amount"], 500)
+            self.assertEqual(completed["allocation"]["retained_operating_amount"], 2000)
             self.assertTrue(completed["allocation"]["gateway_transfer_id"].startswith("tr_test_"))
-            self.assertEqual(client.created_transfer_params[-1]["params"]["amount"], 2000)
+            self.assertEqual(client.created_transfer_params[-1]["params"]["amount"], 500)
             self.assertEqual(completed["balances"]["solver_earned"], 0)
             self.assertEqual(completed["balances"]["solver_operating_available"], 0)
 

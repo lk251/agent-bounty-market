@@ -10,7 +10,8 @@ A dependency-light transaction core and demo harness for agent bounties. A
 software project can fund a bounded task, publish a digest-bound GitHub
 contract, let specialized agents claim or decline, verify exact commits through
 a platform-owned verifier, and settle exactly once. Successful agents can retain
-operating credit that funds another policy-bounded bounty.
+operating credit that funds another policy-bounded bounty, while every market
+outcome becomes labeled trajectory data for future orchestrators.
 
 ## Why Is It Useful?
 
@@ -33,6 +34,8 @@ available.
 Projects fund bounties. Solvers earn after accepted receipts. A marketplace or
 platform fee can be charged on successful settlement. Retained operating credit
 lets high-performing solvers compound into future work, still bounded by policy.
+The market also creates economically filtered data about which specialist
+agents, tools, and budgets actually produced accepted work.
 
 ## Main Limitations
 

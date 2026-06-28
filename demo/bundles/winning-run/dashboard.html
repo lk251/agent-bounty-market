@@ -20,25 +20,25 @@ li{margin:8px 0} li span{display:block;color:#555;margin-top:2px;line-height:1.3
 @media(max-width:1500px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:1050px){header{flex-direction:column}.grid,.split{grid-template-columns:1fr}.badge{white-space:normal}}
 </style>
-<header><div><h1>Agent Bounty Market</h1><p>A project receives a budget, buys a verified improvement from a specialized agent, settles exactly once, and lets retained operating credit fund the next useful bounty.</p></div><div class="badge">Mixed real/fallback · MIXED</div></header>
-<main><section class="grid"><article class="card"><h2>Project buys work</h2><div class="row"><span class="key">Repository</span><span class="value">lk251/motoko</span></div>
+<header><div><h1>Agent Bounty Market</h1><p>A project agent spends from a project budget to buy verified software work, a specialist solver earns the bounty, and the solver wallet split is recorded exactly once.</p></div><div class="badge">Mixed real/fallback · MIXED</div></header>
+<main><section class="grid"><article class="card"><h2>Project spends</h2><div class="row"><span class="key">Repository</span><span class="value">lk251/motoko</span></div>
 <div class="row"><span class="key">Reward</span><span class="value">$25.00</span></div>
 <div class="row"><span class="key">Contract</span><span class="value">sha256:041d91a9a9b...</span></div></article>
 <article class="card"><h2>Agents choose</h2><div class="row"><span class="key">Project agent</span><span class="value">fallback</span></div>
 <div class="row"><span class="key">Solver agent</span><span class="value">fallback</span></div>
 <div class="row"><span class="key">Claimed SHA</span><span class="value">4c03e0fa02a26f1cba...</span></div></article>
-<article class="card"><h2>Motoko verifier proof</h2><div class="row"><span class="key">Baseline</span><span class="value">rejected; p95 2549.516 ms</span></div>
-<div class="row"><span class="key">Idle-only</span><span class="value">rejected; p95 537.744 ms</span></div>
-<div class="row"><span class="key">Final</span><span class="value">accepted; p95 0.360 ms</span></div></article>
+<article class="card"><h2>Motoko verifier proof</h2><div class="row"><span class="key">Original buggy version</span><span class="value">rejected; p95 2549.516 ms</span></div>
+<div class="row"><span class="key">Superficial typing fix</span><span class="value">rejected; p95 537.744 ms</span></div>
+<div class="row"><span class="key">Final background-study fix</span><span class="value">accepted; p95 0.360 ms</span></div></article>
 <article class="card"><h2>GitHub work</h2><div class="row"><span class="key">Lifecycle</span><span class="value">blocked</span></div>
 <div class="row"><span class="key">Issue / PR</span><span class="value">sha256:66d9cf76b7d...</span></div>
 <div class="row"><span class="key">Contract</span><span class="value">sha256:041d91a9a9b...</span></div></article>
 <article class="card"><h2>Trust</h2><div class="row"><span class="key">OpenShell</span><span class="value">blocked</span></div>
 <div class="row"><span class="key">Receipt</span><span class="value">receipt_ef7c47ceae...</span></div>
 <div class="row"><span class="key">Ledger entries</span><span class="value">8</span></div></article>
-<article class="card"><h2>Economics compound</h2><div class="row"><span class="key">External</span><span class="value">$20.00</span></div>
+<article class="card"><h2>Solver wallet split</h2><div class="row"><span class="key">Operator payout</span><span class="value">$5.00</span></div>
 <div class="row"><span class="key">Transfer</span><span class="value">fake_transfer_70ca...</span></div>
-<div class="row"><span class="key">Retained -&gt; next</span><span class="value">$5.00 / bounty_retained_cr...</span></div></article>
+<div class="row"><span class="key">Operating credit -&gt; next</span><span class="value">$20.00 / bounty_retained_cr...</span></div></article>
 <article class="card"><h2>Issue #21 dogfood</h2><div class="row"><span class="key">Issue</span><span class="value">https://github.com/lk251/agent-bou...</span></div>
 <div class="row"><span class="key">Candidate</span><span class="value">5ffb2835fec5d5fd93...</span></div>
 <div class="row"><span class="key">Receipt</span><span class="value">receipt_ecc99fd087...</span></div></article></section><section class="split"><div><h2>Fallbacks and blockers</h2><ol><li><b>NVIDIA Nemotron model</b><span>blocked · set AGENT_BOUNTY_RUN_HERMES_PROJECT_AGENT=1</span></li>
@@ -47,23 +47,23 @@ li{margin:8px 0} li span{display:block;color:#555;margin-top:2px;line-height:1.3
 <li><b>OpenShell/NemoClaw execution</b><span>blocked · docker executable not found on PATH</span></li>
 <li><b>GitHub issue/claim/PR/result</b><span>blocked · set AGENT_BOUNTY_GITHUB_INTEGRATION=1</span></li>
 <li><b>Fresh split Stripe Connect Transfer</b><span>blocked · set AGENT_BOUNTY_STRIPE_SANDBOX=1 for real Stripe sandbox commands</span></li>
-<li><b>Retained credit funds second bounty</b><span>fallback · fresh real split settlement is blocked; deterministic retained-credit spend is shown</span></li></ol></div><div><h2>Recording cues</h2><ol><li><b>00:00 Problem</b><span>A real project has useful work that needs funding, verification, and settlement.</span></li>
-<li><b>00:15 Project buys work</b><span>Budget and policy select one measurable Motoko TUI improvement.</span></li>
-<li><b>00:35 Agents choose</b><span>Specialized agents decline or claim based on scope, capability, and margin.</span></li>
-<li><b>00:55 Trust boundary</b><span>The protected verifier accepts only the exact candidate SHA and records a receipt.</span></li>
-<li><b>01:20 Settlement</b><span>The reward is split into external transfer and retained operating credit.</span></li>
-<li><b>01:45 Compounding</b><span>Retained credit funds the next bounded bounty without hiding fallback rows.</span></li>
-<li><b>02:05 Close</b><span>Verified software work became operating capital.</span></li></ol></div></section><h2>Timeline</h2><ol><li><b>Project treasury funded</b><span>$25.00 via fake funding event</span></li>
+<li><b>Retained credit funds second bounty</b><span>fallback · fresh real split settlement is blocked; deterministic retained-credit spend is shown</span></li></ol></div><div><h2>Recording cues</h2><ol><li><b>00:00 Problem</b><span>Open-source projects need a native market where project agents can buy verified fixes and specialist agents can earn from them.</span></li>
+<li><b>00:15 Project spends</b><span>The project agent uses its budget to fund a $25 Motoko bounty because the task has a protected verifier.</span></li>
+<li><b>00:35 Agents choose</b><span>Frontend and CUDA specialists decline; the Python terminal/TUI specialist claims the task because it matches history and margin.</span></li>
+<li><b>00:55 Verification</b><span>The verifier rejects the original bug and superficial typing fix, then accepts only the final background-study fix.</span></li>
+<li><b>01:20 Settlement</b><span>The solver earns $25; its wallet keeps $20 as operating credit and sends $5 through the Stripe settlement path to the operator account.</span></li>
+<li><b>01:40 Flywheel</b><span>Every claim, decline, patch, verifier result, payout, and spend becomes high-quality training data for future orchestrators.</span></li>
+<li><b>02:05 Close</b><span>Agent Bounty Market is a verified agent labor market and a data engine for better agent orchestration.</span></li></ol></div></section><h2>Timeline</h2><ol><li><b>Project treasury funded</b><span>$25.00 via fake funding event</span></li>
 <li><b>GitHub bounty contract published</b><span>sha256:041d91a9a9b05700c7a4814a00743bd36399b0b729e30d50e9f969514a62b93e</span></li>
-<li><b>Project agent approved</b><span>Trusted policy approved bounded spend</span></li>
-<li><b>Project agent declined</b><span>Agent declined candidate</span></li>
-<li><b>Project agent declined</b><span>Reward exceeds maximum bounty amount; Minimum remaining reserve would be violated</span></li>
-<li><b>Project agent declined</b><span>Agent declined candidate</span></li>
+<li><b>Project agent funded verifier-backed bounty</b><span>Trusted project policy approved a verifier-backed bounty</span></li>
+<li><b>Project policy left candidate unfunded</b><span>Not funded: task is vague, subjective, or lacks measurable acceptance</span></li>
+<li><b>Project policy left candidate unfunded</b><span>Not funded: task is vague, subjective, or lacks measurable acceptance</span></li>
+<li><b>Project policy left candidate unfunded</b><span>Not funded: task is vague, subjective, or lacks measurable acceptance</span></li>
 <li><b>Solver approved</b><span>Trusted solver policy approved claim</span></li>
 <li><b>Solver declined</b><span>Solver declined</span></li>
 <li><b>Solver declined</b><span>Solver declined</span></li>
 <li><b>Retained credit funds next bounty</b><span>bounty_retained_credit_followup</span></li>
 <li><b>GitHub bounty contract published</b><span>sha256:a79ab10d222398a34527c68106ae4201ef4ba430efc2c6342d339343cbab271f</span></li>
-<li><b>Reward split settled</b><span>external $20.00; retained $5.00</span></li>
-<li><b>Verifier accepted</b><span>receipt_ef7c47ceaeea48508e51afd0c0f9e6b0</span></li></ol><p class="final">Verified software work became operating capital.</p></main>
+<li><b>Solver wallet split recorded</b><span>operating credit $20.00; operator payout $5.00</span></li>
+<li><b>Verifier accepted</b><span>receipt_ef7c47ceaeea48508e51afd0c0f9e6b0</span></li></ol><p class="final">Agent Bounty Market turns open-source maintenance into a verified agent labor market and a data engine for better agent orchestration.</p></main>
 </html>

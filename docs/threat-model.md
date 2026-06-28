@@ -11,9 +11,9 @@
 - Failed, malformed, timed-out, or stale verification does not pay.
 - An accepted receipt for one candidate SHA cannot authorize payout for another
   candidate SHA, solver, issue, repo path, base SHA, or verifier digest.
-- The idle-only Motoko issue #1 candidate is rejected by verifier v2 because the
-  platform-owned contract measures the background-study path in a separate
-  child process.
+- The superficial Motoko issue #1 typing fix is rejected by verifier v2 because
+  normal typing improves but the platform-owned contract still measures the
+  background-study path in a separate child process.
 - Candidate Python is not imported into the trusted verifier interpreter. The
   verifier parent launches candidate work as child processes and computes the
   verdict from PTY/process/filesystem evidence.

@@ -3,7 +3,7 @@
 Goal: record the strongest truthful hackathon demo without implying that blocked
 components ran live.
 
-Release tag: `hackathon-mixed-rc9`.
+Release tag: `hackathon-mixed-rc10`.
 
 ## Build And Validate
 
@@ -83,21 +83,25 @@ only files from the bundle directory.
 2. Keep the `Mixed real/fallback` badge visible in the opening shot.
 3. Use the seven director scenes as the story spine:
    - Problem
-   - Project buys work
+   - Project spends
    - Agents choose
-   - Trust boundary
+   - Verification
    - Settlement
-   - Compounding
+   - Flywheel
    - Close
-4. In the Trust boundary scene, call out the three Motoko verifier outcomes:
-   baseline rejected, idle-only rejected, final accepted.
-5. In the Compounding scene, call out issue #21 as retained-credit dogfood for
-   release provenance: candidate, receipt, verifier digest, and replay evidence.
+4. In the Verification scene, call out the three Motoko verifier outcomes:
+   original buggy version rejected, superficial typing fix rejected, final
+   background-study fix accepted.
+5. In the Flywheel scene, call out issue #21 as retained-credit dogfood for
+   release provenance, then connect it to training data for future
+   orchestrators.
 6. Show the blocker/fallback statements briefly. Say that those components are
    not claimed as live in this bundle.
 7. Use `submission/VOICEOVER_FINAL.md` as the spoken script and
    `demo/bundles/winning-run/director-cues.json` as the timing source.
-8. Close on: "Verified software work became operating capital."
+8. Close on: "Agent Bounty Market turns open-source maintenance into a
+   verified agent labor market and a data engine for better agent
+   orchestration."
 
 ## Screenshot
 

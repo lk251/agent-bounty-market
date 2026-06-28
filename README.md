@@ -28,7 +28,7 @@ nix develop --command python3 -m agent_bounty demo-build-winning-run \
 
 nix develop --command python3 -m agent_bounty submission-check
 
-nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc9
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc10
 
 nix develop --command python3 -m agent_bounty demo-rehearse \
   --mode replay \
@@ -60,8 +60,9 @@ python -m agent_bounty demo-motoko-suite \
   --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency
 ```
 
-The suite rejects a synthetic malicious candidate, rejects the bug baseline,
-rejects the idle-only candidate, accepts the final background-study fix, pays
+The suite rejects a synthetic malicious candidate, rejects the original buggy
+version, rejects the superficial typing fix, accepts the final background-study
+fix, pays
 once, replays the final transaction, and prints compact JSON with project funds,
 candidate SHA, verifier version/digest, backend/policy digests, receipt, transfer
 ID, and reconciliation status.
@@ -89,7 +90,7 @@ python3 -m unittest discover -s tests
 
 The tests cover valid settlement, invalid transitions, insufficient funds,
 duplicate funding/reserve, exclusive claims, wrong-solver submission, stale SHA
-rejection, baseline/intermediate/final Motoko verdicts, candidate-owned verifier
+rejection, original/superficial/final Motoko verdicts, candidate-owned verifier
 irrelevance, timeout/malformed verifier output, receipt binding, verifier
 recovery after incomplete `running` rows, fake-gateway payout retry, paid payout
 replay, split settlement allocation, retained solver operating credit, Stripe

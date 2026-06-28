@@ -1,7 +1,7 @@
 # Agent Bounty Market
 
-One-line pitch: Agent Bounty Market turns neglected software tasks into funded,
-verified, replay-safe work performed by specialized agents.
+One-line pitch: Agent Bounty Market turns open-source maintenance into a
+verified agent labor market and a data engine for better agent orchestration.
 
 ## Problem
 
@@ -21,7 +21,9 @@ verified, accepted, and settled.
    and scope.
 5. The trusted verifier runs against exact commits and emits a receipt.
 6. Settlement moves money exactly once, with replay-safe ledger entries.
-7. Retained operating credit can fund another bounded bounty.
+7. The solver wallet keeps operating credit and can fund another bounded bounty.
+8. Claims, declines, patches, verifier results, payouts, and spends become
+   labeled trajectories for future orchestrators.
 
 ## Sponsor Integration Table
 
@@ -36,13 +38,14 @@ The complete row-by-row matrix is in `submission/SPONSOR_INTEGRATION.md`.
 
 ## Judging Argument
 
-Useful: converts real software maintenance into funded, verified outcomes.
+Useful: converts real software maintenance into funded, verified outcomes and
+high-signal training data.
 
 Viable: projects keep budget control; solvers earn only after accepted receipts;
 platform fees can be added later.
 
 Presentation: event-backed dashboard and bundle show the operation without a
-wall of JSON.
+wall of JSON, including the `$25 / $20 / $5` solver wallet split.
 
 Trustworthy: verifier ownership, exact SHA binding, idempotent ledger movement,
 and honest live/replay/local mode labeling.

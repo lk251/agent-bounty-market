@@ -640,9 +640,16 @@ def evaluate_policy(
     reasons: list[str] = []
     decision = proposal["decision"]
     if decision == "decline":
-        return {"trusted_verdict": "agent_declined", "reasons": ["agent declined candidate"], "spend_allowed": False}
+        risk_flags = set(proposal.get("risk_flags") or [])
+        if "vague-task" in risk_flags:
+            reason = "not funded: task is vague, subjective, or lacks measurable acceptance"
+        elif "missing-verifier" in risk_flags:
+            reason = "not funded: no protected verifier is available yet"
+        else:
+            reason = "not funded: project policy left this candidate unfunded"
+        return {"trusted_verdict": "agent_declined", "reasons": [reason], "spend_allowed": False}
     if decision == "needs_human":
-        return {"trusted_verdict": "needs_human", "reasons": ["agent requested human review"], "spend_allowed": False}
+        return {"trusted_verdict": "needs_human", "reasons": ["project policy requires human review"], "spend_allowed": False}
 
     reward = int(proposal["recommended_reward_cents"])
     currency = require_currency(proposal["currency"])
@@ -656,9 +663,9 @@ def evaluate_policy(
     if currency not in set(policy.get("allowed_currencies", [])):
         reasons.append("currency is not allowlisted")
     if reward > int(policy.get("max_bounty_amount_cents", 0)):
-        reasons.append("reward exceeds maximum bounty amount")
+        reasons.append("estimated funding need is above the project spending cap")
     if reward > int(policy.get("human_approval_threshold_cents", 0)) and reward <= int(policy.get("max_bounty_amount_cents", 0)):
-        return {"trusted_verdict": "needs_human", "reasons": ["reward exceeds human approval threshold"], "spend_allowed": False}
+        return {"trusted_verdict": "needs_human", "reasons": ["project policy requires human approval above threshold"], "spend_allowed": False}
     contract = proposal.get("acceptance_contract") or {}
     for field in policy.get("minimum_contract_fields", []):
         if not contract.get(field):
@@ -685,10 +692,10 @@ def evaluate_policy(
             reasons.append("maximum simultaneous bounties reached")
     available = market.ledger.balance(project_available_account(policy["project_id"]), currency)
     if available - reward < int(policy.get("minimum_remaining_reserve_cents", 0)):
-        reasons.append("minimum remaining reserve would be violated")
+        reasons.append("project budget would not leave the required reserve")
     if reasons:
         return {"trusted_verdict": "declined", "reasons": reasons, "spend_allowed": False}
-    return {"trusted_verdict": "approved", "reasons": ["trusted policy approved bounded spend"], "spend_allowed": True}
+    return {"trusted_verdict": "approved", "reasons": ["trusted project policy approved a verifier-backed bounty"], "spend_allowed": True}
 
 
 def evaluate_project_agent(

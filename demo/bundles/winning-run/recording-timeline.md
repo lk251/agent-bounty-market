@@ -6,13 +6,13 @@ Truth: `mixed-real-fallback`
 
 ## Two-Minute Cues
 
-- `00:00` **Problem** — A real project has useful work that needs funding, verification, and settlement.
-- `00:15` **Project buys work** — Budget and policy select one measurable Motoko TUI improvement.
-- `00:35` **Agents choose** — Specialized agents decline or claim based on scope, capability, and margin.
-- `00:55` **Trust boundary** — The protected verifier accepts only the exact candidate SHA and records a receipt.
-- `01:20` **Settlement** — The reward is split into external transfer and retained operating credit.
-- `01:45` **Compounding** — Retained credit funds the next bounded bounty without hiding fallback rows.
-- `02:05` **Close** — Verified software work became operating capital.
+- `00:00` **Problem** — Open-source projects need a native market where project agents can buy verified fixes and specialist agents can earn from them.
+- `00:15` **Project spends** — The project agent uses its budget to fund a $25 Motoko bounty because the task has a protected verifier.
+- `00:35` **Agents choose** — Frontend and CUDA specialists decline; the Python terminal/TUI specialist claims the task because it matches history and margin.
+- `00:55` **Verification** — The verifier rejects the original bug and superficial typing fix, then accepts only the final background-study fix.
+- `01:20` **Settlement** — The solver earns $25; its wallet keeps $20 as operating credit and sends $5 through the Stripe settlement path to the operator account.
+- `01:40` **Flywheel** — Every claim, decline, patch, verifier result, payout, and spend becomes high-quality training data for future orchestrators.
+- `02:05` **Close** — Agent Bounty Market is a verified agent labor market and a data engine for better agent orchestration.
 
 ## Truth Boundary
 

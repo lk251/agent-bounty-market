@@ -1,6 +1,6 @@
 # Final Handoff
 
-Release candidate tag: `hackathon-mixed-rc9`
+Release candidate tag: `hackathon-mixed-rc10`
 
 This release candidate is a truthful mixed real/fallback demo package. It does
 not claim a complete sponsor-integrated live run. It packages the strongest
@@ -9,8 +9,8 @@ matrix, digest manifest, static dashboard, and hashed attestation.
 
 ## Product Pitch
 
-Agent Bounty Market turns neglected software tasks into funded, verified,
-replay-safe work performed by specialized agents.
+Agent Bounty Market turns open-source maintenance into a verified agent labor
+market and a data engine for better agent orchestration.
 
 ## Winning Bundle
 
@@ -31,7 +31,7 @@ nix develop --command python3 -m agent_bounty submission-check \
   --prepost \
   --state .demo/operator-submission.json
 
-nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc9
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc10
 
 nix develop --command python3 -m agent_bounty demo-rehearse \
   --mode replay \
@@ -80,7 +80,7 @@ Live setup:
   .demo/operator-submission.json --output .demo/final-submission --check`
 - prepost gate: `python -m agent_bounty submission-check --entry --prepost
   --state .demo/operator-submission.json`
-- release gate: `python -m agent_bounty release-audit --tag hackathon-mixed-rc9`
+- release gate: `python -m agent_bounty release-audit --tag hackathon-mixed-rc10`
 - judge Q&A: `submission/JUDGE_QA.md`
 - sponsor matrix: `submission/SPONSOR_INTEGRATION.md`
 - release checklist: `submission/RELEASE_CHECKLIST.md`
@@ -90,9 +90,9 @@ Backup bundle:
 
 ```bash
 nix develop --command python3 -m agent_bounty demo-build-winning-run \
-  --db .demo/release-backups/hackathon-mixed-rc9.sqlite3 \
+  --db .demo/release-backups/hackathon-mixed-rc10.sqlite3 \
   --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency \
-  --bundle .demo/release-backups/hackathon-mixed-rc9
+  --bundle .demo/release-backups/hackathon-mixed-rc10
 ```
 
 The backup path is intentionally under ignored `.demo/` state. Regenerate it
@@ -125,13 +125,13 @@ Release provenance is now tag-authoritative:
 - The canonical tag message is rendered with:
 
 ```bash
-nix develop --command python3 -m agent_bounty release-provenance render-tag-message --tag hackathon-mixed-rc9
+nix develop --command python3 -m agent_bounty release-provenance render-tag-message --tag hackathon-mixed-rc10
 ```
 
 - The final release gate is:
 
 ```bash
-nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc9
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc10
 ```
 
 Issue #21 was dogfooded through the local market core with retained operating
@@ -193,7 +193,7 @@ nix develop --command python3 -m agent_bounty submission-check
 nix develop --command python3 -m agent_bounty submission-check --entry
 nix develop --command python3 -m agent_bounty submission-finalize --state .demo/operator-submission.json --output .demo/final-submission --check
 nix develop --command python3 -m agent_bounty submission-check --entry --prepost --state .demo/operator-submission.json
-nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc9
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc10
 nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
 nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 120 --check
 nix develop --command python3 -m compileall agent_bounty tests verifiers
@@ -202,24 +202,25 @@ nix flake check
 git diff --check
 ```
 
-Observed before final commit:
+Observed on HB2 before final commit:
 
 ```text
-focused release-integrity tests: 7 passed
-focused operator/submission tests: 29 passed
+focused director tests: 6 passed
+focused demo presentation tests: 13 passed; 1 native-Windows symlink privilege error
+py_compile on touched modules/tests: passed
 winning bundle validation: ok=true, mode=mixed, truth=mixed-real-fallback
 submission-check: ok=true, errors=[]
 submission-check --entry: ok=true, placeholders remain by design
-submission-finalize --check: ok=true, six local output files
-submission-check --entry --prepost --state .demo/operator-submission.json: ok=true
+submission-check --entry --prepost: blocked without .demo/operator-submission.json
 release-audit: ok=true, errors=[]
+release-audit --tag hackathon-mixed-rc10: pending annotated tag creation on the final release commit
 replay rehearsal: 5/5 validations passed
 director check: ok=true, url=http://127.0.0.1:8788/director.html?duration=120
-bundle digest: sha256:75d57c2c7ff81fdcec1f7abfa4a071a3cae52eab61b00f48bc7dcf5f6929e08f
-attestation digest: sha256:7b1c94b779a62d5ac64fc1d9bce713689cda4978b824280a20f7f33cf8589a9e
+bundle digest: sha256:1765bb2e57ed2e8c0d198591e6f52b77439f33266ca49fbaa02410f836dbedf4
+attestation digest: sha256:5c4703fc9c929198df97eae12a5d5c83310d736dd76edce64308f8a9eaba04d1
 truth matrix digest: sha256:a704f3e1a90d141c0f9c92bef2c4656cef92b5abf93bdeb1abfd9ed342530bc1
-full suite: 200 tests passed, 2 skipped
-nix flake check: all checks passed
+full suite: blocked on HB2 native Windows by missing Nix/WSL POSIX runtime, missing Motoko fixture, and Windows sqlite temp-file unlink semantics
+nix flake check: blocked on HB2 because native nix is unavailable and no WSL distro is installed
 ```
 
 ## Recording
@@ -246,6 +247,8 @@ Use `submission/RECORDING_RUNBOOK.md`. Serve director mode with
 - [x] Prior real Stripe sandbox evidence is referenced.
 - [x] Operator finalizer, media QC, conservative tweet counting, and prepost
   state checks added.
-- [x] Full tests pass.
-- [x] Nix flake check passes.
+- [x] HB2 replay, director, submission draft, release audit, and focused tests
+  pass where the local native-Windows environment can exercise them.
+- [ ] Full Linux/Nix test suite passes for rc10.
+- [ ] Nix flake check passes for rc10.
 - [ ] Complete sponsor-integrated live run captured.

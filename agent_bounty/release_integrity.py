@@ -149,7 +149,7 @@ def _safe_bundle_child(bundle_root: Path, relative: Any) -> tuple[Path, str | No
 def _safe_bundle_scan_path(bundle_root: Path, path: Path, errors: list[dict[str, Any]]) -> tuple[bool, str]:
     try:
         resolved = path.resolve()
-        display = str(path.relative_to(bundle_root))
+        display = path.relative_to(bundle_root).as_posix()
     except ValueError:
         resolved = path.resolve()
         display = path.name

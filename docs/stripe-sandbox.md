@@ -86,8 +86,8 @@ python -m agent_bounty demo-economic-loop-live \
   --db .demo/live-economic.sqlite3 \
   --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency \
   --currency eur \
-  --external-transfer-cents 2000 \
-  --retained-operating-cents 500
+  --external-transfer-cents 500 \
+  --retained-operating-cents 2000
 ```
 
 ## Semantics
