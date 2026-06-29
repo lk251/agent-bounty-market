@@ -9,7 +9,7 @@ Agent Bounty Market
 
 Tweet/video: [FINAL_TWEET_URL]
 Repository: [REPO_URL]
-Release tag: hackathon-mixed-rc10
+Release tag: hackathon-mixed-rc11
 Truth label: Mixed real/fallback
 
 One-line pitch: project agents buy verified fixes, specialist agents earn bounties, and market outcomes become data for better orchestrators.
@@ -24,7 +24,7 @@ Agent Bounty Market
 
 Tweet/video: [FINAL_TWEET_URL]
 Repository: [REPO_URL]
-Release tag: hackathon-mixed-rc10
+Release tag: hackathon-mixed-rc11
 Truth label: Mixed real/fallback
 
 Agent Bounty Market turns software maintenance into a bounded transaction:

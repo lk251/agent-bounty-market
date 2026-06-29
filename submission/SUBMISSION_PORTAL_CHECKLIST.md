@@ -5,14 +5,14 @@ filled.
 
 ## Release Identity
 
-- Release tag: `hackathon-mixed-rc10`
+- Release tag: `hackathon-mixed-rc11`
 - Truth label: `Mixed real/fallback`
 - Bundle digest:
-  `sha256:c6f777af7f96dfe4ab24d5277afb9f372d01251c99b12b089c156907821f74fc`
+  `sha256:dbabfb881de7a83535e2bb25d54dbf478ebdebf44e317250f1e48de53f13caa6`
 - Attestation digest:
-  `sha256:3b858055f31df566e3827900137ad75f8c89486128675ed87130bbcc295ef703`
+  `sha256:dc670b9c69ca45b80882ceb7ab8dd1e1787588518138936e7983bb1a48c8efc3`
 - Truth matrix digest:
-  `sha256:d719c1fe6858b5c8a609dfea4eaf2904c61ee3969e8f5aeb0c4e1d03b2bcbb9d`
+  `sha256:6375530668244ab15891c0a89c1197e5847a1133766c7bdb55c601e4a4b98421`
 
 ## Before Recording
 

@@ -1,6 +1,6 @@
 # Final Voiceover
 
-Release tag: `hackathon-mixed-rc10`.
+Release tag: `hackathon-mixed-rc11`.
 
 Target length: 120 seconds. Keep the visible truth badge in frame throughout.
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import shutil
 import socket
 import subprocess
@@ -1060,7 +1061,7 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
             durations[2],
             [
                 ("Solver decisions", f"{len(solver_evals)} recorded"),
-                ("Claimed solver", allocation.get("solver_id") or "unavailable"),
+                ("Claimed solver", _solver_display(allocation.get("solver_id"))),
                 ("Candidate SHA", _short(summary.get("candidate_sha"))),
             ],
             _decision_bullets(solver_evals, "solver"),
@@ -1092,7 +1093,7 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
                 ("Operator payout", _money(allocation.get("external_transfer_amount"), allocation.get("currency"))),
             ],
             [
-                f"Transfer provider: {allocation.get('transfer_provider') or 'unavailable'}",
+                _settlement_mode_line(allocation.get("transfer_provider")),
                 f"Transfer truth: {((allocation.get('split') or {}).get('truth') or 'unavailable')}",
                 "Deterministic fallback split uses a Stripe-compatible settlement envelope; prior real Stripe sandbox evidence is preserved separately.",
                 f"Ledger entries: {summary.get('ledger_entries')}",
@@ -1205,9 +1206,10 @@ def _decision_bullets(rows: list[dict[str, Any]], kind: str) -> list[str]:
         verdict = _human_verdict(row.get("trusted_verdict") or row.get("decision") or "recorded")
         reasons = _human_reasons(row.get("policy_reasons_json") or row.get("reasons_json") or "")
         if kind == "project":
-            prefix = "funded" if verdict == "approved" else "not funded"
+            prefix = "Funded" if verdict == "approved" else "Not funded"
+            reasons = _project_decision_display_reason(reasons, funded=verdict == "approved")
         else:
-            prefix = verdict
+            prefix = verdict[:1].upper() + verdict[1:]
         bullets.append(f"{prefix}: {_short(reasons, keep=120)}")
     if len(rows) > 5:
         bullets.append(f"{len(rows) - 5} more {kind} decisions recorded.")
@@ -1658,6 +1660,10 @@ def _validate_judge_facing_assets(bundle_dir: Path) -> list[str]:
         "minimum remaining reserve would be violated",
         "Policy and budget select one bounded bounty while alternatives can decline",
         "alternatives can decline",
+        "not funded: Not funded",
+        "background_study",
+        "Transfer provider: fake",
+        "solver_python_terminal_tui",
     )
     for relative in (
         "README.md",
@@ -1787,6 +1793,39 @@ def _human_reasons(value: Any) -> str:
     return "; ".join(cleaned)
 
 
+def _project_decision_display_reason(text: str, *, funded: bool) -> str:
+    if funded:
+        return text
+    cleaned = re.sub(r"(?i)^not funded:\s*", "", text.strip())
+    normalized = cleaned.lower()
+    replacements = {
+        "task is vague, subjective, or lacks measurable acceptance": "vague, subjective, or missing verifier",
+        "no protected verifier is available yet": "missing protected verifier",
+        "project policy left this candidate unfunded": "outside current project policy",
+    }
+    return replacements.get(normalized, cleaned)
+
+
+def _humanize_display_text(text: Any) -> str:
+    return str(text).replace("background_study", "background study").replace("_", " ")
+
+
+def _solver_display(value: Any) -> str:
+    solver_id = str(value or "").strip()
+    if solver_id == "solver_python_terminal_tui":
+        return "Python terminal/TUI specialist"
+    return solver_id or "unavailable"
+
+
+def _settlement_mode_line(provider: Any) -> str:
+    text = str(provider or "").strip().lower()
+    if text == "fake":
+        return "Settlement mode: deterministic fallback"
+    if text:
+        return f"Settlement mode: {text}"
+    return "Settlement mode: unavailable"
+
+
 def _money(amount: Any, currency: Any) -> str:
     if amount is None:
         return "unknown"
@@ -1852,7 +1891,7 @@ def _motoko_verification_bullets(fragment: dict[str, Any], summary: dict[str, An
     ):
         case = cases.get(name) or {}
         reasons = case.get("failure_reasons") if isinstance(case.get("failure_reasons"), list) else []
-        reason_text = "; ".join(str(reason) for reason in reasons) if reasons else "no failure reasons"
+        reason_text = _humanize_display_text("; ".join(str(reason) for reason in reasons)) if reasons else "no failure reasons"
         bullets.append(f"{label}: {case.get('verdict') or 'unavailable'}; p95 {_motoko_case_latency(fragment, name)}; {_short(reason_text, keep=90)}")
     bullets.append(f"Accepted receipt: {_short(summary.get('receipt_id'))}")
     return bullets

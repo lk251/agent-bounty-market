@@ -3,7 +3,7 @@
 Goal: record the strongest truthful hackathon demo without implying that blocked
 components ran live.
 
-Release tag: `hackathon-mixed-rc10`.
+Release tag: `hackathon-mixed-rc11`.
 
 ## Build And Validate
 

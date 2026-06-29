@@ -1,9 +1,9 @@
 # Final Handoff
 
-Release candidate tag: `hackathon-mixed-rc10`
+Release candidate tag: `hackathon-mixed-rc11`
 
 The committed release manifest is prepared for the annotated
-`hackathon-mixed-rc10` tag. Create the tag only after the Linux/Nix release
+`hackathon-mixed-rc11` tag. Create the tag only after the Linux/Nix release
 gate and operator pre/post state check pass on the immutable release commit,
 then run the tag-aware release audit.
 
@@ -35,7 +35,7 @@ nix develop --command python3 -m agent_bounty submission-check \
   --entry \
   --prepost
 
-nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc10
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc11
 
 nix develop --command python3 -m agent_bounty demo-rehearse \
   --mode replay \
@@ -83,7 +83,7 @@ Live setup:
 - operator gate: `python -m agent_bounty submission-finalize --state
   .demo/operator-submission.json --output .demo/final-submission --check`
 - prepost gate: `python -m agent_bounty submission-check --entry --prepost`
-- release gate: `python -m agent_bounty release-audit --tag hackathon-mixed-rc10`
+- release gate: `python -m agent_bounty release-audit --tag hackathon-mixed-rc11`
 - judge Q&A: `submission/JUDGE_QA.md`
 - sponsor matrix: `submission/SPONSOR_INTEGRATION.md`
 - release checklist: `submission/RELEASE_CHECKLIST.md`
@@ -93,9 +93,9 @@ Backup bundle:
 
 ```bash
 nix develop --command python3 -m agent_bounty demo-build-winning-run \
-  --db .demo/release-backups/hackathon-mixed-rc10.sqlite3 \
+  --db .demo/release-backups/hackathon-mixed-rc11.sqlite3 \
   --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency \
-  --bundle .demo/release-backups/hackathon-mixed-rc10
+  --bundle .demo/release-backups/hackathon-mixed-rc11
 ```
 
 The backup path is intentionally under ignored `.demo/` state. Regenerate it
@@ -128,13 +128,13 @@ Release provenance is now tag-authoritative:
 - The canonical tag message is rendered with:
 
 ```bash
-nix develop --command python3 -m agent_bounty release-provenance render-tag-message --tag hackathon-mixed-rc10
+nix develop --command python3 -m agent_bounty release-provenance render-tag-message --tag hackathon-mixed-rc11
 ```
 
 - The final release gate is:
 
 ```bash
-nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc10
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc11
 ```
 
 Issue #21 was dogfooded through the local market core with retained operating
@@ -144,20 +144,25 @@ the exact candidate SHA it verifies.
 
 ## Issue #29 Handoff Status
 
-Issue #29 is implemented on local branch `codex/issue-29-story-flywheel`.
-HB3 regenerated the release bundle with the Motoko fixture and passed the
-Linux/Nix release gate before the final rc10 commit. The remaining closeout
-steps are to create the annotated tag on that final commit, run the tag-aware
-release audit, push branch/tag, and close the issue with validation evidence.
+Issue #29 is complete and closed:
+<https://github.com/lk251/agent-bounty-market/issues/29>
 
-Implementation commits prepared before this status note:
+Completion comment:
+<https://github.com/lk251/agent-bounty-market/issues/29#issuecomment-4828255002>
+
+The `hackathon-mixed-rc10` annotated tag was created on commit
+`17b284e31534e3ae765eaf009e9f8885f63678c7`, pushed, and audited successfully.
+This `hackathon-mixed-rc11` publication-freeze release preserves the same
+truthful `Mixed real/fallback` boundary while polishing the final handoff and
+judge-facing generated assets.
+
+Issue #29 implementation commits:
 
 - `bfc5b96` - issue #29 story/flywheel implementation, regenerated bundle, and
   updated submission copy.
 - `9da51ab` - HB2 native-Windows validation fixes and release handoff updates.
-
-No completion comment has been posted yet, and issue #29 should not be closed
-until the annotated tag audit passes.
+- `17b284e` - HB3 RC10 release gate, branch/tag publication, and synchronized
+  release manifest.
 
 Settlement shown on screen:
 
@@ -175,6 +180,10 @@ Wording replacements made:
   language.
 - the old alternatives-decline subtitle was replaced with project-agent funding
   and verifier-backed work language.
+- RC11 additionally cleans the visible director copy so internal IDs and
+  low-level verifier fields render as human-readable labels:
+  `background study`, `Settlement mode: deterministic fallback`, and
+  `Python terminal/TUI specialist`.
 
 Proof commands:
 
@@ -187,21 +196,27 @@ STALE_RE="$(printf '%s|' \
   'Minimum remaining reserve ''would be violated' \
   'minimum remaining reserve ''would be violated' \
   'Policy and budget select one bounded bounty while alternatives ''can decline' \
-  'alternatives ''can decline')"
-rg -n "${STALE_RE%|}" README.md submission demo/bundles/winning-run
+  'alternatives ''can decline' \
+  'not funded: Not ''funded' \
+  'background''_study' \
+  'Transfer provider: ''fake' \
+  'solver_python_terminal''_tui')"
+rg -n "${STALE_RE%|}" \
+  README.md \
+  submission \
+  demo/bundles/winning-run/README.md \
+  demo/bundles/winning-run/dashboard.html \
+  demo/bundles/winning-run/recording-timeline.md \
+  demo/bundles/winning-run/director.html \
+  demo/bundles/winning-run/director-record.html \
+  demo/bundles/winning-run/director-notes.html \
+  demo/bundles/winning-run/director-cues.json
 rg -n "Operating credit|Operator payout|external_transfer_amount|retained_operating_amount" demo/bundles/winning-run/dashboard.html demo/bundles/winning-run/bundle.json submission/DEMO_SCRIPT.md submission/JUDGE_QA.md
 ```
 
 The first command should return no judge-facing stale wording. The second should
 show the reversed `$25 / $20 / $5` split and the persisted
 `external_transfer_amount=500`, `retained_operating_amount=2000` evidence.
-
-Remaining issue #29 closeout after this commit:
-
-- Create the immutable annotated `hackathon-mixed-rc10` tag from this commit.
-- Run `release-audit --tag hackathon-mixed-rc10`.
-- Push the branch/tag, comment on issue #29 with the final validation evidence,
-  and close issue #29 only after that completion gate is satisfied.
 
 ## Current Blockers
 
@@ -257,7 +272,7 @@ nix develop --command python3 -m agent_bounty submission-check
 nix develop --command python3 -m agent_bounty submission-check --entry
 nix develop --command python3 -m agent_bounty submission-finalize --state .demo/operator-submission.json --output .demo/final-submission --check
 nix develop --command python3 -m agent_bounty submission-check --entry --prepost
-nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc10
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc11
 nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
 nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 120 --check
 nix develop --command python3 -m compileall agent_bounty tests verifiers
@@ -266,7 +281,7 @@ nix flake check
 git diff --check
 ```
 
-Observed on HB3 before final rc10 commit:
+Observed on HB3 during the RC11 publication-freeze pass:
 
 ```text
 focused tests: 75 passed
@@ -277,15 +292,15 @@ submission-check --entry: ok=true, placeholders remain by design
 submission-finalize --check: ok=true with ignored local operator state
 submission-check --entry --prepost: ok=true with default .demo/operator-submission.json
 release-audit: ok=true, errors=[]
-release-audit --tag hackathon-mixed-rc10: pending annotated tag creation on the final release commit
+release-audit --tag hackathon-mixed-rc11: run after creating the immutable annotated RC11 tag
 stale judge-facing wording scan: no matches in README.md, submission, or demo/bundles/winning-run
 replay rehearsal: 5/5 validations passed
 director check: ok=true, url=http://127.0.0.1:8788/director.html?duration=120
-bundle digest: sha256:c6f777af7f96dfe4ab24d5277afb9f372d01251c99b12b089c156907821f74fc
-attestation digest: sha256:3b858055f31df566e3827900137ad75f8c89486128675ed87130bbcc295ef703
-truth matrix digest: sha256:d719c1fe6858b5c8a609dfea4eaf2904c61ee3969e8f5aeb0c4e1d03b2bcbb9d
-full Linux/Nix unittest suite: 202 tests passed, 2 skipped
-nix flake check: passed
+bundle digest: sha256:dbabfb881de7a83535e2bb25d54dbf478ebdebf44e317250f1e48de53f13caa6
+attestation digest: sha256:dc670b9c69ca45b80882ceb7ab8dd1e1787588518138936e7983bb1a48c8efc3
+truth matrix digest: sha256:6375530668244ab15891c0a89c1197e5847a1133766c7bdb55c601e4a4b98421
+full Linux/Nix unittest suite: run before publishing RC11
+nix flake check: run before publishing RC11
 git diff --check: passed
 ```
 
@@ -295,6 +310,15 @@ Use `submission/RECORDING_RUNBOOK.md`. Serve director mode with
 `demo-director`, record
 `http://127.0.0.1:8788/director-record.html?duration=120&autoplay=1`, keep the
 `Mixed real/fallback` badge visible, and say the blockers plainly.
+
+Windows static-server fallback, after the bundle has been generated:
+
+```powershell
+py -3 -m http.server 8789 --directory demo/bundles/winning-run
+```
+
+Then record:
+`http://127.0.0.1:8789/director-record.html?duration=120&autoplay=1`
 
 ## Submission Checklist
 
@@ -316,6 +340,6 @@ Use `submission/RECORDING_RUNBOOK.md`. Serve director mode with
 - [x] HB2 replay, director, submission draft, release audit, and focused tests
   passed where the local native-Windows environment could exercise them.
 - [x] Full native HB2 unittest suite passed.
-- [x] Full Linux/Nix test suite passes for rc10.
-- [x] Nix flake check passes for rc10.
+- [x] Full Linux/Nix test suite passes for the release branch.
+- [x] Nix flake check passes for the release branch.
 - [ ] Complete sponsor-integrated live run captured.

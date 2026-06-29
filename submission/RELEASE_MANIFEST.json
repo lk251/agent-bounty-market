@@ -1,12 +1,12 @@
 {
   "schema": "agent-bounty-release-manifest-v2",
-  "release_tag": "hackathon-mixed-rc10",
+  "release_tag": "hackathon-mixed-rc11",
   "source_baseline_sha": "72ba26b69d38ce8ca5485be943afa1b57f9d6ab5",
   "source_baseline_note": "This is the historical source baseline used to generate earlier release metadata. The immutable release target is the Git annotated tag object, not a self-referential committed manifest field.",
   "truth_status": "Mixed real/fallback",
-  "bundle_digest": "sha256:c6f777af7f96dfe4ab24d5277afb9f372d01251c99b12b089c156907821f74fc",
-  "attestation_digest": "sha256:3b858055f31df566e3827900137ad75f8c89486128675ed87130bbcc295ef703",
-  "truth_matrix_digest": "sha256:d719c1fe6858b5c8a609dfea4eaf2904c61ee3969e8f5aeb0c4e1d03b2bcbb9d",
+  "bundle_digest": "sha256:dbabfb881de7a83535e2bb25d54dbf478ebdebf44e317250f1e48de53f13caa6",
+  "attestation_digest": "sha256:dc670b9c69ca45b80882ceb7ab8dd1e1787588518138936e7983bb1a48c8efc3",
+  "truth_matrix_digest": "sha256:6375530668244ab15891c0a89c1197e5847a1133766c7bdb55c601e4a4b98421",
   "test_counts": {
     "focused_release_gate_tests": "HB3: 75 passed",
     "focused_submission_gates": "HB3: standard, entry draft, prepost, finalizer check passed",
@@ -17,9 +17,9 @@
     "nix_flake_check": "passed"
   },
   "fresh_clone_status": {
-    "status": "validated-for-rc10",
+    "status": "validated-for-rc11",
     "scope": "HB3 regenerated the static mixed bundle with the Motoko fixture and passed the Linux/Nix release gate.",
-    "note": "Fresh regenerated bundle digests are timestamp-dependent; the committed release manifest records the validated rc10 bundle digests."
+    "note": "Fresh regenerated bundle digests are timestamp-dependent; the committed release manifest records the validated rc11 bundle digests."
   },
   "known_blockers": [
     "NVIDIA/Nemotron provider credentials are not configured.",
@@ -35,7 +35,7 @@
     "nix develop --command python3 -m agent_bounty submission-check --entry --prepost",
     "nix develop --command python3 -m agent_bounty submission-finalize --state .demo/operator-submission.json --output .demo/final-submission --check",
     "nix develop --command python3 -m agent_bounty video-check --file /path/to/final-video.mp4",
-    "nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc10",
+    "nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc11",
     "nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5",
     "nix develop --command python3 -m unittest discover -s tests",
     "nix flake check"

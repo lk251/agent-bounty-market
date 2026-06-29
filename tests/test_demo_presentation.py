@@ -140,6 +140,13 @@ class DemoPresentationTests(unittest.TestCase):
             self.assertNotIn("500 USD", serialized)
             self.assertNotIn("github.test", serialized)
             self.assertNotIn("agent_declined", serialized)
+            for marker in (
+                "not funded: Not funded",
+                "background_study",
+                "Transfer provider: fake",
+                "solver_python_terminal_tui",
+            ):
+                self.assertNotIn(marker, serialized)
             self.assertNotIn("sk_test_", serialized)
             self.assertNotIn("whsec_", serialized)
             self.assertNotIn("ghp_", serialized)

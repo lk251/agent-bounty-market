@@ -28,7 +28,7 @@ nix develop --command python3 -m agent_bounty demo-build-winning-run \
 
 nix develop --command python3 -m agent_bounty submission-check
 
-nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc10
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc11
 
 nix develop --command python3 -m agent_bounty demo-rehearse \
   --mode replay \
