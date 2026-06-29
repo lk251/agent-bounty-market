@@ -128,7 +128,7 @@ class SubmissionCheckTests(unittest.TestCase):
     def test_entry_character_count_mismatch_fails(self):
         with copied_submission_tree() as root:
             tweet = root / "submission" / "TWEET.md"
-            tweet.write_text(tweet.read_text(encoding="utf-8").replace("Character count: 243", "Character count: 242", 1), encoding="utf-8")
+            tweet.write_text(tweet.read_text(encoding="utf-8").replace("Character count: 251", "Character count: 250", 1), encoding="utf-8")
             report = submission_check_report(root, entry=True)
         self.assertFalse(report["ok"])
         self.assertIn("tweet_character_count_mismatch", error_codes(report))

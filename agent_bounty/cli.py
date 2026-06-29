@@ -14,6 +14,7 @@ from typing import Any
 from .core import AgentBountyMarket, MarketError
 from .db import connect
 from .demo_presentation import (
+    DEFAULT_DIRECTOR_DURATION_SECONDS,
     DemoPresentationError,
     demo_preflight_report,
     live_refusal_report,
@@ -2431,11 +2432,11 @@ def build_parser() -> argparse.ArgumentParser:
     demo_serve.add_argument("--check", action="store_true", help="validate and print serve metadata without starting the server")
     demo_serve.set_defaults(func=cmd_demo_serve)
 
-    demo_director = sub.add_parser("demo-director", help="validate and serve the bundle-backed two-minute presentation director")
+    demo_director = sub.add_parser("demo-director", help="validate and serve the bundle-backed presentation director")
     demo_director.add_argument("--bundle", required=True)
     demo_director.add_argument("--host", default="127.0.0.1")
     demo_director.add_argument("--port", type=int, default=8788)
-    demo_director.add_argument("--duration", type=int, default=120)
+    demo_director.add_argument("--duration", type=int, default=DEFAULT_DIRECTOR_DURATION_SECONDS)
     demo_director.add_argument("--check", action="store_true", help="validate, generate assets, and print director metadata without starting the server")
     demo_director.set_defaults(func=cmd_demo_director)
 

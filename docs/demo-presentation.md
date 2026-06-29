@@ -16,8 +16,10 @@ The hackathon release candidate uses a checked-in mixed bundle at
 `Mixed real/fallback` badge.
 
 For recording, the preferred surface is the bundle-backed director mode. It
-generates a seven-scene, two-minute static presentation from the same validated
-bundle data and keeps presenter notes out of the record route.
+generates a nine-scene, 155-second static presentation from the same validated
+bundle data and keeps presenter notes out of the record route. The rc12 cut
+opens with the frontier-level open-source AI engine goal, keeps the middle
+market demo concise, and closes on the two learning loops.
 
 ## Commands
 
@@ -61,14 +63,14 @@ python -m agent_bounty demo-director \
   --bundle demo/bundles/winning-run \
   --host 127.0.0.1 \
   --port 8788 \
-  --duration 120 \
+  --duration 155 \
   --check
 
 python -m agent_bounty demo-director \
   --bundle demo/bundles/winning-run \
   --host 127.0.0.1 \
   --port 8788 \
-  --duration 120
+  --duration 155
 
 python -m agent_bounty demo-live
 python -m agent_bounty demo-reset --yes
@@ -84,11 +86,11 @@ Each bundle directory contains:
 - `bundle.json`: sanitized run data, persisted table snapshot, timeline, and
   summary;
 - `dashboard.html`: static event-backed presentation surface.
-- `recording-timeline.md`: deterministic two-minute recording cues.
+- `recording-timeline.md`: deterministic 155-second recording cues.
 - `director.html`: interactive presenter view with notes.
 - `director-record.html`: clean capture route with no presenter notes.
 - `director-notes.html`: off-screen presenter notes view.
-- `director-cues.json`: machine-readable seven-scene timing and voiceover cues.
+- `director-cues.json`: machine-readable nine-scene timing and voiceover cues.
 - `attestation.json`: hashed attestation, with no private signing key.
 - `evidence/*.json`: compact evidence files for the truth matrix and demo
   counts.
@@ -105,7 +107,7 @@ truth status without starting the server.
 `demo-director` also validates before serving. It writes only static director
 assets inside the bundle directory, uses the bundle truth badge on every scene,
 supports arrow/space/restart/escape controls, honors reduced-motion preferences,
-and provides `director-record.html?duration=120&autoplay=1` as the clean
+and provides `director-record.html?duration=155&autoplay=1` as the clean
 capture URL.
 
 ## Current Truth Boundary

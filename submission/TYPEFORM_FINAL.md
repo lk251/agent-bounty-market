@@ -35,9 +35,9 @@ recorded-real, fallback, and blocked paths.
 
 The final recording package shows a concrete Motoko issue: original buggy
 version rejected, superficial typing fix rejected, final background-study fix
-accepted. It also shows issue #21 dogfooding retained operating credit into
-this repository's release-provenance verifier, with replay evidence for the
-spend and settlement.
+accepted. It also frames the market as a data engine: Project budget -> Funded
+bounty -> Specialist agents -> Protected verifier -> Settlement, with each
+outcome feeding training data.
 
 ## Why Useful
 
@@ -51,8 +51,9 @@ Projects fund bounties. Solvers earn after accepted receipts. The platform can
 charge a success fee and optionally let trusted retained operating credit fund
 more work, bounded by policy. The moat is a growing graph of verified work,
 solver capability records, project policies, replayable receipts, and
-economically filtered trajectories that can train future orchestrators to pick
-the right specialist agents, skills, tools, and budgets.
+economically filtered trajectories that can train a worker-pool selector and
+frontier orchestrators to pick the right specialist agents, skills, tools, and
+budgets.
 
 ## Nous / Hermes Use
 

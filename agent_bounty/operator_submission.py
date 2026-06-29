@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .demo_presentation import DEFAULT_DIRECTOR_DURATION_SECONDS
 from .release_integrity import release_audit_report
 from .submission_check import SECRET_PATTERNS
 from .util import file_digest, sha256_bytes, stable_json
@@ -297,8 +298,8 @@ def recording_acceptance_report(root: Path | None = None) -> dict[str, Any]:
     if release.get("bundle_digest") != bundle_digest:
         errors.append(_error("recording_bundle_digest_mismatch", "submission/RELEASE_MANIFEST.json", "release manifest bundle digest must match director bundle"))
     scenes = cues.get("scenes") if isinstance(cues.get("scenes"), list) else []
-    if len(scenes) != 7:
-        errors.append(_error("recording_scene_count", "demo/bundles/winning-run/director-cues.json", "director must expose seven scenes"))
+    if len(scenes) != 9:
+        errors.append(_error("recording_scene_count", "demo/bundles/winning-run/director-cues.json", "director must expose nine scenes"))
     if cues.get("truth_badge") != "Mixed real/fallback":
         errors.append(_error("recording_truth_badge", "demo/bundles/winning-run/director-cues.json", "director truth badge must be Mixed real/fallback"))
     for rel in ["submission/VOICEOVER_FINAL.md", "submission/RECORDING_RUNBOOK.md"]:
@@ -318,7 +319,7 @@ def recording_acceptance_report(root: Path | None = None) -> dict[str, Any]:
         "bundle_digest": bundle_digest,
         "scene_count": len(scenes),
         "truth_badge": cues.get("truth_badge"),
-        "record_url": "http://127.0.0.1:8788/director-record.html?duration=120&autoplay=1",
+        "record_url": f"http://127.0.0.1:8788/director-record.html?duration={DEFAULT_DIRECTOR_DURATION_SECONDS}&autoplay=1",
         "errors": errors,
     }
 

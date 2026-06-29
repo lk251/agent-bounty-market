@@ -41,6 +41,7 @@ DIRECTOR_REPORT_SCHEMA = "agent-bounty-demo-director-v1"
 DIRECTOR_CUES_SCHEMA = "agent-bounty-demo-director-cues-v1"
 MOTOKO_VERIFICATION_FRAGMENT_SCHEMA = "motoko-verification-fragment-v1"
 ISSUE21_DOGFOOD_EVIDENCE_SCHEMA = "agent-bounty-issue21-dogfood-evidence-v1"
+DEFAULT_DIRECTOR_DURATION_SECONDS = 155
 DEFAULT_INTERMEDIATE_COMMIT = "fdf54095b5cb8aca81984993bcd38176ccadad32"
 MOTOKO_ORIGINAL_CASE = "original-buggy-version"
 MOTOKO_SUPERFICIAL_CASE = "superficial-typing-fix"
@@ -77,16 +78,18 @@ REQUIRED_DASHBOARD_TEXT = (
     "Issue #21 dogfood",
     "Fallbacks and blockers",
     "Recording cues",
-    "data engine for better agent orchestration",
+    "frontier-level open-source AI engine",
 )
 RECORDING_STAGES = (
-    ("00:00", "Problem", "Open-source projects need a native market where project agents can buy verified fixes and specialist agents can earn from them."),
-    ("00:15", "Project spends", "The project agent uses its budget to fund a $25 Motoko bounty because the task has a protected verifier."),
-    ("00:35", "Agents choose", "Frontend and CUDA specialists decline; the Python terminal/TUI specialist claims the task because it matches history and margin."),
-    ("00:55", "Verification", "The verifier rejects the original bug and superficial typing fix, then accepts only the final background-study fix."),
-    ("01:20", "Settlement", "The solver earns $25; its wallet keeps $20 as operating credit and sends $5 through the Stripe settlement path to the operator account."),
-    ("01:40", "Flywheel", "Every claim, decline, patch, verifier result, payout, and spend becomes high-quality training data for future orchestrators."),
-    ("02:05", "Close", "Agent Bounty Market is a verified agent labor market and a data engine for better agent orchestration."),
+    ("00:00", "Building an Open Source Frontier Engine", "The bigger goal is an open-source frontier engine that learns from verified software work."),
+    ("00:16", "Agent Bounty Market is that data engine", "Project budgets fund bounties; specialist agents compete; protected verifiers decide; settlement records the outcome."),
+    ("00:34", "Problem", "Open-source projects need a native market where project agents can buy verified fixes and specialist agents can earn from them."),
+    ("00:48", "Project spends", "The project agent uses its budget to fund a $25 Motoko bounty because the task has a protected verifier."),
+    ("01:05", "Agents choose", "Frontend and CUDA specialists decline; the Python terminal/TUI specialist claims the task because it matches history and margin."),
+    ("01:21", "Verification", "The verifier rejects the original bug and superficial typing fix, then accepts only the final background-study fix."),
+    ("01:42", "Settlement", "The solver earns $25; its wallet keeps $20 as operating credit and sends $5 through the Stripe settlement path to the operator account."),
+    ("01:59", "One market, two learning loops", "The market data trains both a fast worker selector and a frontier orchestrator loop."),
+    ("02:24", "Close", "Agent Bounty Market is a verified agent labor market — and a path toward a frontier-level open-source AI engine."),
 )
 MARES_WORDMARK = "MARES ENGINEERING"
 MARES_DISPLAY_FONT_FACE = """
@@ -488,7 +491,7 @@ def prepare_demo_serve_report(*, bundle_dir: Path, host: str = "127.0.0.1", port
     }
 
 
-def prepare_demo_director_report(*, bundle_dir: Path, host: str = "127.0.0.1", port: int = 8788, duration: int = 120) -> dict[str, Any]:
+def prepare_demo_director_report(*, bundle_dir: Path, host: str = "127.0.0.1", port: int = 8788, duration: int = DEFAULT_DIRECTOR_DURATION_SECONDS) -> dict[str, Any]:
     validation = validate_bundle(bundle_dir)
     assets = write_director_assets(bundle_dir, duration=duration) if validation["ok"] else {}
     url = f"http://{host}:{int(port)}/director.html?duration={int(duration)}"
@@ -1025,7 +1028,7 @@ Contents:
   matrix.
 - `attestation.json`: hashed attestation only; no signing key was created.
 - `dashboard.html`: static presentation surface.
-- `recording-timeline.md`: deterministic two-minute recording cues.
+- `recording-timeline.md`: deterministic 155-second recording cues.
 - `evidence/*.json`: compact evidence slices.
 """
 
@@ -1061,7 +1064,7 @@ def render_recording_timeline(bundle: dict[str, Any]) -> str:
         "",
         f"Truth: `{timeline.get('truth_overall')}`",
         "",
-        "## Two-Minute Cues",
+        "## 155-Second Cues",
         "",
     ]
     for stage in timeline["stages"]:
@@ -1072,7 +1075,7 @@ def render_recording_timeline(bundle: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def write_director_assets(bundle_dir: Path, *, duration: int = 120) -> dict[str, Any]:
+def write_director_assets(bundle_dir: Path, *, duration: int = DEFAULT_DIRECTOR_DURATION_SECONDS) -> dict[str, Any]:
     validation = validate_bundle(bundle_dir)
     if not validation["ok"]:
         return {"ok": False, "paths": [], "scene_count": 0, "mismatches": validation["mismatches"]}
@@ -1093,7 +1096,7 @@ def write_director_assets(bundle_dir: Path, *, duration: int = 120) -> dict[str,
     return {"ok": True, "paths": written, "scene_count": len(data["scenes"]), "cues_digest": sha256_text(stable_json(cues))}
 
 
-def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[str, Any]:
+def build_director_data(bundle: dict[str, Any], *, duration: int = DEFAULT_DIRECTOR_DURATION_SECONDS) -> dict[str, Any]:
     summary = bundle.get("summary") or {}
     snapshot = bundle.get("snapshot") or {}
     truth = bundle.get("truth_matrix") or {}
@@ -1109,16 +1112,55 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
     solver_evals = snapshot.get("solver_agent_evaluations") or []
     receipts = snapshot.get("verification_receipts") or []
     allocation = (bundle.get("demo_result") or {}).get("allocation") or {}
-    durations = _scene_durations(max(30, int(duration)), 7)
+    durations = _scene_durations(max(45, int(duration)), 9)
     badge = summary.get("mode_badge") or _expected_badge(bundle)
 
     scenes = [
+        _director_scene(
+            "open-source-frontier-engine",
+            "Building an Open Source Frontier Engine",
+            "Verified open-source work can become training fuel for frontier-level agents.",
+            badge,
+            durations[0],
+            [
+                ("Goal", "frontier-level open-source AI engine"),
+                ("Raw material", "verified software work"),
+                ("Learning signal", "economic outcomes"),
+            ],
+            [
+                "Not just one bug fix: create a repeatable market for useful open-source work.",
+                "Every funded task can produce code, evidence, and a labeled outcome.",
+                "The long game is better project agents, better solver agents, and stronger orchestration.",
+            ],
+            "Our bigger goal is not just one bug fix. It is building an open-source frontier engine from verified open-source work: projects fund tasks, agents attempt them, verifiers decide what is real, and the outcomes become learning signal.",
+        ),
+        _director_scene(
+            "market-data-engine",
+            "Agent Bounty Market is that data engine",
+            "A market transaction creates the data a future orchestrator needs.",
+            badge,
+            durations[1],
+            [
+                ("Flow", "budget -> bounty -> agents -> verifier -> settlement"),
+                ("Output", "training data"),
+                ("Truth", badge),
+            ],
+            [
+                "Project budget becomes a funded bounty.",
+                "Specialist agents claim or decline based on skill and margin.",
+                "A protected verifier and settlement path turn attempts into labeled outcomes.",
+                "All of it becomes training data.",
+            ],
+            "Our thesis is that an agent labor market can become that engine. Project budget becomes a funded bounty, specialist agents claim or decline, a protected verifier decides, settlement records the result, and all of it becomes training data.",
+            flow=["Project budget", "Funded bounty", "Specialist agents", "Protected verifier", "Settlement"],
+            flow_footer="All of it becomes training data.",
+        ),
         _director_scene(
             "problem",
             "Problem",
             "Open-source projects need a native market for verified software work.",
             badge,
-            durations[0],
+            durations[2],
             [
                 ("Bounty", primary_bounty.get("title") or "unavailable in bundle"),
                 ("Issue", primary_bounty.get("issue_ref") or "unavailable"),
@@ -1137,7 +1179,7 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
             "Project spends",
             "The project agent funds the measurable issue with a verifier; vague or unaffordable work is left unfunded.",
             badge,
-            durations[1],
+            durations[3],
             [
                 ("Project", summary.get("project")),
                 ("Reward", _money(summary.get("reward"), summary.get("currency"))),
@@ -1152,7 +1194,7 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
             "Agents choose",
             "Specialized solver profiles can decline or claim based on capability and margin.",
             badge,
-            durations[2],
+            durations[4],
             [
                 ("Solver decisions", f"{len(solver_evals)} recorded"),
                 ("Claimed solver", _solver_display(allocation.get("solver_id"))),
@@ -1166,7 +1208,7 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
             "Verification",
             "Evidence, not persuasion, decides whether payment can happen.",
             badge,
-            durations[3],
+            durations[5],
             [
                 ("Candidate", _short(summary.get("candidate_sha"))),
                 ("Receipt", _short(summary.get("receipt_id"))),
@@ -1180,7 +1222,7 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
             "Settlement",
             "The solver-side wallet decides how accepted reward becomes operating credit and operator payout.",
             badge,
-            durations[4],
+            durations[6],
             [
                 ("Reward", _money(allocation.get("reward_amount"), allocation.get("currency"))),
                 ("Operating credit", _money(allocation.get("retained_operating_amount"), allocation.get("currency"))),
@@ -1195,40 +1237,61 @@ def build_director_data(bundle: dict[str, Any], *, duration: int = 120) -> dict[
             "The solver earns the $25 bounty. Its wallet keeps $20 as operating credit for tools, API calls, compute, or future bounties, and sends $5 through the Stripe settlement path to the operator account. The split is recorded exactly once.",
         ),
         _director_scene(
-            "flywheel",
-            "Flywheel",
-            "Paid and rejected market outcomes become training data for better orchestrators.",
+            "two-learning-loops",
+            "One market, two learning loops",
+            "The same market data trains fast routing and frontier orchestration.",
             badge,
-            durations[5],
+            durations[7],
             [
-                ("Operating credit", _money(summary.get("retained_operating_credit"), summary.get("currency"))),
-                ("Follow-up bounty", followup_bounty.get("title") or summary.get("second_bounty")),
-                ("Follow-up state", followup_bounty.get("state") or "unavailable"),
-                ("Dogfood issue", _short((dogfood.get("safe_evidence") or {}).get("issue_url"), keep=80)),
+                ("Center", "Bounties, claims, declines, patches, verifier results, payouts"),
+                ("Fast loop", "worker-pool selector"),
+                ("Long loop", "frontier orchestrator training"),
             ],
             [
-                "Every claim, decline, patch, verifier result, payout, and spend becomes a labeled trajectory.",
-                "Economic outcomes filter the data: paid accepted work is high-signal, rejected work is negative signal.",
-                f"Second bounty id: {_short(summary.get('second_bounty'))}",
-                f"Issue #21 candidate: {_short((dogfood.get('safe_evidence') or {}).get('candidate_sha'))}",
-                f"Issue #21 receipt: {_short((dogfood.get('safe_evidence') or {}).get('receipt_id'))}",
-                f"Retained-credit replay: {_yes_no((dogfood.get('safe_evidence') or {}).get('retained_credit_spend_replay'))}; settlement replay: {_yes_no((dogfood.get('safe_evidence') or {}).get('second_settlement_replay'))}",
+                "Bounties, claims, declines, patches, verifier results, and payouts become the center dataset.",
+                "A fast selector learns which worker pool to call next.",
+                "Full accepted paid trajectories train deeper orchestration over tools, repos, and patch paths.",
+                "Feedback creates stronger project agents and stronger solver agents.",
+                "Economic outcomes filter the data: paid verified work is high-signal.",
             ],
-            "That operating credit funds the next useful issue. The market also produces high-quality training data for future orchestrators that learn which specialist agents to call.",
+            "Here is the deeper flywheel. The market generates more than code: bounties, claims, declines, patches, verifier results, and payouts. That data trains a fast worker-pool selector, and the full accepted paid trajectories train frontier orchestrators over tool use, repo context, sequencing, and verifier-confirmed outcomes.",
+            learning_loops={
+                "left": {
+                    "title": "Worker-pool fast selector",
+                    "items": ["claims/declines", "worker success/failure", "verifier pass/fail", "cost/reward/margin"],
+                },
+                "center": {
+                    "title": "Agent Bounty Market",
+                    "items": ["Bounties", "claims", "declines", "patches", "verifier results", "payouts"],
+                },
+                "right": {
+                    "title": "Frontier orchestrator training",
+                    "items": ["full accepted paid trajectories", "tool use + sequencing", "repo context + patch path", "verifier-confirmed outcomes"],
+                },
+                "feedback": "Stronger project agents and stronger solver agents",
+                "footer": "Economic outcomes filter the data: paid verified work is high-signal.",
+            },
         ),
         _director_scene(
             "close",
             "Close",
-            "A verified agent labor market and a data engine for better agent orchestration.",
+            "A verified agent labor market and a path toward a frontier-level open-source AI engine.",
             badge,
-            durations[6],
+            durations[8],
             [
                 ("Truth overall", truth.get("overall_status") or bundle.get("truth_mode")),
                 ("Real rows", _truth_count(rows, "real")),
                 ("Fallback/blocked rows", _truth_count(rows, "fallback") + _truth_count(rows, "blocked")),
             ],
-            _truth_bullets(rows),
-            "Agent Bounty Market turns open-source maintenance into a verified agent labor market and a data engine for better agent orchestration.",
+            [
+                "The demo stays Mixed real/fallback: no fake live sponsor behavior is claimed.",
+                f"Follow-up bounty: {_short(summary.get('second_bounty'))}",
+                f"Issue #21 candidate: {_short((dogfood.get('safe_evidence') or {}).get('candidate_sha'))}",
+                f"Issue #21 receipt: {_short((dogfood.get('safe_evidence') or {}).get('receipt_id'))}",
+                f"Retained-credit replay: {_yes_no((dogfood.get('safe_evidence') or {}).get('retained_credit_spend_replay'))}; settlement replay: {_yes_no((dogfood.get('safe_evidence') or {}).get('second_settlement_replay'))}",
+                "The market is a path toward a frontier-level open-source AI engine.",
+            ],
+            "Agent Bounty Market turns open-source maintenance into a verified agent labor market — and a path toward a frontier-level open-source AI engine.",
         ),
     ]
     start = 0
@@ -1273,8 +1336,12 @@ def _director_scene(
     stats: list[tuple[str, Any]],
     bullets: list[str],
     voiceover: str,
+    *,
+    flow: list[str] | None = None,
+    flow_footer: str | None = None,
+    learning_loops: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    scene = {
         "id": scene_id,
         "title": title,
         "subtitle": subtitle,
@@ -1284,6 +1351,13 @@ def _director_scene(
         "bullets": [str(item) for item in bullets if item],
         "voiceover": voiceover,
     }
+    if flow:
+        scene["flow"] = [str(item) for item in flow]
+        if flow_footer:
+            scene["flow_footer"] = str(flow_footer)
+    if learning_loops:
+        scene["learning_loops"] = learning_loops
+    return scene
 
 
 def _scene_durations(total: int, count: int) -> list[int]:
@@ -1357,6 +1431,18 @@ h1{{font-family:var(--mares-display);font-size:68px;line-height:.96;margin:0 0 1
 .subtitle{{font-size:30px;line-height:1.18;color:rgba(239,239,239,.82);max-width:980px;margin-bottom:32px}}
 .bullets{{list-style:none;padding:0;margin:0;display:grid;gap:14px}}
 .bullets li{{font-size:24px;line-height:1.28;background:rgba(12,18,25,.72);border:1px solid rgba(151,208,236,.16);border-left:6px solid var(--mares-blue);padding:16px 18px;border-radius:8px;box-shadow:0 18px 48px rgba(0,0,0,.22)}}
+.flow-rail{{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:20px 0 18px;align-items:stretch}}
+.flow-step{{position:relative;min-height:88px;padding:14px 12px;border:1px solid rgba(151,208,236,.3);border-radius:8px;background:rgba(5,10,16,.78);display:grid;place-items:center;text-align:center;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;font-weight:800;color:var(--mares-white);box-shadow:0 16px 42px rgba(0,0,0,.2)}}
+.flow-step:not(:last-child)::after{{content:"";position:absolute;right:-14px;top:50%;width:18px;height:2px;background:var(--mares-blue-light);box-shadow:0 0 12px rgba(190,221,234,.55)}}
+.flow-footer{{font-family:var(--mares-display);font-size:25px;line-height:1.1;text-transform:uppercase;color:var(--mares-blue-light);margin:8px 0 18px;text-shadow:0 0 20px rgba(151,208,236,.2)}}
+.loop-grid{{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr);gap:14px;margin:18px 0}}
+.loop-box{{border:1px solid rgba(151,208,236,.24);border-radius:8px;background:rgba(5,10,16,.78);padding:16px;box-shadow:0 18px 48px rgba(0,0,0,.2)}}
+.loop-box.center{{background:rgba(19,38,55,.78);border-color:rgba(190,221,234,.42)}}
+.loop-box h2{{font-family:var(--mares-display);font-size:22px;line-height:1.05;margin:0 0 12px;text-transform:uppercase;letter-spacing:0;color:var(--mares-white)}}
+.loop-box ul{{list-style:none;margin:0;padding:0;display:grid;gap:8px}}
+.loop-box li{{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px;line-height:1.25;color:rgba(239,239,239,.86)}}
+.loop-feedback,.loop-footer{{border:1px solid rgba(151,208,236,.24);border-radius:8px;background:rgba(12,18,25,.72);padding:12px 14px;margin-top:12px;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;color:var(--mares-white)}}
+.loop-footer{{color:var(--mares-blue-light);font-weight:800}}
 .panel{{background:var(--mares-panel);border:1px solid var(--mares-line);border-radius:8px;padding:24px;display:flex;flex-direction:column;gap:20px;min-width:0;box-shadow:0 24px 70px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.05)}}
 .stats{{display:grid;gap:12px}}
 .stat{{border:1px solid rgba(151,208,236,.18);border-radius:8px;padding:14px;background:rgba(5,10,16,.72)}}
@@ -1368,7 +1454,7 @@ h1{{font-family:var(--mares-display);font-size:68px;line-height:.96;margin:0 0 1
 .progress{{height:8px;background:rgba(151,208,236,.12)}}
 .bar{{height:100%;width:0;background:linear-gradient(90deg,var(--mares-blue-strong),var(--mares-blue-light));box-shadow:0 0 20px rgba(151,208,236,.38);transition:width .2s linear}}
 a{{color:var(--mares-blue-light)}}
-@media(max-width:1100px){{.top{{grid-template-columns:1fr;gap:10px;height:auto;align-items:start}}.truth-badge{{white-space:normal}}.stage{{grid-template-columns:1fr;padding:28px 22px}}h1{{font-size:44px}}.subtitle{{font-size:23px}}}}
+@media(max-width:1100px){{.top{{grid-template-columns:1fr;gap:10px;height:auto;align-items:start}}.truth-badge{{white-space:normal}}.stage{{grid-template-columns:1fr;padding:28px 22px}}h1{{font-size:44px}}.subtitle{{font-size:23px}}.flow-rail,.loop-grid{{grid-template-columns:1fr}}.flow-step:not(:last-child)::after{{display:none}}}}
 @media (prefers-reduced-motion: reduce){{.bar{{transition:none}}}}
 </style>
 <script type="application/json" id="director-data">{data_json}</script>
@@ -1405,11 +1491,42 @@ show(index);
 def _render_director_scene(scene: dict[str, Any], *, include_notes: bool) -> str:
     stats = "\n".join(f"<div class=\"stat\"><b>{html.escape(item['label'])}</b><span>{html.escape(item['value'])}</span></div>" for item in scene["stats"])
     bullets = "\n".join(f"<li>{html.escape(item)}</li>" for item in scene["bullets"])
+    flow = _render_director_flow(scene)
+    loops = _render_learning_loops(scene)
     notes = f"<div class=\"notes\"><strong>Presenter Notes:</strong> {html.escape(str(scene['voiceover']))}</div>" if include_notes else ""
     return f"""<section class="stage" data-scene="{html.escape(scene['id'])}">
-  <div><h1>{html.escape(scene['title'])}</h1><div class="subtitle">{html.escape(scene['subtitle'])}</div><ul class="bullets">{bullets}</ul></div>
+  <div><h1>{html.escape(scene['title'])}</h1><div class="subtitle">{html.escape(scene['subtitle'])}</div>{flow}{loops}<ul class="bullets">{bullets}</ul></div>
   <aside class="panel"><div class="truth-badge">{html.escape(scene['truth_badge'])}</div><div class="stats">{stats}</div>{notes}</aside>
 </section>"""
+
+
+def _render_director_flow(scene: dict[str, Any]) -> str:
+    steps = scene.get("flow")
+    if not isinstance(steps, list) or not steps:
+        return ""
+    items = "".join(f"<div class=\"flow-step\">{html.escape(str(step))}</div>" for step in steps)
+    footer = scene.get("flow_footer")
+    footer_html = f"<div class=\"flow-footer\">{html.escape(str(footer))}</div>" if footer else ""
+    return f"<div class=\"flow-rail\">{items}</div>{footer_html}"
+
+
+def _render_learning_loops(scene: dict[str, Any]) -> str:
+    loops = scene.get("learning_loops")
+    if not isinstance(loops, dict):
+        return ""
+
+    def box(key: str, class_name: str = "") -> str:
+        data = loops.get(key) if isinstance(loops.get(key), dict) else {}
+        title = html.escape(str(data.get("title") or key))
+        items = "".join(f"<li>{html.escape(str(item))}</li>" for item in data.get("items", []))
+        extra = f" {class_name}" if class_name else ""
+        return f"<div class=\"loop-box{extra}\"><h2>{title}</h2><ul>{items}</ul></div>"
+
+    feedback = loops.get("feedback")
+    footer = loops.get("footer")
+    feedback_html = f"<div class=\"loop-feedback\">Feedback into: {html.escape(str(feedback))}</div>" if feedback else ""
+    footer_html = f"<div class=\"loop-footer\">{html.escape(str(footer))}</div>" if footer else ""
+    return f"<div class=\"loop-grid\">{box('left')}{box('center', 'center')}{box('right')}</div>{feedback_html}{footer_html}"
 
 
 def render_director_notes_html(data: dict[str, Any]) -> str:
@@ -1606,7 +1723,7 @@ li{{margin:8px 0;color:var(--mares-white)}} li span{{display:block;color:rgba(23
 @media(max-width:1050px){{header{{display:block}}.brand-kicker{{margin-bottom:18px}}.grid,.split{{grid-template-columns:1fr}}.truth-badge{{white-space:normal;margin-top:18px}}.mares-wordmark{{font-size:28px;white-space:normal}}}}
 </style>
 <header><div><div class="mares-wordmark">{MARES_WORDMARK}</div><div class="brand-kicker">Agent Bounty Market demo</div></div><div class="pitch"><h1>Verified Agent Labor Market</h1><p>A project agent spends from a project budget to buy verified software work, a specialist solver earns the bounty, and the solver wallet split is recorded exactly once.</p></div><div class="truth-badge">{html.escape(str(badge))} · {status}</div></header>
-<main><section class="grid">{card_html}</section><section class="split"><div><h2>Fallbacks and blockers</h2><ol>{warning_html}</ol></div><div><h2>Recording cues</h2><ol>{cue_html}</ol></div></section><h2>Timeline</h2><ol>{timeline_html}</ol><p class="final">Agent Bounty Market turns open-source maintenance into a verified agent labor market and a data engine for better agent orchestration.</p></main>
+<main><section class="grid">{card_html}</section><section class="split"><div><h2>Fallbacks and blockers</h2><ol>{warning_html}</ol></div><div><h2>Recording cues</h2><ol>{cue_html}</ol></div></section><h2>Timeline</h2><ol>{timeline_html}</ol><p class="final">Agent Bounty Market turns open-source maintenance into a verified agent labor market — and a path toward a frontier-level open-source AI engine.</p></main>
 </html>
 """
 
@@ -1764,7 +1881,7 @@ def _validate_recording_timeline(path: Path) -> list[str]:
     if not path.exists():
         return ["recording-timeline.md missing"]
     text = path.read_text(encoding="utf-8")
-    required = ["# Recording Timeline", "Mode badge:", "Truth:", "00:00", "00:15", "00:35", "00:55", "01:20", "01:40", "02:05"]
+    required = ["# Recording Timeline", "Mode badge:", "Truth:", *[time for time, _title, _cue in RECORDING_STAGES]]
     return [f"recording timeline missing required text: {item}" for item in required if item not in text]
 
 

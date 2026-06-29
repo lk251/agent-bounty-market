@@ -28,7 +28,7 @@ nix develop --command python3 -m agent_bounty demo-build-winning-run \
 
 nix develop --command python3 -m agent_bounty submission-check
 
-nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc11
+nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc12
 
 nix develop --command python3 -m agent_bounty demo-rehearse \
   --mode replay \
@@ -39,15 +39,17 @@ nix develop --command python3 -m agent_bounty demo-director \
   --bundle demo/bundles/winning-run \
   --host 127.0.0.1 \
   --port 8788 \
-  --duration 120 \
+  --duration 155 \
   --check
 ```
 
 The director record route is
-`http://127.0.0.1:8788/director-record.html?duration=120&autoplay=1`; it and
+`http://127.0.0.1:8788/director-record.html?duration=155&autoplay=1`; it and
 the fallback dashboard must show `Mixed real/fallback`. The bundle includes
 real Hermes executable evidence, prior recorded-real Stripe sandbox evidence,
 deterministic fallback rows, and exact blockers for the remaining live paths.
+The rc12 story frames the market as a verified agent labor market and a path
+toward a frontier-level open-source AI engine.
 
 To upgrade one component later with safe recorded evidence, use the fragment
 import flow in `docs/fragment-import.md`; it validates schemas, digests,

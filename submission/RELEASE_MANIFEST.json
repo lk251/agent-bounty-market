@@ -1,25 +1,28 @@
 {
   "schema": "agent-bounty-release-manifest-v2",
-  "release_tag": "hackathon-mixed-rc11",
-  "source_baseline_sha": "72ba26b69d38ce8ca5485be943afa1b57f9d6ab5",
-  "source_baseline_note": "This is the historical source baseline used to generate earlier release metadata. The immutable release target is the Git annotated tag object, not a self-referential committed manifest field.",
+  "release_tag": "hackathon-mixed-rc12",
+  "source_baseline_sha": "0fb8d1b0928b88a2cdcbc71cc07f2d1436e372ad",
+  "source_baseline_note": "Parent commit before the rc12 frontier-engine story update. The immutable release target is the Git annotated tag object, not a self-referential committed manifest field.",
   "truth_status": "Mixed real/fallback",
   "bundle_digest": "sha256:1fb0682c95a26283881b1e4fd54b5da3a6c6cabc74facf72209d64fe8531903d",
-  "attestation_digest": "sha256:6eb4c68bddcaab7246c68611c03b3eeefc3e0867895fab1b940e9e7f923934c8",
+  "attestation_digest": "sha256:574d2bfad96894a63e7872b0f0b4d830069c85da091870974a795c1469eb328b",
   "truth_matrix_digest": "sha256:6375530668244ab15891c0a89c1197e5847a1133766c7bdb55c601e4a4b98421",
   "test_counts": {
-    "focused_release_gate_tests": "HB3: 75 passed",
-    "focused_submission_gates": "HB3: standard, entry draft, prepost, finalizer check passed",
-    "full_suite": "HB3 Linux/Nix: 202 passed, 2 skipped",
-    "replay_rehearsal": "5/5 validations passed",
-    "director_check": "passed",
-    "stale_judge_wording_scan": "no matches in README.md, submission, or demo/bundles/winning-run",
-    "nix_flake_check": "passed"
+    "focused_release_gate_tests": "HB2 Windows: 66 ran, 10 skipped; passed",
+    "focused_submission_gates": "HB2 Windows: submission-check and submission-check --entry passed",
+    "full_suite": "HB2 Windows: 203 ran, 17 skipped; passed",
+    "py_compile": "HB2 Windows: agent_bounty, verifiers, and tests Python files passed",
+    "replay_rehearsal": "HB2 Windows: 5/5 replay validations passed",
+    "director_check": "HB2 Windows: 155-second director check passed with 9 scenes",
+    "release_audit": "HB2 Windows: pre-tag release-audit passed; tag-aware audit runs after annotated tag creation",
+    "stale_judge_wording_scan": "HB2 Windows: no rc11, 120-second URL, old close, or seven-scene matches in active release files",
+    "diff_check": "HB2 Windows: git diff --check passed with Windows line-ending warnings only",
+    "nix_flake_check": "Not run on HB2 Windows; Linux/Nix continuation is expected on HB3 if needed"
   },
   "fresh_clone_status": {
-    "status": "validated-for-rc11",
-    "scope": "HB3 regenerated the static mixed bundle with the Motoko fixture and passed the Linux/Nix release gate.",
-    "note": "Fresh regenerated bundle digests are timestamp-dependent; the committed release manifest records the validated rc11 bundle digests."
+    "status": "validated-for-rc12-on-hb2-windows",
+    "scope": "HB2 regenerated the static mixed bundle from checked-in sanitized data and validated the rc12 director story without claiming live sponsor execution.",
+    "note": "The committed release manifest records the validated rc12 bundle and attestation digests."
   },
   "known_blockers": [
     "NVIDIA/Nemotron provider credentials are not configured.",
@@ -27,18 +30,17 @@
     "Real GitHub integration token, repository, and webhook secret are not configured.",
     "Fresh split Stripe Connect Transfer is blocked until sandbox env and CLI webhook secret are loaded."
   ],
-  "recording_command": "nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 120",
+  "recording_command": "nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 155",
   "validation_commands": [
     "nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run",
-    "nix develop --command python3 -m agent_bounty submission-check",
-    "nix develop --command python3 -m agent_bounty submission-check --entry",
-    "nix develop --command python3 -m agent_bounty submission-check --entry --prepost",
-    "nix develop --command python3 -m agent_bounty submission-finalize --state .demo/operator-submission.json --output .demo/final-submission --check",
-    "nix develop --command python3 -m agent_bounty video-check --file /path/to/final-video.mp4",
-    "nix develop --command python3 -m agent_bounty release-audit --tag hackathon-mixed-rc11",
-    "nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5",
-    "nix develop --command python3 -m unittest discover -s tests",
-    "nix flake check"
+    "python -m unittest tests.test_demo_director tests.test_demo_presentation tests.test_submission_check tests.test_operator_submission tests.test_release_integrity",
+    "python -m agent_bounty submission-check",
+    "python -m agent_bounty submission-check --entry",
+    "python -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 155 --check",
+    "python -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5",
+    "python -m agent_bounty release-audit --tag hackathon-mixed-rc12",
+    "python -m unittest discover -s tests",
+    "git diff --check"
   ],
   "submission_files": [
     "README.md",
@@ -52,6 +54,8 @@
     "submission/DEMO_SCRIPT_3MIN.md",
     "submission/SHOT_LIST.md",
     "submission/SPONSOR_INTEGRATION.md",
+    "submission/VOICEOVER_FINAL.md",
+    "submission/VIDEO_METADATA.md",
     "submission/RECORDING_RUNBOOK.md",
     "submission/OPERATOR_FINALIZATION.md",
     "submission/operator-submission.example.json",

@@ -11,7 +11,8 @@ software project can fund a bounded task, publish a digest-bound GitHub
 contract, let specialized agents claim or decline, verify exact commits through
 a platform-owned verifier, and settle exactly once. Successful agents can retain
 operating credit that funds another policy-bounded bounty, while every market
-outcome becomes labeled trajectory data for future orchestrators.
+outcome becomes labeled trajectory data for a worker-pool selector and frontier
+orchestrator training.
 
 ## Why Is It Useful?
 
@@ -35,7 +36,8 @@ Projects fund bounties. Solvers earn after accepted receipts. A marketplace or
 platform fee can be charged on successful settlement. Retained operating credit
 lets high-performing solvers compound into future work, still bounded by policy.
 The market also creates economically filtered data about which specialist
-agents, tools, and budgets actually produced accepted work.
+agents, tools, repo paths, verifier outcomes, and budgets actually produced
+accepted work.
 
 ## Main Limitations
 

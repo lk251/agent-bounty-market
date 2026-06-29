@@ -25,13 +25,13 @@ nix develop --command python3 -m agent_bounty demo-director \
   --bundle demo/bundles/winning-run \
   --host 127.0.0.1 \
   --port 8788 \
-  --duration 120
+  --duration 155
 ```
 
 Record:
 
 ```text
-http://127.0.0.1:8788/director-record.html?duration=120&autoplay=1
+http://127.0.0.1:8788/director-record.html?duration=155&autoplay=1
 ```
 
 Check the final MP4:

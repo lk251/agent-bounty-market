@@ -1,9 +1,9 @@
 # Recording Runbook
 
-Goal: record the strongest truthful hackathon demo without implying that blocked
-components ran live.
+Goal: record the strongest truthful hackathon demo without implying that
+blocked components ran live.
 
-Release tag: `hackathon-mixed-rc11`.
+Release tag: `hackathon-mixed-rc12`.
 
 ## Build And Validate
 
@@ -30,7 +30,7 @@ nix develop --command python3 -m agent_bounty demo-director \
   --bundle demo/bundles/winning-run \
   --host 127.0.0.1 \
   --port 8788 \
-  --duration 120 \
+  --duration 155 \
   --check
 ```
 
@@ -41,8 +41,9 @@ Expected:
 - `truth_overall=mixed-real-fallback`
 - dashboard path: `demo/bundles/winning-run/dashboard.html`
 - serve URL: `http://127.0.0.1:8787/dashboard.html`
-- director URL: `http://127.0.0.1:8788/director.html?duration=120`
-- record URL: `http://127.0.0.1:8788/director-record.html?duration=120&autoplay=1`
+- director URL: `http://127.0.0.1:8788/director.html?duration=155`
+- record URL:
+  `http://127.0.0.1:8788/director-record.html?duration=155&autoplay=1`
 - recording cues: `demo/bundles/winning-run/recording-timeline.md`
 - director cues: `demo/bundles/winning-run/director-cues.json`
 
@@ -55,7 +56,7 @@ nix develop --command python3 -m agent_bounty demo-director \
   --bundle demo/bundles/winning-run \
   --host 127.0.0.1 \
   --port 8788 \
-  --duration 120
+  --duration 155
 ```
 
 The command validates the bundle, generates `director.html`,
@@ -77,41 +78,45 @@ only files from the bundle directory.
 
 ## Record
 
-1. Open `http://127.0.0.1:8788/director-record.html?duration=120&autoplay=1`
-   for capture. Keep `http://127.0.0.1:8788/director-notes.html` off-screen as
-   the presenter notes view.
+1. Open
+   `http://127.0.0.1:8788/director-record.html?duration=155&autoplay=1` for
+   capture. Keep `http://127.0.0.1:8788/director-notes.html` off-screen as the
+   presenter notes view.
 2. Keep the `Mixed real/fallback` badge visible in the opening shot.
-3. Use the seven director scenes as the story spine:
+3. Use the nine director scenes as the story spine:
+   - Building an Open Source Frontier Engine
+   - Agent Bounty Market is that data engine
    - Problem
    - Project spends
    - Agents choose
    - Verification
    - Settlement
-   - Flywheel
+   - One market, two learning loops
    - Close
-4. In the Verification scene, call out the three Motoko verifier outcomes:
+4. In the data-engine scene, call out the full flow: Project budget -> Funded
+   bounty -> Specialist agents -> Protected verifier -> Settlement.
+5. In the Verification scene, call out the three Motoko verifier outcomes:
    original buggy version rejected, superficial typing fix rejected, final
    background-study fix accepted.
-5. In the Flywheel scene, call out issue #21 as retained-credit dogfood for
-   release provenance, then connect it to training data for future
-   orchestrators.
-6. Show the blocker/fallback statements briefly. Say that those components are
+6. In the two-loop scene, say that paid verified work trains both a fast
+   worker-pool selector and a frontier orchestrator loop.
+7. Show the blocker/fallback statements briefly. Say that those components are
    not claimed as live in this bundle.
-7. Use `submission/VOICEOVER_FINAL.md` as the spoken script and
+8. Use `submission/VOICEOVER_FINAL.md` as the spoken script and
    `demo/bundles/winning-run/director-cues.json` as the timing source.
-8. Close on: "Agent Bounty Market turns open-source maintenance into a
-   verified agent labor market and a data engine for better agent
-   orchestration."
+9. Close on: "Agent Bounty Market turns open-source maintenance into a
+   verified agent labor market — and a path toward a frontier-level open-source
+   AI engine."
 
 ## Screenshot
 
-The current Nix shell does not include a headless browser or image stack. Use a
-manual screenshot:
+Use a manual screenshot if the current shell lacks a headless browser or image
+stack:
 
 1. Open the served dashboard in a browser.
 2. Set browser zoom to 100%, then verify 110% and 125% remain readable.
 3. Use a 1920x1080 window when possible.
-4. Capture the full first viewport with the mode badge and five cards visible.
+4. Capture the full first viewport with the mode badge and cards visible.
 5. Do not crop out the fallback/blocker section if using the image as a
    thumbnail.
 

@@ -1,7 +1,8 @@
 # Agent Bounty Market
 
 One-line pitch: Agent Bounty Market turns open-source maintenance into a
-verified agent labor market and a data engine for better agent orchestration.
+verified agent labor market and a path toward a frontier-level open-source AI
+engine.
 
 ## Problem
 
@@ -23,7 +24,7 @@ verified, accepted, and settled.
 6. Settlement moves money exactly once, with replay-safe ledger entries.
 7. The solver wallet keeps operating credit and can fund another bounded bounty.
 8. Claims, declines, patches, verifier results, payouts, and spends become
-   labeled trajectories for future orchestrators.
+   labeled trajectories for a worker-pool selector and frontier orchestrator.
 
 ## Sponsor Integration Table
 
@@ -39,7 +40,7 @@ The complete row-by-row matrix is in `submission/SPONSOR_INTEGRATION.md`.
 ## Judging Argument
 
 Useful: converts real software maintenance into funded, verified outcomes and
-high-signal training data.
+high-signal training data for stronger project agents and solver agents.
 
 Viable: projects keep budget control; solvers earn only after accepted receipts;
 platform fees can be added later.
@@ -55,7 +56,7 @@ and honest live/replay/local mode labeling.
 ```bash
 nix develop --command python3 -m agent_bounty demo-build-winning-run --db .demo/winning-run.sqlite3 --motoko-repo /home/mares/repos/motoko-issue-1-tui-input-latency --bundle demo/bundles/winning-run
 nix develop --command python3 -m agent_bounty demo-rehearse --mode replay --bundle demo/bundles/winning-run --repeat 5
-nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 120 --check
+nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 155 --check
 nix develop --command python3 -m unittest discover -s tests
 nix flake check
 ```

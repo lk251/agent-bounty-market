@@ -22,5 +22,5 @@ Contents:
   matrix.
 - `attestation.json`: hashed attestation only; no signing key was created.
 - `dashboard.html`: static presentation surface.
-- `recording-timeline.md`: deterministic two-minute recording cues.
+- `recording-timeline.md`: deterministic 155-second recording cues.
 - `evidence/*.json`: compact evidence slices.

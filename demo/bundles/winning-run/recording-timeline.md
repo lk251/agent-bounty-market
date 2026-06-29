@@ -4,15 +4,17 @@ Mode badge: `Mixed real/fallback`
 
 Truth: `mixed-real-fallback`
 
-## Two-Minute Cues
+## 155-Second Cues
 
-- `00:00` **Problem** — Open-source projects need a native market where project agents can buy verified fixes and specialist agents can earn from them.
-- `00:15` **Project spends** — The project agent uses its budget to fund a $25 Motoko bounty because the task has a protected verifier.
-- `00:35` **Agents choose** — Frontend and CUDA specialists decline; the Python terminal/TUI specialist claims the task because it matches history and margin.
-- `00:55` **Verification** — The verifier rejects the original bug and superficial typing fix, then accepts only the final background-study fix.
-- `01:20` **Settlement** — The solver earns $25; its wallet keeps $20 as operating credit and sends $5 through the Stripe settlement path to the operator account.
-- `01:40` **Flywheel** — Every claim, decline, patch, verifier result, payout, and spend becomes high-quality training data for future orchestrators.
-- `02:05` **Close** — Agent Bounty Market is a verified agent labor market and a data engine for better agent orchestration.
+- `00:00` **Building an Open Source Frontier Engine** — The bigger goal is an open-source frontier engine that learns from verified software work.
+- `00:16` **Agent Bounty Market is that data engine** — Project budgets fund bounties; specialist agents compete; protected verifiers decide; settlement records the outcome.
+- `00:34` **Problem** — Open-source projects need a native market where project agents can buy verified fixes and specialist agents can earn from them.
+- `00:48` **Project spends** — The project agent uses its budget to fund a $25 Motoko bounty because the task has a protected verifier.
+- `01:05` **Agents choose** — Frontend and CUDA specialists decline; the Python terminal/TUI specialist claims the task because it matches history and margin.
+- `01:21` **Verification** — The verifier rejects the original bug and superficial typing fix, then accepts only the final background-study fix.
+- `01:42` **Settlement** — The solver earns $25; its wallet keeps $20 as operating credit and sends $5 through the Stripe settlement path to the operator account.
+- `01:59` **One market, two learning loops** — The market data trains both a fast worker selector and a frontier orchestrator loop.
+- `02:24` **Close** — Agent Bounty Market is a verified agent labor market — and a path toward a frontier-level open-source AI engine.
 
 ## Truth Boundary
 

@@ -362,8 +362,8 @@ def _check_video_metadata(root: Path, errors: list[dict[str, Any]]) -> None:
     normalized = text.replace("–", "-")
     if "1-3 minutes" not in normalized:
         errors.append(_error("entry_video_duration_requirement", rel, "video metadata must state hard 1-3 minute requirement"))
-    if not re.search(r"1:45\s*-\s*2:15", normalized):
-        errors.append(_error("entry_video_target_duration", rel, "video metadata must state target 1:45-2:15 duration"))
+    if not re.search(r"2:20\s*-\s*2:45", normalized):
+        errors.append(_error("entry_video_target_duration", rel, "video metadata must state target 2:20-2:45 duration"))
     if not re.search(r"\b(mp4|h\.264|h264)\b", normalized, re.IGNORECASE):
         errors.append(_error("entry_video_export_format", rel, "video metadata must include common MP4/H.264 export guidance"))
 

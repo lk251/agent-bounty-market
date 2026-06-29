@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent_bounty.demo_presentation import build_director_data, prepare_demo_director_report
+from agent_bounty.demo_presentation import DEFAULT_DIRECTOR_DURATION_SECONDS, build_director_data, prepare_demo_director_report
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -16,12 +16,12 @@ WINNING_BUNDLE = REPO_ROOT / "demo" / "bundles" / "winning-run"
 class DemoDirectorTests(unittest.TestCase):
     def test_director_generates_all_scene_assets_from_valid_bundle(self):
         with copied_bundle() as bundle_dir:
-            report = prepare_demo_director_report(bundle_dir=bundle_dir, host="127.0.0.1", port=8788, duration=120)
+            report = prepare_demo_director_report(bundle_dir=bundle_dir, host="127.0.0.1", port=8788, duration=DEFAULT_DIRECTOR_DURATION_SECONDS)
 
             self.assertTrue(report["ok"], report["mismatches"])
-            self.assertEqual(report["scene_count"], 7)
-            self.assertEqual(report["url"], "http://127.0.0.1:8788/director.html?duration=120")
-            self.assertEqual(report["record_url"], "http://127.0.0.1:8788/director-record.html?duration=120&autoplay=1")
+            self.assertEqual(report["scene_count"], 9)
+            self.assertEqual(report["url"], "http://127.0.0.1:8788/director.html?duration=155")
+            self.assertEqual(report["record_url"], "http://127.0.0.1:8788/director-record.html?duration=155&autoplay=1")
             self.assertEqual(
                 sorted(report["asset_paths"]),
                 ["director-cues.json", "director-notes.html", "director-record.html", "director.html"],
@@ -31,60 +31,78 @@ class DemoDirectorTests(unittest.TestCase):
 
     def test_director_cues_have_required_scenes_and_exact_duration(self):
         with copied_bundle() as bundle_dir:
-            prepare_demo_director_report(bundle_dir=bundle_dir, duration=120)
+            prepare_demo_director_report(bundle_dir=bundle_dir, duration=DEFAULT_DIRECTOR_DURATION_SECONDS)
             cues = json.loads((bundle_dir / "director-cues.json").read_text(encoding="utf-8"))
 
             self.assertEqual(cues["schema"], "agent-bounty-demo-director-cues-v1")
-            self.assertEqual(sum(scene["duration_seconds"] for scene in cues["scenes"]), 120)
+            self.assertEqual(sum(scene["duration_seconds"] for scene in cues["scenes"]), DEFAULT_DIRECTOR_DURATION_SECONDS)
             self.assertEqual(
                 [scene["title"] for scene in cues["scenes"]],
                 [
+                    "Building an Open Source Frontier Engine",
+                    "Agent Bounty Market is that data engine",
                     "Problem",
                     "Project spends",
                     "Agents choose",
                     "Verification",
                     "Settlement",
-                    "Flywheel",
+                    "One market, two learning loops",
                     "Close",
                 ],
             )
 
     def test_director_facts_match_bundle_summary(self):
         bundle = json.loads((WINNING_BUNDLE / "bundle.json").read_text(encoding="utf-8"))
-        data = build_director_data(bundle, duration=120)
+        data = build_director_data(bundle, duration=DEFAULT_DIRECTOR_DURATION_SECONDS)
         summary = bundle["summary"]
         scenes = {scene["id"]: scene for scene in data["scenes"]}
 
         problem_stats = stat_map(scenes["problem"])
         settlement_stats = stat_map(scenes["settlement"])
-        flywheel_stats = stat_map(scenes["flywheel"])
+        loop_stats = stat_map(scenes["two-learning-loops"])
 
         self.assertEqual(problem_stats["Reward"], "$25.00")
         self.assertIn("ms", problem_stats["Before p95"])
         self.assertIn("ms", problem_stats["After p95"])
         self.assertEqual(settlement_stats["Operator payout"], "$5.00")
         self.assertEqual(settlement_stats["Operating credit"], "$20.00")
-        self.assertEqual(flywheel_stats["Operating credit"], "$20.00")
-        self.assertIn("github.com/lk251/agent-bounty-market/issues/21", flywheel_stats["Dogfood issue"])
+        self.assertEqual(loop_stats["Center"], "Bounties, claims, declines, patches, verifier results, payouts")
+        self.assertEqual(loop_stats["Fast loop"], "worker-pool selector")
+        self.assertEqual(loop_stats["Long loop"], "frontier orchestrator training")
+        self.assertEqual(
+            scenes["market-data-engine"]["flow"],
+            ["Project budget", "Funded bounty", "Specialist agents", "Protected verifier", "Settlement"],
+        )
+        self.assertEqual(
+            scenes["two-learning-loops"]["learning_loops"]["footer"],
+            "Economic outcomes filter the data: paid verified work is high-signal.",
+        )
         self.assertEqual(data["bundle_digest"], bundle["bundle_content_digest"])
 
     def test_truth_badge_and_blockers_are_visible_without_private_data(self):
         with copied_bundle() as bundle_dir:
-            prepare_demo_director_report(bundle_dir=bundle_dir, duration=120)
+            prepare_demo_director_report(bundle_dir=bundle_dir, duration=DEFAULT_DIRECTOR_DURATION_SECONDS)
             data = json.loads((bundle_dir / "director-cues.json").read_text(encoding="utf-8"))
             html_text = (bundle_dir / "director.html").read_text(encoding="utf-8")
             notes_text = (bundle_dir / "director-notes.html").read_text(encoding="utf-8")
             serialized = "\n".join(path.read_text(encoding="utf-8") for path in bundle_dir.glob("director*"))
 
             self.assertEqual(data["truth_badge"], "Mixed real/fallback")
-            self.assertGreaterEqual(html_text.count("Mixed real/fallback"), 7)
+            self.assertGreaterEqual(html_text.count("Mixed real/fallback"), 9)
             self.assertIn("fallback", html_text.lower())
             self.assertIn("blocked", html_text.lower())
             self.assertIn("Presenter Notes", html_text)
             self.assertIn("Presenter Notes", notes_text)
+            self.assertIn("Building an Open Source Frontier Engine", html_text)
+            self.assertIn("Agent Bounty Market is that data engine", html_text)
+            self.assertIn("Project budget", html_text)
+            self.assertIn("All of it becomes training data.", html_text)
             self.assertIn("Original buggy version", html_text)
             self.assertIn("Superficial typing fix", html_text)
             self.assertIn("Final background-study fix", html_text)
+            self.assertIn("One market, two learning loops", html_text)
+            self.assertIn("Worker-pool fast selector", html_text)
+            self.assertIn("Frontier orchestrator training", html_text)
             self.assertIn("Issue #21 candidate", html_text)
             self.assertNotIn("2500 USD", serialized)
             self.assertNotIn("github.test", serialized)
@@ -94,7 +112,7 @@ class DemoDirectorTests(unittest.TestCase):
 
     def test_record_route_excludes_presenter_notes_and_keeps_controls(self):
         with copied_bundle() as bundle_dir:
-            prepare_demo_director_report(bundle_dir=bundle_dir, duration=120)
+            prepare_demo_director_report(bundle_dir=bundle_dir, duration=DEFAULT_DIRECTOR_DURATION_SECONDS)
             director_html = (bundle_dir / "director.html").read_text(encoding="utf-8")
             record_html = (bundle_dir / "director-record.html").read_text(encoding="utf-8")
 
@@ -111,7 +129,7 @@ class DemoDirectorTests(unittest.TestCase):
             dashboard = bundle_dir / "dashboard.html"
             dashboard.write_text(dashboard.read_text(encoding="utf-8") + "\n<!-- tamper -->\n", encoding="utf-8")
 
-            report = prepare_demo_director_report(bundle_dir=bundle_dir, duration=120)
+            report = prepare_demo_director_report(bundle_dir=bundle_dir, duration=DEFAULT_DIRECTOR_DURATION_SECONDS)
 
             self.assertFalse(report["ok"])
             self.assertEqual(report["scene_count"], 0)

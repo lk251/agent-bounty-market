@@ -5,16 +5,16 @@ Status: draft until `[FINAL_VIDEO_FILENAME]` and `[FINAL_TWEET_URL]` are filled.
 ## Duration
 
 - Hard requirement: 1-3 minutes.
-- Target duration: 1:45-2:15.
-- Director target: 2:00 using `demo-director --duration 120`.
-- Cut anything that pushes the video beyond 2:45 unless it is essential.
+- Target duration: 2:20-2:45.
+- Director target: 2:35 using `demo-director --duration 155`.
+- Cut anything that pushes the video to 3:00 or longer.
 
 ## Capture Source
 
 - Preferred command:
-  `nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 120`
+  `nix develop --command python3 -m agent_bounty demo-director --bundle demo/bundles/winning-run --host 127.0.0.1 --port 8788 --duration 155`
 - Preferred capture URL:
-  `http://127.0.0.1:8788/director-record.html?duration=120&autoplay=1`
+  `http://127.0.0.1:8788/director-record.html?duration=155&autoplay=1`
 - Presenter notes URL, kept off capture:
   `http://127.0.0.1:8788/director-notes.html`
 - Fallback dashboard URL:
@@ -34,8 +34,9 @@ Status: draft until `[FINAL_VIDEO_FILENAME]` and `[FINAL_TWEET_URL]` are filled.
 ## Visual Checks
 
 - `Mixed real/fallback` mode badge visible.
-- Director scenes present: Problem, Project spends, Agents choose,
-  Verification, Settlement, Flywheel, Close.
+- Director scenes present: Building an Open Source Frontier Engine, Agent
+  Bounty Market is that data engine, Problem, Project spends, Agents choose,
+  Verification, Settlement, One market, two learning loops, Close.
 - No terminal window exposes secrets, raw webhook payloads, private prompts,
   personal files, browser sessions, or unrelated home-directory content.
 - Repository URL and release tag are readable.
@@ -44,8 +45,8 @@ Status: draft until `[FINAL_VIDEO_FILENAME]` and `[FINAL_TWEET_URL]` are filled.
 
 ## Audio Checks
 
-- Voice or captions explain the problem, the lifecycle, the protected verifier,
-  and the truth boundary.
+- Voice or captions explain the frontier-engine goal, the market lifecycle, the
+  protected verifier, the two learning loops, and the truth boundary.
 - Audio is not clipped.
 - Background noise is low enough for judges to understand the pitch.
 
