@@ -2,9 +2,117 @@
 <html lang="en">
 <meta charset="utf-8">
 <title>Director Notes</title>
-<style>body{font-family:system-ui,sans-serif;margin:32px;line-height:1.45;max-width:980px}li{margin:0 0 18px}b{font-size:18px}</style>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+
+@font-face {
+  font-family: 'Mares Display';
+  src: url('https://mares-engineering.com/assets/fonts/eurostile-extended-black.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+}
+
+
+:root {
+  --mares-bg: #050607;
+  --mares-fg: #efefef;
+  --mares-muted: #b4b4b4;
+  --mares-line: rgba(151,208,236,.24);
+  --mares-panel: rgba(12,18,25,.78);
+  --mares-panel-strong: rgba(18,28,40,.9);
+  --mares-blue: #88b0c5;
+  --mares-blue-strong: #5f86a5;
+  --mares-blue-light: #beddea;
+  --mares-white: #f8fbff;
+  --mares-display: 'Mares Display', 'Eurostile Extended Black', 'Eurostyle Extended Black', 'Arial Black', 'Trebuchet MS', 'Franklin Gothic Demi Cond', sans-serif;
+  --mares-body: Baskerville, 'Baskerville Old Face', 'Times New Roman', serif;
+}
+* { box-sizing: border-box; }
+html {
+  background: var(--mares-bg);
+}
+body {
+  background:
+    radial-gradient(ellipse 92% 32% at 50% 53%, rgba(20,48,72,.12), rgba(12,30,48,.05) 45%, rgba(5,6,7,0) 78%),
+    radial-gradient(ellipse 130% 92% at 50% 48%, #18191a 0%, #101112 46%, var(--mares-bg) 100%);
+  color: var(--mares-fg);
+  font-family: var(--mares-body);
+  letter-spacing: 0;
+}
+.mares-wordmark {
+  margin: 0;
+  font-family: var(--mares-display);
+  font-weight: 900;
+  font-stretch: expanded;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: uppercase;
+  color: transparent;
+  background: linear-gradient(180deg, #beddea 0%, #a9cada 26%, #88b0c5 58%, #5f86a5 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: .045em rgba(151,208,236,.32);
+  filter:
+    drop-shadow(0 0 .012em rgba(194,230,247,.22))
+    drop-shadow(0 0 .08em rgba(105,178,226,.16))
+    drop-shadow(0 0 .22em rgba(45,112,174,.12));
+  text-shadow:
+    0 .006em 0 rgba(24,55,82,.22),
+    0 0 .035em rgba(110,184,226,.14);
+}
+.brand-kicker {
+  margin-top: 6px;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+  color: rgba(239,239,239,.78);
+  font-size: 13px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+.truth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(190,221,234,.54);
+  color: var(--mares-white);
+  background: rgba(8,18,28,.72);
+  border-radius: 999px;
+  padding: 9px 14px;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  box-shadow: 0 0 24px rgba(96,151,185,.14), inset 0 1px 0 rgba(255,255,255,.08);
+  white-space: nowrap;
+}
+.truth-badge::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--mares-blue-light);
+  box-shadow: 0 0 14px rgba(190,221,234,.72);
+}
+
+html,body{margin:0;min-height:100%}
+body{padding:34px;line-height:1.45}
+.notes-shell{max-width:1060px;margin:0 auto}
+header{display:flex;align-items:flex-start;justify-content:space-between;gap:28px;margin-bottom:30px;border-bottom:1px solid var(--mares-line);padding-bottom:22px}
+.mares-wordmark{font-size:34px;white-space:nowrap}
+h1{font-family:var(--mares-display);font-size:46px;line-height:1;margin:18px 0 8px;text-transform:uppercase;letter-spacing:0}
+p{margin:0;color:rgba(239,239,239,.78);font-size:18px}
+ol{margin:0;padding:0;list-style:none;display:grid;gap:16px}
+li{background:var(--mares-panel);border:1px solid var(--mares-line);border-left:6px solid var(--mares-blue);border-radius:8px;padding:18px 20px;box-shadow:0 18px 48px rgba(0,0,0,.18)}
+b{display:block;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;font-size:18px;color:var(--mares-blue-light);margin-bottom:8px}
+li p{font-size:20px;color:var(--mares-white);line-height:1.35}
+@media(max-width:760px){body{padding:20px}header{display:block}.mares-wordmark{font-size:24px;white-space:normal}h1{font-size:34px}}
+</style>
+<div class="notes-shell">
+<header><div><div class="mares-wordmark">MARES ENGINEERING</div><div class="brand-kicker">Agent Bounty Market presenter notes</div></div><div class="truth-badge">Mixed real/fallback</div></header>
 <h1>Presenter Notes</h1>
-<p>Truth badge: <b>Mixed real/fallback</b>. Duration: 120 seconds.</p>
+<p>Duration: 120 seconds.</p>
 <ol><li><b>000s Problem</b><p>Open-source projects have endless useful work, but no native market where project agents can buy verified fixes and specialist agents can earn from them.</p></li>
 <li><b>018s Project spends</b><p>My Motoko project has a real bug: typing froze while background evidence-store work was running. The project agent uses its budget to fund a $25 bounty, but only because the task has a protected verifier.</p></li>
 <li><b>035s Agents choose</b><p>Specialist agents inspect the bounty. The frontend and CUDA agents decline because it is outside their verified skill set. The Python terminal/TUI specialist claims it because the task matches its history and margin.</p></li>
@@ -12,4 +120,5 @@
 <li><b>069s Settlement</b><p>The solver earns the $25 bounty. Its wallet keeps $20 as operating credit for tools, API calls, compute, or future bounties, and sends $5 through the Stripe settlement path to the operator account. The split is recorded exactly once.</p></li>
 <li><b>086s Flywheel</b><p>That operating credit funds the next useful issue. The market also produces high-quality training data for future orchestrators that learn which specialist agents to call.</p></li>
 <li><b>103s Close</b><p>Agent Bounty Market turns open-source maintenance into a verified agent labor market and a data engine for better agent orchestration.</p></li></ol>
+</div>
 </html>

@@ -4,8 +4,8 @@
   "source_baseline_sha": "72ba26b69d38ce8ca5485be943afa1b57f9d6ab5",
   "source_baseline_note": "This is the historical source baseline used to generate earlier release metadata. The immutable release target is the Git annotated tag object, not a self-referential committed manifest field.",
   "truth_status": "Mixed real/fallback",
-  "bundle_digest": "sha256:dbabfb881de7a83535e2bb25d54dbf478ebdebf44e317250f1e48de53f13caa6",
-  "attestation_digest": "sha256:dc670b9c69ca45b80882ceb7ab8dd1e1787588518138936e7983bb1a48c8efc3",
+  "bundle_digest": "sha256:1fb0682c95a26283881b1e4fd54b5da3a6c6cabc74facf72209d64fe8531903d",
+  "attestation_digest": "sha256:6eb4c68bddcaab7246c68611c03b3eeefc3e0867895fab1b940e9e7f923934c8",
   "truth_matrix_digest": "sha256:6375530668244ab15891c0a89c1197e5847a1133766c7bdb55c601e4a4b98421",
   "test_counts": {
     "focused_release_gate_tests": "HB3: 75 passed",

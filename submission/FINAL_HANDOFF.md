@@ -296,8 +296,8 @@ release-audit --tag hackathon-mixed-rc11: run after creating the immutable annot
 stale judge-facing wording scan: no matches in README.md, submission, or demo/bundles/winning-run
 replay rehearsal: 5/5 validations passed
 director check: ok=true, url=http://127.0.0.1:8788/director.html?duration=120
-bundle digest: sha256:dbabfb881de7a83535e2bb25d54dbf478ebdebf44e317250f1e48de53f13caa6
-attestation digest: sha256:dc670b9c69ca45b80882ceb7ab8dd1e1787588518138936e7983bb1a48c8efc3
+bundle digest: sha256:1fb0682c95a26283881b1e4fd54b5da3a6c6cabc74facf72209d64fe8531903d
+attestation digest: sha256:6eb4c68bddcaab7246c68611c03b3eeefc3e0867895fab1b940e9e7f923934c8
 truth matrix digest: sha256:6375530668244ab15891c0a89c1197e5847a1133766c7bdb55c601e4a4b98421
 full Linux/Nix unittest suite: run before publishing RC11
 nix flake check: run before publishing RC11

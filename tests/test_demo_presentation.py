@@ -12,6 +12,7 @@ from agent_bounty.demo_presentation import (
     ISSUE21_DOGFOOD_CANDIDATE,
     ISSUE21_DOGFOOD_RECEIPT,
     ISSUE21_DOGFOOD_URL,
+    MARES_WORDMARK,
     demo_preflight_report,
     live_refusal_report,
     prepare_demo_serve_report,
@@ -150,6 +151,18 @@ class DemoPresentationTests(unittest.TestCase):
             self.assertNotIn("sk_test_", serialized)
             self.assertNotIn("whsec_", serialized)
             self.assertNotIn("ghp_", serialized)
+
+    def test_committed_bundle_uses_mares_engineering_branding(self):
+        bundle_dir = Path(__file__).resolve().parents[1] / "demo" / "bundles" / "winning-run"
+        assets = ["dashboard.html", "director.html", "director-record.html", "director-notes.html"]
+        combined = "\n".join((bundle_dir / asset).read_text(encoding="utf-8") for asset in assets)
+
+        self.assertIn(MARES_WORDMARK, combined)
+        self.assertIn("Mares Display", combined)
+        self.assertIn("#050607", combined)
+        self.assertIn("#beddea", combined)
+        self.assertNotIn("Vi" + "ca", combined)
+        self.assertNotIn("VI" + "CA", combined)
 
     def test_tampered_bundle_refuses_serve_report(self):
         if not MOTOKO_REPO.exists():

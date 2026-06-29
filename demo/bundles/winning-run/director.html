@@ -4,41 +4,132 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent Bounty Director</title>
 <style>
-*{box-sizing:border-box}
-html,body{margin:0;min-height:100%;background:#0d1117;color:#f5f7fb;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+
+@font-face {
+  font-family: 'Mares Display';
+  src: url('https://mares-engineering.com/assets/fonts/eurostile-extended-black.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+}
+
+
+:root {
+  --mares-bg: #050607;
+  --mares-fg: #efefef;
+  --mares-muted: #b4b4b4;
+  --mares-line: rgba(151,208,236,.24);
+  --mares-panel: rgba(12,18,25,.78);
+  --mares-panel-strong: rgba(18,28,40,.9);
+  --mares-blue: #88b0c5;
+  --mares-blue-strong: #5f86a5;
+  --mares-blue-light: #beddea;
+  --mares-white: #f8fbff;
+  --mares-display: 'Mares Display', 'Eurostile Extended Black', 'Eurostyle Extended Black', 'Arial Black', 'Trebuchet MS', 'Franklin Gothic Demi Cond', sans-serif;
+  --mares-body: Baskerville, 'Baskerville Old Face', 'Times New Roman', serif;
+}
+* { box-sizing: border-box; }
+html {
+  background: var(--mares-bg);
+}
+body {
+  background:
+    radial-gradient(ellipse 92% 32% at 50% 53%, rgba(20,48,72,.12), rgba(12,30,48,.05) 45%, rgba(5,6,7,0) 78%),
+    radial-gradient(ellipse 130% 92% at 50% 48%, #18191a 0%, #101112 46%, var(--mares-bg) 100%);
+  color: var(--mares-fg);
+  font-family: var(--mares-body);
+  letter-spacing: 0;
+}
+.mares-wordmark {
+  margin: 0;
+  font-family: var(--mares-display);
+  font-weight: 900;
+  font-stretch: expanded;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: uppercase;
+  color: transparent;
+  background: linear-gradient(180deg, #beddea 0%, #a9cada 26%, #88b0c5 58%, #5f86a5 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: .045em rgba(151,208,236,.32);
+  filter:
+    drop-shadow(0 0 .012em rgba(194,230,247,.22))
+    drop-shadow(0 0 .08em rgba(105,178,226,.16))
+    drop-shadow(0 0 .22em rgba(45,112,174,.12));
+  text-shadow:
+    0 .006em 0 rgba(24,55,82,.22),
+    0 0 .035em rgba(110,184,226,.14);
+}
+.brand-kicker {
+  margin-top: 6px;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+  color: rgba(239,239,239,.78);
+  font-size: 13px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+.truth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(190,221,234,.54);
+  color: var(--mares-white);
+  background: rgba(8,18,28,.72);
+  border-radius: 999px;
+  padding: 9px 14px;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  box-shadow: 0 0 24px rgba(96,151,185,.14), inset 0 1px 0 rgba(255,255,255,.08);
+  white-space: nowrap;
+}
+.truth-badge::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--mares-blue-light);
+  box-shadow: 0 0 14px rgba(190,221,234,.72);
+}
+
+html,body{margin:0;min-height:100%;}
 body{overflow:hidden}
-.shell{width:100vw;height:100vh;display:flex;flex-direction:column}
-.top{height:72px;display:flex;align-items:center;justify-content:space-between;padding:18px 32px;background:#111827;border-bottom:1px solid #2a3444}
-.brand{font-weight:800;font-size:22px;letter-spacing:.02em}
-.badge{display:inline-flex;align-items:center;gap:8px;border:2px solid #facc15;color:#facc15;border-radius:999px;padding:8px 14px;font-weight:800;text-transform:uppercase}
-.badge::before{content:"";width:10px;height:10px;border-radius:50%;background:#facc15;display:inline-block}
-.timer{font-variant-numeric:tabular-nums;color:#cbd5e1}
-.stage{display:none;flex:1;padding:46px 58px 42px;gap:36px;grid-template-columns:minmax(0,1.15fr) minmax(360px,.85fr);align-items:stretch}
+.shell{width:100vw;height:100vh;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,0));}
+.top{height:94px;display:grid;grid-template-columns:minmax(260px,1fr) auto auto;align-items:center;gap:24px;padding:18px 34px;background:rgba(5,6,7,.78);border-bottom:1px solid var(--mares-line);box-shadow:0 20px 60px rgba(0,0,0,.28)}
+.brand-lockup{min-width:0}
+.brand-lockup .mares-wordmark{font-size:29px;white-space:nowrap}
+.timer{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums;color:rgba(239,239,239,.82);font-size:16px}
+.stage{display:none;flex:1;padding:42px 58px 38px;gap:32px;grid-template-columns:minmax(0,1.12fr) minmax(360px,.88fr);align-items:stretch}
 .stage.active{display:grid}
-h1{font-size:70px;line-height:.95;margin:0 0 18px;letter-spacing:0}
-.subtitle{font-size:28px;line-height:1.2;color:#cbd5e1;max-width:980px;margin-bottom:34px}
+h1{font-family:var(--mares-display);font-size:68px;line-height:.96;margin:0 0 18px;letter-spacing:0;text-transform:uppercase;color:var(--mares-white);text-shadow:0 0 28px rgba(106,169,210,.18)}
+.subtitle{font-size:30px;line-height:1.18;color:rgba(239,239,239,.82);max-width:980px;margin-bottom:32px}
 .bullets{list-style:none;padding:0;margin:0;display:grid;gap:14px}
-.bullets li{font-size:24px;line-height:1.28;background:#161d29;border-left:6px solid #60a5fa;padding:16px 18px;border-radius:8px}
-.panel{background:#111827;border:1px solid #2a3444;border-radius:12px;padding:24px;display:flex;flex-direction:column;gap:20px;min-width:0}
+.bullets li{font-size:24px;line-height:1.28;background:rgba(12,18,25,.72);border:1px solid rgba(151,208,236,.16);border-left:6px solid var(--mares-blue);padding:16px 18px;border-radius:8px;box-shadow:0 18px 48px rgba(0,0,0,.22)}
+.panel{background:var(--mares-panel);border:1px solid var(--mares-line);border-radius:8px;padding:24px;display:flex;flex-direction:column;gap:20px;min-width:0;box-shadow:0 24px 70px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.05)}
 .stats{display:grid;gap:12px}
-.stat{border:1px solid #334155;border-radius:8px;padding:14px;background:#0f172a}
-.stat b{display:block;color:#93c5fd;font-size:14px;text-transform:uppercase;margin-bottom:6px}
+.stat{border:1px solid rgba(151,208,236,.18);border-radius:8px;padding:14px;background:rgba(5,10,16,.72)}
+.stat b{display:block;color:var(--mares-blue-light);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;font-size:13px;text-transform:uppercase;margin-bottom:6px;letter-spacing:0}
 .stat span{display:block;font-size:22px;line-height:1.18;overflow-wrap:anywhere}
-.notes{margin-top:auto;border-top:1px solid #334155;padding-top:16px;color:#e2e8f0;font-size:18px;line-height:1.35}
-.notes strong{color:#facc15}
-.controls{height:52px;display:flex;align-items:center;gap:18px;padding:0 32px;background:#111827;border-top:1px solid #2a3444;color:#cbd5e1;font-size:15px}
-.progress{height:8px;background:#1f2937}
-.bar{height:100%;width:0;background:#60a5fa;transition:width .2s linear}
-a{color:#93c5fd}
+.notes{margin-top:auto;border-top:1px solid rgba(151,208,236,.18);padding-top:16px;color:rgba(239,239,239,.88);font-size:18px;line-height:1.35}
+.notes strong{color:var(--mares-blue-light)}
+.controls{height:52px;display:flex;align-items:center;gap:18px;padding:0 32px;background:rgba(5,6,7,.82);border-top:1px solid var(--mares-line);color:rgba(239,239,239,.72);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px}
+.progress{height:8px;background:rgba(151,208,236,.12)}
+.bar{height:100%;width:0;background:linear-gradient(90deg,var(--mares-blue-strong),var(--mares-blue-light));box-shadow:0 0 20px rgba(151,208,236,.38);transition:width .2s linear}
+a{color:var(--mares-blue-light)}
+@media(max-width:1100px){.top{grid-template-columns:1fr;gap:10px;height:auto;align-items:start}.truth-badge{white-space:normal}.stage{grid-template-columns:1fr;padding:28px 22px}h1{font-size:44px}.subtitle{font-size:23px}}
 @media (prefers-reduced-motion: reduce){.bar{transition:none}}
 </style>
 <script type="application/json" id="director-data">{"bundle_digest":"sha256:b21534ce9a278b11f1109b4a035cfe8e2c0423cc807b15705ce8356fa37c44d9","controls":["ArrowLeft","ArrowRight","Space","Escape","r"],"duration_seconds":120,"mode_badge":"Mixed real/fallback","scenes":[{"bullets":["Open-source projects have endless useful work, but no native market where project agents can buy verified fixes.","Specialist solver agents need a way to earn from evidence-backed work, not persuasion."],"duration_seconds":18,"id":"problem","start_second":0,"stats":[{"label":"Bounty","value":"Motoko typing blocked during real background study"},{"label":"Issue","value":"lk251/motoko#1"},{"label":"Reward","value":"$25.00"},{"label":"Before p95","value":"3169.646 ms"},{"label":"After p95","value":"0.582 ms"}],"subtitle":"Open-source projects need a native market for verified software work.","title":"Problem","truth_badge":"Mixed real/fallback","voiceover":"Open-source projects have endless useful work, but no native market where project agents can buy verified fixes and specialist agents can earn from them."},{"bullets":["Funded: Trusted project policy approved a verifier-backed bounty","Not funded: vague, subjective, or missing verifier","Not funded: Estimated funding need is above the project spending cap; Project budget would not leave the required reserve","Not funded: missing protected verifier"],"duration_seconds":17,"id":"project-spends","start_second":18,"stats":[{"label":"Project","value":"lk251/motoko"},{"label":"Reward","value":"$25.00"},{"label":"Contract digest","value":"sha256:f80a5636b82..."},{"label":"Project decisions","value":"4 recorded"}],"subtitle":"The project agent funds the measurable issue with a verifier; vague or unaffordable work is left unfunded.","title":"Project spends","truth_badge":"Mixed real/fallback","voiceover":"My Motoko project has a real bug: typing froze while background evidence-store work was running. The project agent uses its budget to fund a $25 bounty, but only because the task has a protected verifier."},{"bullets":["Declined: Solver declined","Approved: Trusted solver policy approved claim","Declined: Solver declined"],"duration_seconds":17,"id":"agents-choose","start_second":35,"stats":[{"label":"Solver decisions","value":"3 recorded"},{"label":"Claimed solver","value":"Python terminal/TUI specialist"},{"label":"Candidate SHA","value":"4c03e0fa02a26f1cba..."}],"subtitle":"Specialized solver profiles can decline or claim based on capability and margin.","title":"Agents choose","truth_badge":"Mixed real/fallback","voiceover":"Specialist agents inspect the bounty. The frontend and CUDA agents decline because it is outside their verified skill set. The Python terminal/TUI specialist claims it because the task matches its history and margin."},{"bullets":["Original buggy version: rejected; p95 3169.646 ms; long transcript materially increased p95 latency; background study p95 exceeded contract; ...","Superficial typing fix: rejected; p95 2535.849 ms; background study p95 exceeded contract; background study max exceeded contract; background...","Final background-study fix: accepted; p95 0.582 ms; no failure reasons","Accepted receipt: receipt_49aadb3a79..."],"duration_seconds":17,"id":"verification","start_second":52,"stats":[{"label":"Candidate","value":"4c03e0fa02a26f1cba..."},{"label":"Receipt","value":"receipt_49aadb3a79..."},{"label":"Verifier receipts","value":"1 recorded"}],"subtitle":"Evidence, not persuasion, decides whether payment can happen.","title":"Verification","truth_badge":"Mixed real/fallback","voiceover":"The project does not trust the solver's claim. Its verifier tests the original buggy version, a superficial typing fix, and the final background-study fix. Only the real fix passes."},{"bullets":["Settlement mode: deterministic fallback","Transfer truth: fake external transfer id is deterministic test evidence; only tr_ IDs are real Stripe transfers","Deterministic fallback split uses a Stripe-compatible settlement envelope; prior real Stripe sandbox evidence is preserved separately.","Ledger entries: 8"],"duration_seconds":17,"id":"settlement","start_second":69,"stats":[{"label":"Reward","value":"$25.00"},{"label":"Operating credit","value":"$20.00"},{"label":"Operator payout","value":"$5.00"}],"subtitle":"The solver-side wallet decides how accepted reward becomes operating credit and operator payout.","title":"Settlement","truth_badge":"Mixed real/fallback","voiceover":"The solver earns the $25 bounty. Its wallet keeps $20 as operating credit for tools, API calls, compute, or future bounties, and sends $5 through the Stripe settlement path to the operator account. The split is recorded exactly once."},{"bullets":["Every claim, decline, patch, verifier result, payout, and spend becomes a labeled trajectory.","Economic outcomes filter the data: paid accepted work is high-signal, rejected work is negative signal.","Second bounty id: bounty_retained_cr...","Issue #21 candidate: 5ffb2835fec5d5fd93...","Issue #21 receipt: receipt_ecc99fd087...","Retained-credit replay: yes; settlement replay: yes"],"duration_seconds":17,"id":"flywheel","start_second":86,"stats":[{"label":"Operating credit","value":"$20.00"},{"label":"Follow-up bounty","value":"Follow-up bounty funded from retained solver operating credit"},{"label":"Follow-up state","value":"open"},{"label":"Dogfood issue","value":"https://github.com/lk251/agent-bounty-market/issues/21"}],"subtitle":"Paid and rejected market outcomes become training data for better orchestrators.","title":"Flywheel","truth_badge":"Mixed real/fallback","voiceover":"That operating credit funds the next useful issue. The market also produces high-quality training data for future orchestrators that learn which specialist agents to call."},{"bullets":["Real or recorded-real evidence rows: 2.","Fallback rows: 3 (Project-agent decision, Solver-agent decision, Retained credit funds second bounty).","Blocked live paths: 4 (NVIDIA Nemotron model, OpenShell/NemoClaw execution, GitHub issue/claim/PR/result, Fresh split Stripe Connect Transfer).","Prior Stripe full-transfer evidence stays separate from the deterministic split-settlement fallback.","The market is also a data engine: paid, verified fixes become supervised trajectories for training the next orchestrator."],"duration_seconds":17,"id":"close","start_second":103,"stats":[{"label":"Truth overall","value":"mixed-real-fallback"},{"label":"Real rows","value":"1"},{"label":"Fallback/blocked rows","value":"7"}],"subtitle":"A verified agent labor market and a data engine for better agent orchestration.","title":"Close","truth_badge":"Mixed real/fallback","voiceover":"Agent Bounty Market turns open-source maintenance into a verified agent labor market and a data engine for better agent orchestration."}],"schema":"agent-bounty-demo-director-data-v1","truth_overall":"mixed-real-fallback"}</script>
 <div class="shell">
-  <div class="top"><div class="brand">Agent Bounty Market</div><div class="badge">Mixed real/fallback</div><div class="timer" id="timer">00:00 / 120s</div></div>
+  <div class="top"><div class="brand-lockup"><div class="mares-wordmark">MARES ENGINEERING</div><div class="brand-kicker">Agent Bounty Market demo</div></div><div class="truth-badge">Mixed real/fallback</div><div class="timer" id="timer">00:00 / 120s</div></div>
   <main><section class="stage" data-scene="problem">
   <div><h1>Problem</h1><div class="subtitle">Open-source projects need a native market for verified software work.</div><ul class="bullets"><li>Open-source projects have endless useful work, but no native market where project agents can buy verified fixes.</li>
 <li>Specialist solver agents need a way to earn from evidence-backed work, not persuasion.</li></ul></div>
-  <aside class="panel"><div class="badge">Mixed real/fallback</div><div class="stats"><div class="stat"><b>Bounty</b><span>Motoko typing blocked during real background study</span></div>
+  <aside class="panel"><div class="truth-badge">Mixed real/fallback</div><div class="stats"><div class="stat"><b>Bounty</b><span>Motoko typing blocked during real background study</span></div>
 <div class="stat"><b>Issue</b><span>lk251/motoko#1</span></div>
 <div class="stat"><b>Reward</b><span>$25.00</span></div>
 <div class="stat"><b>Before p95</b><span>3169.646 ms</span></div>
@@ -49,7 +140,7 @@ a{color:#93c5fd}
 <li>Not funded: vague, subjective, or missing verifier</li>
 <li>Not funded: Estimated funding need is above the project spending cap; Project budget would not leave the required reserve</li>
 <li>Not funded: missing protected verifier</li></ul></div>
-  <aside class="panel"><div class="badge">Mixed real/fallback</div><div class="stats"><div class="stat"><b>Project</b><span>lk251/motoko</span></div>
+  <aside class="panel"><div class="truth-badge">Mixed real/fallback</div><div class="stats"><div class="stat"><b>Project</b><span>lk251/motoko</span></div>
 <div class="stat"><b>Reward</b><span>$25.00</span></div>
 <div class="stat"><b>Contract digest</b><span>sha256:f80a5636b82...</span></div>
 <div class="stat"><b>Project decisions</b><span>4 recorded</span></div></div><div class="notes"><strong>Presenter Notes:</strong> My Motoko project has a real bug: typing froze while background evidence-store work was running. The project agent uses its budget to fund a $25 bounty, but only because the task has a protected verifier.</div></aside>
@@ -58,7 +149,7 @@ a{color:#93c5fd}
   <div><h1>Agents choose</h1><div class="subtitle">Specialized solver profiles can decline or claim based on capability and margin.</div><ul class="bullets"><li>Declined: Solver declined</li>
 <li>Approved: Trusted solver policy approved claim</li>
 <li>Declined: Solver declined</li></ul></div>
-  <aside class="panel"><div class="badge">Mixed real/fallback</div><div class="stats"><div class="stat"><b>Solver decisions</b><span>3 recorded</span></div>
+  <aside class="panel"><div class="truth-badge">Mixed real/fallback</div><div class="stats"><div class="stat"><b>Solver decisions</b><span>3 recorded</span></div>
 <div class="stat"><b>Claimed solver</b><span>Python terminal/TUI specialist</span></div>
 <div class="stat"><b>Candidate SHA</b><span>4c03e0fa02a26f1cba...</span></div></div><div class="notes"><strong>Presenter Notes:</strong> Specialist agents inspect the bounty. The frontend and CUDA agents decline because it is outside their verified skill set. The Python terminal/TUI specialist claims it because the task matches its history and margin.</div></aside>
 </section>
@@ -67,7 +158,7 @@ a{color:#93c5fd}
 <li>Superficial typing fix: rejected; p95 2535.849 ms; background study p95 exceeded contract; background study max exceeded contract; background...</li>
 <li>Final background-study fix: accepted; p95 0.582 ms; no failure reasons</li>
 <li>Accepted receipt: receipt_49aadb3a79...</li></ul></div>
-  <aside class="panel"><div class="badge">Mixed real/fallback</div><div class="stats"><div class="stat"><b>Candidate</b><span>4c03e0fa02a26f1cba...</span></div>
+  <aside class="panel"><div class="truth-badge">Mixed real/fallback</div><div class="stats"><div class="stat"><b>Candidate</b><span>4c03e0fa02a26f1cba...</span></div>
 <div class="stat"><b>Receipt</b><span>receipt_49aadb3a79...</span></div>
 <div class="stat"><b>Verifier receipts</b><span>1 recorded</span></div></div><div class="notes"><strong>Presenter Notes:</strong> The project does not trust the solver&#x27;s claim. Its verifier tests the original buggy version, a superficial typing fix, and the final background-study fix. Only the real fix passes.</div></aside>
 </section>
@@ -76,7 +167,7 @@ a{color:#93c5fd}
 <li>Transfer truth: fake external transfer id is deterministic test evidence; only tr_ IDs are real Stripe transfers</li>
 <li>Deterministic fallback split uses a Stripe-compatible settlement envelope; prior real Stripe sandbox evidence is preserved separately.</li>
 <li>Ledger entries: 8</li></ul></div>
-  <aside class="panel"><div class="badge">Mixed real/fallback</div><div class="stats"><div class="stat"><b>Reward</b><span>$25.00</span></div>
+  <aside class="panel"><div class="truth-badge">Mixed real/fallback</div><div class="stats"><div class="stat"><b>Reward</b><span>$25.00</span></div>
 <div class="stat"><b>Operating credit</b><span>$20.00</span></div>
 <div class="stat"><b>Operator payout</b><span>$5.00</span></div></div><div class="notes"><strong>Presenter Notes:</strong> The solver earns the $25 bounty. Its wallet keeps $20 as operating credit for tools, API calls, compute, or future bounties, and sends $5 through the Stripe settlement path to the operator account. The split is recorded exactly once.</div></aside>
 </section>
@@ -87,7 +178,7 @@ a{color:#93c5fd}
 <li>Issue #21 candidate: 5ffb2835fec5d5fd93...</li>
 <li>Issue #21 receipt: receipt_ecc99fd087...</li>
 <li>Retained-credit replay: yes; settlement replay: yes</li></ul></div>
-  <aside class="panel"><div class="badge">Mixed real/fallback</div><div class="stats"><div class="stat"><b>Operating credit</b><span>$20.00</span></div>
+  <aside class="panel"><div class="truth-badge">Mixed real/fallback</div><div class="stats"><div class="stat"><b>Operating credit</b><span>$20.00</span></div>
 <div class="stat"><b>Follow-up bounty</b><span>Follow-up bounty funded from retained solver operating credit</span></div>
 <div class="stat"><b>Follow-up state</b><span>open</span></div>
 <div class="stat"><b>Dogfood issue</b><span>https://github.com/lk251/agent-bounty-market/issues/21</span></div></div><div class="notes"><strong>Presenter Notes:</strong> That operating credit funds the next useful issue. The market also produces high-quality training data for future orchestrators that learn which specialist agents to call.</div></aside>
@@ -98,7 +189,7 @@ a{color:#93c5fd}
 <li>Blocked live paths: 4 (NVIDIA Nemotron model, OpenShell/NemoClaw execution, GitHub issue/claim/PR/result, Fresh split Stripe Connect Transfer).</li>
 <li>Prior Stripe full-transfer evidence stays separate from the deterministic split-settlement fallback.</li>
 <li>The market is also a data engine: paid, verified fixes become supervised trajectories for training the next orchestrator.</li></ul></div>
-  <aside class="panel"><div class="badge">Mixed real/fallback</div><div class="stats"><div class="stat"><b>Truth overall</b><span>mixed-real-fallback</span></div>
+  <aside class="panel"><div class="truth-badge">Mixed real/fallback</div><div class="stats"><div class="stat"><b>Truth overall</b><span>mixed-real-fallback</span></div>
 <div class="stat"><b>Real rows</b><span>1</span></div>
 <div class="stat"><b>Fallback/blocked rows</b><span>7</span></div></div><div class="notes"><strong>Presenter Notes:</strong> Agent Bounty Market turns open-source maintenance into a verified agent labor market and a data engine for better agent orchestration.</div></aside>
 </section></main>

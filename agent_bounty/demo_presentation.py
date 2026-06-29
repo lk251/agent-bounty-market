@@ -67,6 +67,7 @@ PRIVATE_PATH_MARKERS = (
     "/Users/",
 )
 REQUIRED_DASHBOARD_TEXT = (
+    "MARES ENGINEERING",
     "Project spends",
     "Agents choose",
     "Motoko verifier proof",
@@ -87,6 +88,99 @@ RECORDING_STAGES = (
     ("01:40", "Flywheel", "Every claim, decline, patch, verifier result, payout, and spend becomes high-quality training data for future orchestrators."),
     ("02:05", "Close", "Agent Bounty Market is a verified agent labor market and a data engine for better agent orchestration."),
 )
+MARES_WORDMARK = "MARES ENGINEERING"
+MARES_DISPLAY_FONT_FACE = """
+@font-face {
+  font-family: 'Mares Display';
+  src: url('https://mares-engineering.com/assets/fonts/eurostile-extended-black.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+}
+"""
+MARES_THEME_CSS = """
+:root {
+  --mares-bg: #050607;
+  --mares-fg: #efefef;
+  --mares-muted: #b4b4b4;
+  --mares-line: rgba(151,208,236,.24);
+  --mares-panel: rgba(12,18,25,.78);
+  --mares-panel-strong: rgba(18,28,40,.9);
+  --mares-blue: #88b0c5;
+  --mares-blue-strong: #5f86a5;
+  --mares-blue-light: #beddea;
+  --mares-white: #f8fbff;
+  --mares-display: 'Mares Display', 'Eurostile Extended Black', 'Eurostyle Extended Black', 'Arial Black', 'Trebuchet MS', 'Franklin Gothic Demi Cond', sans-serif;
+  --mares-body: Baskerville, 'Baskerville Old Face', 'Times New Roman', serif;
+}
+* { box-sizing: border-box; }
+html {
+  background: var(--mares-bg);
+}
+body {
+  background:
+    radial-gradient(ellipse 92% 32% at 50% 53%, rgba(20,48,72,.12), rgba(12,30,48,.05) 45%, rgba(5,6,7,0) 78%),
+    radial-gradient(ellipse 130% 92% at 50% 48%, #18191a 0%, #101112 46%, var(--mares-bg) 100%);
+  color: var(--mares-fg);
+  font-family: var(--mares-body);
+  letter-spacing: 0;
+}
+.mares-wordmark {
+  margin: 0;
+  font-family: var(--mares-display);
+  font-weight: 900;
+  font-stretch: expanded;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: uppercase;
+  color: transparent;
+  background: linear-gradient(180deg, #beddea 0%, #a9cada 26%, #88b0c5 58%, #5f86a5 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: .045em rgba(151,208,236,.32);
+  filter:
+    drop-shadow(0 0 .012em rgba(194,230,247,.22))
+    drop-shadow(0 0 .08em rgba(105,178,226,.16))
+    drop-shadow(0 0 .22em rgba(45,112,174,.12));
+  text-shadow:
+    0 .006em 0 rgba(24,55,82,.22),
+    0 0 .035em rgba(110,184,226,.14);
+}
+.brand-kicker {
+  margin-top: 6px;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+  color: rgba(239,239,239,.78);
+  font-size: 13px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+.truth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(190,221,234,.54);
+  color: var(--mares-white);
+  background: rgba(8,18,28,.72);
+  border-radius: 999px;
+  padding: 9px 14px;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  box-shadow: 0 0 24px rgba(96,151,185,.14), inset 0 1px 0 rgba(255,255,255,.08);
+  white-space: nowrap;
+}
+.truth-badge::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--mares-blue-light);
+  box-shadow: 0 0 14px rgba(190,221,234,.72);
+}
+"""
 
 
 class DemoPresentationError(RuntimeError):
@@ -1248,37 +1342,38 @@ def render_director_html(data: dict[str, Any], *, include_notes: bool) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent Bounty Director</title>
 <style>
-*{{box-sizing:border-box}}
-html,body{{margin:0;min-height:100%;background:#0d1117;color:#f5f7fb;font-family:system-ui,-apple-system,Segoe UI,sans-serif}}
+{MARES_DISPLAY_FONT_FACE}
+{MARES_THEME_CSS}
+html,body{{margin:0;min-height:100%;}}
 body{{overflow:hidden}}
-.shell{{width:100vw;height:100vh;display:flex;flex-direction:column}}
-.top{{height:72px;display:flex;align-items:center;justify-content:space-between;padding:18px 32px;background:#111827;border-bottom:1px solid #2a3444}}
-.brand{{font-weight:800;font-size:22px;letter-spacing:.02em}}
-.badge{{display:inline-flex;align-items:center;gap:8px;border:2px solid #facc15;color:#facc15;border-radius:999px;padding:8px 14px;font-weight:800;text-transform:uppercase}}
-.badge::before{{content:"";width:10px;height:10px;border-radius:50%;background:#facc15;display:inline-block}}
-.timer{{font-variant-numeric:tabular-nums;color:#cbd5e1}}
-.stage{{display:none;flex:1;padding:46px 58px 42px;gap:36px;grid-template-columns:minmax(0,1.15fr) minmax(360px,.85fr);align-items:stretch}}
+.shell{{width:100vw;height:100vh;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,0));}}
+.top{{height:94px;display:grid;grid-template-columns:minmax(260px,1fr) auto auto;align-items:center;gap:24px;padding:18px 34px;background:rgba(5,6,7,.78);border-bottom:1px solid var(--mares-line);box-shadow:0 20px 60px rgba(0,0,0,.28)}}
+.brand-lockup{{min-width:0}}
+.brand-lockup .mares-wordmark{{font-size:29px;white-space:nowrap}}
+.timer{{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums;color:rgba(239,239,239,.82);font-size:16px}}
+.stage{{display:none;flex:1;padding:42px 58px 38px;gap:32px;grid-template-columns:minmax(0,1.12fr) minmax(360px,.88fr);align-items:stretch}}
 .stage.active{{display:grid}}
-h1{{font-size:70px;line-height:.95;margin:0 0 18px;letter-spacing:0}}
-.subtitle{{font-size:28px;line-height:1.2;color:#cbd5e1;max-width:980px;margin-bottom:34px}}
+h1{{font-family:var(--mares-display);font-size:68px;line-height:.96;margin:0 0 18px;letter-spacing:0;text-transform:uppercase;color:var(--mares-white);text-shadow:0 0 28px rgba(106,169,210,.18)}}
+.subtitle{{font-size:30px;line-height:1.18;color:rgba(239,239,239,.82);max-width:980px;margin-bottom:32px}}
 .bullets{{list-style:none;padding:0;margin:0;display:grid;gap:14px}}
-.bullets li{{font-size:24px;line-height:1.28;background:#161d29;border-left:6px solid #60a5fa;padding:16px 18px;border-radius:8px}}
-.panel{{background:#111827;border:1px solid #2a3444;border-radius:12px;padding:24px;display:flex;flex-direction:column;gap:20px;min-width:0}}
+.bullets li{{font-size:24px;line-height:1.28;background:rgba(12,18,25,.72);border:1px solid rgba(151,208,236,.16);border-left:6px solid var(--mares-blue);padding:16px 18px;border-radius:8px;box-shadow:0 18px 48px rgba(0,0,0,.22)}}
+.panel{{background:var(--mares-panel);border:1px solid var(--mares-line);border-radius:8px;padding:24px;display:flex;flex-direction:column;gap:20px;min-width:0;box-shadow:0 24px 70px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.05)}}
 .stats{{display:grid;gap:12px}}
-.stat{{border:1px solid #334155;border-radius:8px;padding:14px;background:#0f172a}}
-.stat b{{display:block;color:#93c5fd;font-size:14px;text-transform:uppercase;margin-bottom:6px}}
+.stat{{border:1px solid rgba(151,208,236,.18);border-radius:8px;padding:14px;background:rgba(5,10,16,.72)}}
+.stat b{{display:block;color:var(--mares-blue-light);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;font-size:13px;text-transform:uppercase;margin-bottom:6px;letter-spacing:0}}
 .stat span{{display:block;font-size:22px;line-height:1.18;overflow-wrap:anywhere}}
-.notes{{margin-top:auto;border-top:1px solid #334155;padding-top:16px;color:#e2e8f0;font-size:18px;line-height:1.35}}
-.notes strong{{color:#facc15}}
-.controls{{height:52px;display:flex;align-items:center;gap:18px;padding:0 32px;background:#111827;border-top:1px solid #2a3444;color:#cbd5e1;font-size:15px}}
-.progress{{height:8px;background:#1f2937}}
-.bar{{height:100%;width:0;background:#60a5fa;transition:width .2s linear}}
-a{{color:#93c5fd}}
+.notes{{margin-top:auto;border-top:1px solid rgba(151,208,236,.18);padding-top:16px;color:rgba(239,239,239,.88);font-size:18px;line-height:1.35}}
+.notes strong{{color:var(--mares-blue-light)}}
+.controls{{height:52px;display:flex;align-items:center;gap:18px;padding:0 32px;background:rgba(5,6,7,.82);border-top:1px solid var(--mares-line);color:rgba(239,239,239,.72);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px}}
+.progress{{height:8px;background:rgba(151,208,236,.12)}}
+.bar{{height:100%;width:0;background:linear-gradient(90deg,var(--mares-blue-strong),var(--mares-blue-light));box-shadow:0 0 20px rgba(151,208,236,.38);transition:width .2s linear}}
+a{{color:var(--mares-blue-light)}}
+@media(max-width:1100px){{.top{{grid-template-columns:1fr;gap:10px;height:auto;align-items:start}}.truth-badge{{white-space:normal}}.stage{{grid-template-columns:1fr;padding:28px 22px}}h1{{font-size:44px}}.subtitle{{font-size:23px}}}}
 @media (prefers-reduced-motion: reduce){{.bar{{transition:none}}}}
 </style>
 <script type="application/json" id="director-data">{data_json}</script>
 <div class="shell">
-  <div class="top"><div class="brand">Agent Bounty Market</div><div class="badge">{html.escape(str(data["mode_badge"]))}</div><div class="timer" id="timer">00:00 / {int(data["duration_seconds"]):02d}s</div></div>
+  <div class="top"><div class="brand-lockup"><div class="mares-wordmark">{MARES_WORDMARK}</div><div class="brand-kicker">Agent Bounty Market demo</div></div><div class="truth-badge">{html.escape(str(data["mode_badge"]))}</div><div class="timer" id="timer">00:00 / {int(data["duration_seconds"]):02d}s</div></div>
   <main>{scenes_html}</main>
   <div class="progress"><div class="bar" id="bar"></div></div>
   <div class="controls">Space pause/resume · Arrow keys navigate · R restart · Esc stop autoplay · {notes_hint}</div>
@@ -1313,7 +1408,7 @@ def _render_director_scene(scene: dict[str, Any], *, include_notes: bool) -> str
     notes = f"<div class=\"notes\"><strong>Presenter Notes:</strong> {html.escape(str(scene['voiceover']))}</div>" if include_notes else ""
     return f"""<section class="stage" data-scene="{html.escape(scene['id'])}">
   <div><h1>{html.escape(scene['title'])}</h1><div class="subtitle">{html.escape(scene['subtitle'])}</div><ul class="bullets">{bullets}</ul></div>
-  <aside class="panel"><div class="badge">{html.escape(scene['truth_badge'])}</div><div class="stats">{stats}</div>{notes}</aside>
+  <aside class="panel"><div class="truth-badge">{html.escape(scene['truth_badge'])}</div><div class="stats">{stats}</div>{notes}</aside>
 </section>"""
 
 
@@ -1326,10 +1421,29 @@ def render_director_notes_html(data: dict[str, Any]) -> str:
 <html lang="en">
 <meta charset="utf-8">
 <title>Director Notes</title>
-<style>body{{font-family:system-ui,sans-serif;margin:32px;line-height:1.45;max-width:980px}}li{{margin:0 0 18px}}b{{font-size:18px}}</style>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+{MARES_DISPLAY_FONT_FACE}
+{MARES_THEME_CSS}
+html,body{{margin:0;min-height:100%}}
+body{{padding:34px;line-height:1.45}}
+.notes-shell{{max-width:1060px;margin:0 auto}}
+header{{display:flex;align-items:flex-start;justify-content:space-between;gap:28px;margin-bottom:30px;border-bottom:1px solid var(--mares-line);padding-bottom:22px}}
+.mares-wordmark{{font-size:34px;white-space:nowrap}}
+h1{{font-family:var(--mares-display);font-size:46px;line-height:1;margin:18px 0 8px;text-transform:uppercase;letter-spacing:0}}
+p{{margin:0;color:rgba(239,239,239,.78);font-size:18px}}
+ol{{margin:0;padding:0;list-style:none;display:grid;gap:16px}}
+li{{background:var(--mares-panel);border:1px solid var(--mares-line);border-left:6px solid var(--mares-blue);border-radius:8px;padding:18px 20px;box-shadow:0 18px 48px rgba(0,0,0,.18)}}
+b{{display:block;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;font-size:18px;color:var(--mares-blue-light);margin-bottom:8px}}
+li p{{font-size:20px;color:var(--mares-white);line-height:1.35}}
+@media(max-width:760px){{body{{padding:20px}}header{{display:block}}.mares-wordmark{{font-size:24px;white-space:normal}}h1{{font-size:34px}}}}
+</style>
+<div class="notes-shell">
+<header><div><div class="mares-wordmark">{MARES_WORDMARK}</div><div class="brand-kicker">Agent Bounty Market presenter notes</div></div><div class="truth-badge">{html.escape(str(data["mode_badge"]))}</div></header>
 <h1>Presenter Notes</h1>
-<p>Truth badge: <b>{html.escape(str(data["mode_badge"]))}</b>. Duration: {int(data["duration_seconds"])} seconds.</p>
+<p>Duration: {int(data["duration_seconds"])} seconds.</p>
 <ol>{rows}</ol>
+</div>
 </html>
 """
 
@@ -1468,23 +1582,30 @@ def render_dashboard(bundle: dict[str, Any]) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent Bounty Demo</title>
 <style>
-*{{box-sizing:border-box}}
-body{{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f6f5f2;color:#171717;font-size:16px}}
-header{{padding:24px 34px;background:#111;color:#fff;display:flex;justify-content:space-between;gap:24px;align-items:flex-start}}
-h1{{font-size:34px;margin:0 0 8px;line-height:1.05}} p{{margin:0;max-width:840px;line-height:1.38}}
-.badge{{border:2px solid #fff;padding:10px 14px;text-transform:uppercase;font-weight:800;letter-spacing:.04em;white-space:nowrap}}
-main{{padding:20px 34px 28px}} .grid{{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}}
-.card{{background:#fff;border:1px solid #d8d5cf;border-radius:8px;padding:14px;min-height:164px;box-shadow:0 1px 2px rgba(0,0,0,.04)}}
-.card h2{{font-size:17px;margin:0 0 12px;line-height:1.15}} .row{{border-top:1px solid #ece9e2;padding:8px 0}}
-.key{{display:block;color:#666;font-size:12px;text-transform:uppercase;font-weight:700}} .value{{font-family:ui-monospace,Menlo,monospace;word-break:break-word;font-size:14px;line-height:1.3}}
-.split{{display:grid;grid-template-columns:1.1fr .9fr;gap:14px;margin-top:18px}}
-ol{{background:#fff;border:1px solid #d8d5cf;border-radius:8px;padding:14px 16px 14px 36px;margin:8px 0 0}}
-li{{margin:8px 0}} li span{{display:block;color:#555;margin-top:2px;line-height:1.35}}
-.final{{font-size:24px;font-weight:900;margin:18px 0 0}}
-@media(max-width:1500px){{.grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}
-@media(max-width:1050px){{header{{flex-direction:column}}.grid,.split{{grid-template-columns:1fr}}.badge{{white-space:normal}}}}
+{MARES_DISPLAY_FONT_FACE}
+{MARES_THEME_CSS}
+html,body{{margin:0;min-height:100%}}
+body{{font-size:16px}}
+header{{padding:28px 36px 24px;background:rgba(5,6,7,.82);border-bottom:1px solid var(--mares-line);display:grid;grid-template-columns:minmax(260px,1fr) minmax(320px,1.2fr) auto;gap:28px;align-items:center;box-shadow:0 22px 64px rgba(0,0,0,.28)}}
+.mares-wordmark{{font-size:34px;white-space:nowrap}}
+h1{{font-family:var(--mares-display);font-size:42px;line-height:1;margin:0 0 10px;text-transform:uppercase;letter-spacing:0;color:var(--mares-white)}}
+p{{margin:0;max-width:880px;line-height:1.42;color:rgba(239,239,239,.78);font-size:18px}}
+main{{padding:24px 34px 32px;max-width:1740px;margin:0 auto}}
+.grid{{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}}
+.card{{background:var(--mares-panel);border:1px solid var(--mares-line);border-radius:8px;padding:16px;min-height:174px;box-shadow:0 18px 48px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.04)}}
+.card h2{{font-family:var(--mares-display);font-size:18px;margin:0 0 12px;line-height:1.1;text-transform:uppercase;letter-spacing:0;color:var(--mares-white)}}
+.row{{border-top:1px solid rgba(151,208,236,.14);padding:9px 0}}
+.key{{display:block;color:var(--mares-blue-light);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;font-size:12px;text-transform:uppercase;font-weight:800;letter-spacing:0}}
+.value{{font-family:ui-monospace,Menlo,Consolas,monospace;word-break:break-word;font-size:14px;line-height:1.3;color:rgba(248,251,255,.9)}}
+.split{{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;margin-top:20px}}
+h2{{font-family:var(--mares-display);text-transform:uppercase;letter-spacing:0;color:var(--mares-white);font-size:22px;margin:0 0 10px}}
+ol{{background:rgba(12,18,25,.62);border:1px solid var(--mares-line);border-radius:8px;padding:14px 16px 14px 36px;margin:8px 0 0;box-shadow:0 18px 48px rgba(0,0,0,.16)}}
+li{{margin:8px 0;color:var(--mares-white)}} li span{{display:block;color:rgba(239,239,239,.72);margin-top:2px;line-height:1.35}}
+.final{{font-family:var(--mares-display);font-size:27px;font-weight:900;line-height:1.12;margin:20px 0 0;text-transform:uppercase;letter-spacing:0;color:var(--mares-white);text-shadow:0 0 26px rgba(106,169,210,.16)}}
+@media(max-width:1500px){{.grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}header{{grid-template-columns:1fr auto}}header .pitch{{grid-column:1 / -1;grid-row:2}}}}
+@media(max-width:1050px){{header{{display:block}}.brand-kicker{{margin-bottom:18px}}.grid,.split{{grid-template-columns:1fr}}.truth-badge{{white-space:normal;margin-top:18px}}.mares-wordmark{{font-size:28px;white-space:normal}}}}
 </style>
-<header><div><h1>Agent Bounty Market</h1><p>A project agent spends from a project budget to buy verified software work, a specialist solver earns the bounty, and the solver wallet split is recorded exactly once.</p></div><div class="badge">{html.escape(str(badge))} · {status}</div></header>
+<header><div><div class="mares-wordmark">{MARES_WORDMARK}</div><div class="brand-kicker">Agent Bounty Market demo</div></div><div class="pitch"><h1>Verified Agent Labor Market</h1><p>A project agent spends from a project budget to buy verified software work, a specialist solver earns the bounty, and the solver wallet split is recorded exactly once.</p></div><div class="truth-badge">{html.escape(str(badge))} · {status}</div></header>
 <main><section class="grid">{card_html}</section><section class="split"><div><h2>Fallbacks and blockers</h2><ol>{warning_html}</ol></div><div><h2>Recording cues</h2><ol>{cue_html}</ol></div></section><h2>Timeline</h2><ol>{timeline_html}</ol><p class="final">Agent Bounty Market turns open-source maintenance into a verified agent labor market and a data engine for better agent orchestration.</p></main>
 </html>
 """
@@ -1664,6 +1785,9 @@ def _validate_judge_facing_assets(bundle_dir: Path) -> list[str]:
         "background_study",
         "Transfer provider: fake",
         "solver_python_terminal_tui",
+        "Vi" + "ca",
+        "VI" + "CA",
+        "vi" + "ca",
     )
     for relative in (
         "README.md",
